@@ -1,41 +1,49 @@
 // app/lib/api.ts
-
+import "server-only";
 import { ArticleListItem, ArticleFull } from "../types/article";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5001";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5001";
 
-// Desactiva cache de Next para que siempre traiga fresco en dev
-const fetchJSON = async <T>(url: string): Promise<T> => {
-  const res = await fetch(url, {
-    // En prod podemos tunear a revalidate cada X min
+/**
+ * Trae las últimas publicaciones públicas (listado).
+ * GET /articles
+ */
+export async function getLatestArticles(): Promise<ArticleListItem[]> {
+  const res = await fetch(`${API_BASE}/articles`, {
     cache: "no-store",
   });
 
   if (!res.ok) {
-    throw new Error(`Error ${res.status} al pedir ${url}`);
+    console.error("Error fetching /articles", res.status, res.statusText);
+    return [];
   }
 
-  return res.json() as Promise<T>;
-};
-
-// GET /articles  → lista pública (máx 20 últimas)
-export async function getPublicArticles(): Promise<ArticleListItem[]> {
-  return fetchJSON<ArticleListItem[]>(`${API_BASE}/articles`);
+  const data = (await res.json()) as ArticleListItem[];
+  return data;
 }
 
-// GET /articles/:slug → nota completa
+/**
+ * Trae el detalle de una nota por slug.
+ * GET /articles/:slug
+ * (esto lo vamos a usar en la página de detalle /article/[slug])
+ */
 export async function getArticleBySlug(
-  slug: string
-): Promise<ArticleFull> {
-  return fetchJSON<ArticleFull>(`${API_BASE}/articles/${slug}`);
-}
-
-// Helper para formatear fecha linda en español
-export function formatDate(iso: string | null | undefined) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleString("es-AR", {
-    dateStyle: "short",
-    timeStyle: "short",
+  slug: string,
+): Promise<ArticleFull | null> {
+  const res = await fetch(`${API_BASE}/articles/${slug}`, {
+    cache: "no-store",
   });
+
+  if (!res.ok) {
+    console.error(
+      `Error fetching /articles/${slug}`,
+      res.status,
+      res.statusText,
+    );
+    return null;
+  }
+
+  const data = (await res.json()) as ArticleFull;
+  return data;
 }

@@ -1,5 +1,10 @@
 // app/article/[slug]/page.tsx
-import { getArticleBySlug, formatDate } from "../../lib/api";
+
+import Link from "next/link";
+import { notFound } from "next/navigation";
+
+import { getArticleBySlug } from "../../lib/api";
+import { formatDate } from "../../lib/formatDate";
 import { ArticleFull } from "../../types/article";
 
 // Esta página se genera en el server en cada request (no cache en dev)
@@ -8,63 +13,84 @@ export default async function ArticlePage({
 }: {
   params: { slug: string };
 }) {
-  // traemos la nota completa
-  const article: ArticleFull = await getArticleBySlug(params.slug);
+  // buscamos la nota completa
+  const article: ArticleFull | null = await getArticleBySlug(params.slug);
+
+  // si no existe devolvemos 404 de Next
+  if (!article) {
+    notFound();
+  }
 
   return (
     <main className="mx-auto max-w-3xl p-6 text-neutral-100 bg-neutral-950 min-h-screen">
       {/* cabecera / volver */}
       <nav className="mb-6 text-sm">
-        <a
+        <Link
           href="/"
           className="text-blue-400 hover:text-blue-300 hover:underline"
         >
           ← Volver
-        </a>
+        </Link>
       </nav>
 
-      {/* categoría / fecha / ideología */}
-      <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400 mb-2">
-        <span className="uppercase tracking-wide text-amber-400">
-          {article.category || "sin categoría"}
-        </span>
-        <span>•</span>
-        <span>{formatDate(article.publishedAt)}</span>
-        <span>•</span>
-        <span className="text-red-400 font-semibold">
-          {article.ideology || "NEUTRAL"}
-        </span>
-      </div>
+      {/* metadata arriba */}
+      <header className="mb-4">
+        <div className="text-xs text-neutral-400 flex flex-wrap gap-2 mb-2">
+          <span className="uppercase font-semibold text-[10px] tracking-wide text-blue-300">
+            {article.category || "sin categoría"}
+          </span>
 
-      {/* título */}
-      <h1 className="text-2xl font-bold text-white leading-tight mb-4">
-        {article.title}
-      </h1>
+          <span className="text-neutral-500">
+            {article.publishedAt
+              ? formatDate(article.publishedAt)
+              : "sin fecha"}
+          </span>
 
-      {/* cuerpo HTML limpio que guardamos en bodyHtml */}
+          {article.ideology ? (
+            <span className="text-neutral-500">
+              ({article.ideology})
+            </span>
+          ) : null}
+        </div>
+
+        <h1 className="text-2xl font-bold text-white mb-2 leading-snug">
+          {article.title}
+        </h1>
+
+        {article.summary ? (
+          <p className="text-base text-neutral-300 leading-relaxed">
+            {article.summary}
+          </p>
+        ) : null}
+      </header>
+
+      <hr className="border-neutral-700 mb-6" />
+
+      {/* cuerpo limpio renderizado como HTML */}
       <article
-        className="prose prose-invert prose-neutral max-w-none prose-headings:text-white prose-p:text-neutral-200 prose-strong:text-white prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline"
-        dangerouslySetInnerHTML={{ __html: article.bodyHtml || "" }}
+        className="prose prose-invert prose-sm max-w-none
+                   prose-headings:text-neutral-100
+                   prose-p:text-neutral-200
+                   prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline
+                   prose-strong:text-neutral-100
+                   prose-li:marker:text-neutral-500"
+        dangerouslySetInnerHTML={{ __html: article.bodyHtml }}
       />
 
-      {/* metadata final */}
-      <div className="mt-10 border-t border-neutral-800 pt-4 text-xs text-neutral-600">
+      <hr className="border-neutral-700 mt-10 mb-4" />
+
+      <footer className="text-[11px] text-neutral-500 flex flex-col gap-1">
         <div>
           Publicado:{" "}
-          <span className="text-neutral-400">
-            {formatDate(article.publishedAt)}
-          </span>
+          {article.publishedAt
+            ? formatDate(article.publishedAt)
+            : "sin fecha"}
         </div>
-        <div>
-          Última actualización:{" "}
-          <span className="text-neutral-400">
-            {formatDate(article.updatedAt)}
-          </span>
+        <div>Última actualización: {formatDate(article.updatedAt)}</div>
+        <div className="text-neutral-600">
+          id interno #{article.id} • slug “{article.slug}”
         </div>
-        <div className="mt-2 italic text-neutral-500">
-          Fuente procesada internamente. Texto saneado.
-        </div>
-      </div>
+      </footer>
     </main>
   );
 }
