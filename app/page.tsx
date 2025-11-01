@@ -1,46 +1,129 @@
 // app/page.tsx
-import { getLatestArticles } from "./lib/api";
-import ArticleCard from "./components/ArticleCard";
+"use client";
 
-export default async function HomePage() {
-  const articles = await getLatestArticles();
+import { useEffect, useState } from "react";
+import Link from "next/link";
+
+// Tipo básico que viene de GET /articles
+type ArticleSummary = {
+  id: number;
+  slug: string;
+  title: string;
+  summary: string | null;
+  category: string;
+  ideology: string;
+  publishedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export default function HomePage() {
+  const [articles, setArticles] = useState<ArticleSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch("http://localhost:5001/articles", {
+          // importante para que Next no intente cachear en server
+          cache: "no-store",
+        });
+        const data = await res.json();
+        setArticles(data);
+      } catch (err) {
+        console.error("error fetching /articles", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    load();
+  }, []);
+
+  if (loading) {
+    return (
+      <main style={{ padding: 16 }}>
+        <p style={{ color: "#999" }}>Cargando...</p>
+      </main>
+    );
+  }
 
   return (
-    <main className="flex flex-col items-center py-8">
-      <section className="w-full max-w-3xl bg-neutral-900 text-neutral-100 border border-neutral-700 rounded-sm shadow-sm p-6">
-        {/* header */}
-        <header className="mb-4">
-          <h1 className="text-xl font-bold text-white">
-            Mi Portal de Noticias
-          </h1>
-          <p className="text-sm text-neutral-400">
-            Últimas publicaciones (scrapeadas → limpiadas → etiquetadas
-            &quot;RIGHT&quot;)
-          </p>
-        </header>
+    <main style={{ padding: 16, maxWidth: 800, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 16 }}>
+        Últimas noticias
+      </h1>
 
-        <hr className="border-neutral-700 mb-4" />
+      {articles.length === 0 && (
+        <p style={{ color: "#999" }}>No hay artículos publicados.</p>
+      )}
 
-        {/* listado / vacío */}
-        {articles.length === 0 ? (
-          <p className="text-sm text-neutral-500 italic">
-            (Todavía no hay artículos publicados)
-          </p>
-        ) : (
-          <div className="flex flex-col">
-            {articles.map((a) => (
-              <ArticleCard key={a.id} article={a} />
-            ))}
-          </div>
-        )}
+      <ul style={{ display: "grid", gap: 24, listStyle: "none", padding: 0 }}>
+        {articles.map((a) => (
+          <li
+            key={a.id}
+            style={{
+              border: "1px solid #333",
+              borderRadius: 8,
+              padding: 16,
+              backgroundColor: "#111",
+              color: "#eee",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                color: "#999",
+                marginBottom: 4,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}
+            >
+              {a.category} ·{" "}
+              {new Date(a.publishedAt).toLocaleString("es-AR", {
+                dateStyle: "short",
+                timeStyle: "short",
+              })}
+            </div>
 
-        <hr className="border-neutral-700 mt-6 mb-2" />
+            <Link
+              href={`/articulo/${a.slug}`}
+              style={{
+                fontSize: 18,
+                fontWeight: 600,
+                color: "#fff",
+                textDecoration: "none",
+              }}
+            >
+              {a.title}
+            </Link>
 
-        {/* footer chico */}
-        <footer className="text-center text-[11px] text-neutral-500">
-          v0.1 - interno / demo
-        </footer>
-      </section>
+            {a.summary ? (
+              <p
+                style={{
+                  color: "#ccc",
+                  fontSize: 14,
+                  marginTop: 8,
+                  lineHeight: 1.4,
+                }}
+              >
+                {a.summary}
+              </p>
+            ) : (
+              <p
+                style={{
+                  color: "#444",
+                  fontSize: 14,
+                  marginTop: 8,
+                  fontStyle: "italic",
+                }}
+              >
+                (sin resumen)
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
     </main>
   );
 }
