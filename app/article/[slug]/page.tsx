@@ -12,6 +12,19 @@ function formatDate(iso?: string) {
   return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
 }
 
+function sanitize(html: string) {
+  if (!html) return "";
+
+  // eliminar <script>...</script>
+  let cleaned = html.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
+
+  // eliminar atributos tipo onclick=, onload=, etc
+  cleaned = cleaned.replace(/\son\w+="[^"]*"/gi, "");
+  cleaned = cleaned.replace(/\son\w+='[^']*'/gi, "");
+
+  return cleaned;
+}
+
 async function getArticle(slug: string): Promise<Article | null> {
   const base = process.env.NEXT_PUBLIC_API_BASE;
   const res = await fetch(`${base}/articles/${slug}`, {
@@ -43,9 +56,12 @@ export default async function ArticlePage({
     );
   }
 
+  const safeHtml = sanitize(article.bodyHtml || "");
+
   return (
     <main className="min-h-screen bg-neutral-900 text-neutral-100 px-4 py-8">
       <article className="max-w-3xl mx-auto">
+        {/* meta */}
         <div className="text-xs text-neutral-400 flex flex-wrap gap-2 mb-3">
           <span className="uppercase tracking-wide font-medium text-emerald-400/80">
             {article.category || "sin categoría"}
@@ -60,22 +76,23 @@ export default async function ArticlePage({
           </span>
         </div>
 
+        {/* título */}
         <h1 className="text-2xl font-semibold text-neutral-100 leading-tight mb-4">
           {article.title}
         </h1>
 
+        {/* resumen */}
         {article.summary && (
           <p className="text-neutral-300 text-lg leading-relaxed mb-6">
             {article.summary}
           </p>
         )}
 
-        <div className="prose prose-invert prose-neutral max-w-none text-neutral-200 text-base leading-relaxed">
-          <p>
-            (Acá después vamos a meter el bodyHtml limpio que viene del
-            scraper. Falta exponerlo en el backend público.)
-          </p>
-        </div>
+        {/* cuerpo limpio */}
+        <div
+          className="prose prose-invert prose-neutral max-w-none text-neutral-200 text-base leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: safeHtml }}
+        />
       </article>
     </main>
   );
