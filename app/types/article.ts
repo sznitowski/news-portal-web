@@ -1,13 +1,20 @@
-// /types/article.ts
-export type Article = {
+// app/types/article.ts
+
+// Lo que devuelve GET /articles
+export type ArticleListItem = {
   id: number;
   slug: string;
   title: string;
   summary: string | null;
-  bodyHtml?: string; 
   category: string;
   ideology: string;
-  publishedAt: string;
-  createdAt: string;
-  updatedAt: string;
+  publishedAt: string; // ISO string
+  createdAt: string; // ISO string
+  updatedAt: string; // ISO string
+};
+
+// Lo que devuelve GET /articles/:slug
+// Incluye bodyHtml (el cuerpo limpio listo para render)
+export type ArticleFull = ArticleListItem & {
+  bodyHtml: string;
 };

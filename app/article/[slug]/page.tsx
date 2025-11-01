@@ -1,99 +1,70 @@
-import { Article } from "./../../types/article";
+// app/article/[slug]/page.tsx
+import { getArticleBySlug, formatDate } from "../../lib/api";
+import { ArticleFull } from "../../types/article";
 
-function formatDate(iso?: string) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  const dd = pad(d.getDate());
-  const mm = pad(d.getMonth() + 1);
-  const yyyy = d.getFullYear();
-  const hh = pad(d.getHours());
-  const mi = pad(d.getMinutes());
-  return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
-}
-
-function sanitize(html: string) {
-  if (!html) return "";
-
-  // eliminar <script>...</script>
-  let cleaned = html.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
-
-  // eliminar atributos tipo onclick=, onload=, etc
-  cleaned = cleaned.replace(/\son\w+="[^"]*"/gi, "");
-  cleaned = cleaned.replace(/\son\w+='[^']*'/gi, "");
-
-  return cleaned;
-}
-
-async function getArticle(slug: string): Promise<Article | null> {
-  const base = process.env.NEXT_PUBLIC_API_BASE;
-  const res = await fetch(`${base}/articles/${slug}`, {
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    console.error("No se pudo cargar articulo", slug, res.status);
-    return null;
-  }
-
-  return res.json();
-}
-
+// Esta página se genera en el server en cada request (no cache en dev)
 export default async function ArticlePage({
   params,
 }: {
   params: { slug: string };
 }) {
-  const article = await getArticle(params.slug);
-
-  if (!article) {
-    return (
-      <main className="min-h-screen bg-neutral-900 text-neutral-100 px-4 py-8 flex items-center justify-center">
-        <div className="text-center text-neutral-400">
-          Artículo no encontrado.
-        </div>
-      </main>
-    );
-  }
-
-  const safeHtml = sanitize(article.bodyHtml || "");
+  // traemos la nota completa
+  const article: ArticleFull = await getArticleBySlug(params.slug);
 
   return (
-    <main className="min-h-screen bg-neutral-900 text-neutral-100 px-4 py-8">
-      <article className="max-w-3xl mx-auto">
-        {/* meta */}
-        <div className="text-xs text-neutral-400 flex flex-wrap gap-2 mb-3">
-          <span className="uppercase tracking-wide font-medium text-emerald-400/80">
-            {article.category || "sin categoría"}
-          </span>
+    <main className="mx-auto max-w-3xl p-6 text-neutral-100 bg-neutral-950 min-h-screen">
+      {/* cabecera / volver */}
+      <nav className="mb-6 text-sm">
+        <a
+          href="/"
+          className="text-blue-400 hover:text-blue-300 hover:underline"
+        >
+          ← Volver
+        </a>
+      </nav>
 
-          <span className="text-[10px] px-2 py-[2px] rounded bg-neutral-700 text-neutral-300 border border-neutral-600">
-            {article.ideology || "NEUTRAL"}
-          </span>
+      {/* categoría / fecha / ideología */}
+      <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400 mb-2">
+        <span className="uppercase tracking-wide text-amber-400">
+          {article.category || "sin categoría"}
+        </span>
+        <span>•</span>
+        <span>{formatDate(article.publishedAt)}</span>
+        <span>•</span>
+        <span className="text-red-400 font-semibold">
+          {article.ideology || "NEUTRAL"}
+        </span>
+      </div>
 
-          <span className="text-neutral-500">
-            {formatDate(article.publishedAt || article.createdAt)}
+      {/* título */}
+      <h1 className="text-2xl font-bold text-white leading-tight mb-4">
+        {article.title}
+      </h1>
+
+      {/* cuerpo HTML limpio que guardamos en bodyHtml */}
+      <article
+        className="prose prose-invert prose-neutral max-w-none prose-headings:text-white prose-p:text-neutral-200 prose-strong:text-white prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline"
+        dangerouslySetInnerHTML={{ __html: article.bodyHtml || "" }}
+      />
+
+      {/* metadata final */}
+      <div className="mt-10 border-t border-neutral-800 pt-4 text-xs text-neutral-600">
+        <div>
+          Publicado:{" "}
+          <span className="text-neutral-400">
+            {formatDate(article.publishedAt)}
           </span>
         </div>
-
-        {/* título */}
-        <h1 className="text-2xl font-semibold text-neutral-100 leading-tight mb-4">
-          {article.title}
-        </h1>
-
-        {/* resumen */}
-        {article.summary && (
-          <p className="text-neutral-300 text-lg leading-relaxed mb-6">
-            {article.summary}
-          </p>
-        )}
-
-        {/* cuerpo limpio */}
-        <div
-          className="prose prose-invert prose-neutral max-w-none text-neutral-200 text-base leading-relaxed"
-          dangerouslySetInnerHTML={{ __html: safeHtml }}
-        />
-      </article>
+        <div>
+          Última actualización:{" "}
+          <span className="text-neutral-400">
+            {formatDate(article.updatedAt)}
+          </span>
+        </div>
+        <div className="mt-2 italic text-neutral-500">
+          Fuente procesada internamente. Texto saneado.
+        </div>
+      </div>
     </main>
   );
 }

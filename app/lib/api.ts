@@ -1,27 +1,41 @@
+// app/lib/api.ts
+
+import { ArticleListItem, ArticleFull } from "../types/article";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5001";
 
-export async function fetchArticles() {
-  const res = await fetch(`${API_BASE}/articles`, {
-    // Esto fuerza render en el server cada request (sin cache)
+// Desactiva cache de Next para que siempre traiga fresco en dev
+const fetchJSON = async <T>(url: string): Promise<T> => {
+  const res = await fetch(url, {
+    // En prod podemos tunear a revalidate cada X min
     cache: "no-store",
   });
 
   if (!res.ok) {
-    throw new Error("Error al obtener artículos");
+    throw new Error(`Error ${res.status} al pedir ${url}`);
   }
 
-  // El backend devuelve un array de artículos planos
-  return res.json();
+  return res.json() as Promise<T>;
+};
+
+// GET /articles  → lista pública (máx 20 últimas)
+export async function getPublicArticles(): Promise<ArticleListItem[]> {
+  return fetchJSON<ArticleListItem[]>(`${API_BASE}/articles`);
 }
 
-export async function fetchArticle(slug: string) {
-  const res = await fetch(`${API_BASE}/articles/${slug}`, {
-    cache: "no-store",
+// GET /articles/:slug → nota completa
+export async function getArticleBySlug(
+  slug: string
+): Promise<ArticleFull> {
+  return fetchJSON<ArticleFull>(`${API_BASE}/articles/${slug}`);
+}
+
+// Helper para formatear fecha linda en español
+export function formatDate(iso: string | null | undefined) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleString("es-AR", {
+    dateStyle: "short",
+    timeStyle: "short",
   });
-
-  if (!res.ok) {
-    throw new Error("Artículo no encontrado");
-  }
-
-  return res.json();
 }
