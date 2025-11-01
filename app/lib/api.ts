@@ -1,49 +1,38 @@
 // app/lib/api.ts
-import "server-only";
 import { ArticleListItem, ArticleFull } from "../types/article";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5001";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE; // http://localhost:5001
 
-/**
- * Trae las últimas publicaciones públicas (listado).
- * GET /articles
- */
+// lista
 export async function getLatestArticles(): Promise<ArticleListItem[]> {
   const res = await fetch(`${API_BASE}/articles`, {
     cache: "no-store",
   });
 
   if (!res.ok) {
-    console.error("Error fetching /articles", res.status, res.statusText);
-    return [];
+    throw new Error(`failed to fetch /articles (status ${res.status})`);
   }
 
-  const data = (await res.json()) as ArticleListItem[];
-  return data;
+  return res.json();
 }
 
-/**
- * Trae el detalle de una nota por slug.
- * GET /articles/:slug
- * (esto lo vamos a usar en la página de detalle /article/[slug])
- */
-export async function getArticleBySlug(
-  slug: string,
-): Promise<ArticleFull | null> {
+// detalle
+export async function getArticleBySlug(slug: string): Promise<ArticleFull | null> {
   const res = await fetch(`${API_BASE}/articles/${slug}`, {
     cache: "no-store",
   });
 
-  if (!res.ok) {
-    console.error(
-      `Error fetching /articles/${slug}`,
-      res.status,
-      res.statusText,
-    );
+  if (res.status === 404) {
+    // no existe el artículo -> devolvemos null para que el componente muestre "no encontrado"
     return null;
   }
 
-  const data = (await res.json()) as ArticleFull;
-  return data;
+  if (!res.ok) {
+    // otro error real (500, etc)
+    throw new Error(
+      `failed to fetch /articles/:slug (status ${res.status})`
+    );
+  }
+
+  return res.json();
 }
