@@ -17,6 +17,9 @@ type ArticleFull = {
   updatedAt: string;
 };
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
+
 export default function ArticlePage() {
   const { slug } = useParams<{ slug: string }>();
 
@@ -27,7 +30,7 @@ export default function ArticlePage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`http://localhost:5001/articles/${slug}`, {
+        const res = await fetch(`${API_BASE}/articles/${slug}`, {
           cache: "no-store",
         });
 
@@ -36,7 +39,12 @@ export default function ArticlePage() {
           return;
         }
 
-        const data = await res.json();
+        if (!res.ok) {
+          console.error("error fetching article", res.status);
+          return;
+        }
+
+        const data: ArticleFull = await res.json();
         setArticle(data);
       } catch (err) {
         console.error("error fetching article", err);
@@ -45,7 +53,9 @@ export default function ArticlePage() {
       }
     }
 
-    load();
+    if (slug) {
+      load();
+    }
   }, [slug]);
 
   if (loading) {
@@ -119,7 +129,7 @@ export default function ArticlePage() {
         </p>
       ) : null}
 
-      {/* cuerpo html tal cual viene de la API */}
+      {/* cuerpo html ya viene sanitizado desde el backend */}
       <article
         style={{
           color: "#ddd",
