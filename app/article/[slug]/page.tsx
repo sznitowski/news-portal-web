@@ -3,22 +3,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-
-type ArticleFull = {
-  id: number;
-  slug: string;
-  title: string;
-  summary: string | null;
-  bodyHtml: string;
-  category: string;
-  ideology: string;
-  publishedAt: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
+import type { ArticleFull } from "../../types/article";
+import { getArticleBySlug } from "../../lib/api";
 
 export default function ArticlePage() {
   const { slug } = useParams<{ slug: string }>();
@@ -28,24 +14,16 @@ export default function ArticlePage() {
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
+    if (!slug) return;
+
     async function load() {
       try {
-        const res = await fetch(`${API_BASE}/articles/${slug}`, {
-          cache: "no-store",
-        });
-
-        if (res.status === 404) {
+        const data = await getArticleBySlug(slug);
+        if (!data) {
           setNotFound(true);
-          return;
+        } else {
+          setArticle(data);
         }
-
-        if (!res.ok) {
-          console.error("error fetching article", res.status);
-          return;
-        }
-
-        const data: ArticleFull = await res.json();
-        setArticle(data);
       } catch (err) {
         console.error("error fetching article", err);
       } finally {
@@ -53,9 +31,7 @@ export default function ArticlePage() {
       }
     }
 
-    if (slug) {
-      load();
-    }
+    load();
   }, [slug]);
 
   if (loading) {
@@ -129,7 +105,6 @@ export default function ArticlePage() {
         </p>
       ) : null}
 
-      {/* cuerpo html ya viene sanitizado desde el backend */}
       <article
         style={{
           color: "#ddd",

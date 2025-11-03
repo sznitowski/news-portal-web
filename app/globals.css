@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+/* Variables de color / fuentes del template */
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -19,8 +20,139 @@
   }
 }
 
+/* Base */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+}
+
+/* ===========================
+   HEADER + NAVBAR
+   =========================== */
+
+header {
+  background-color: #000000;
+  color: #ffffff;
+  padding: 12px 24px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+header p {
+  margin: 0;
+  font-size: 12px;
+  color: #d1d5db;
+}
+
+header nav {
+  display: flex;
+  gap: 16px;
+  font-size: 14px;
+}
+
+header nav a {
+  color: #e5e7eb;
+  text-decoration: none;
+}
+
+header nav a:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+/* Solo el main externo del layout */
+body > main {
+  background-color: #ffffff;
+  min-height: calc(100vh - 96px); /* aprox alto header+footer */
+}
+
+/* ===========================
+   FOOTER
+   =========================== */
+
+footer {
+  border-top: 1px solid #e5e7eb;
+  padding: 10px 24px;
+  font-size: 12px;
+  color: #6b7280;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ===========================
+   LISTA DE ARTÍCULOS (HOME)
+   =========================== */
+
+.article-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1.5rem;
+}
+
+.article-card {
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  padding: 16px 20px;
+  background: #ffffff;
+  color: #111827;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.article-card:hover {
+  background: #f9fafb;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.article-meta {
+  font-size: 12px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.article-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  text-decoration: none;
+}
+
+.article-title:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.article-summary {
+  margin-top: 6px;
+  font-size: 14px;
+  color: #4b5563;
+}
+
+.article-summary--empty {
+  font-style: italic;
+  color: #9ca3af;
 }
