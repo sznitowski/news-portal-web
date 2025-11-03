@@ -2,9 +2,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { buildApiUrl } from "./lib/api";
+import ArticleCard from "./components/ArticleCard";
 
 // Tipo básico que viene de GET /articles
 type ArticleSummary = {
@@ -32,7 +32,6 @@ export default function HomePage() {
   const searchParams = useSearchParams();
 
   const category = searchParams.get("category") || undefined;
-  const currentCategory = category ?? "ALL";
 
   // Cuando cambia la categoría de la URL, reseteamos lista y página
   useEffect(() => {
@@ -113,33 +112,42 @@ export default function HomePage() {
     }
   }
 
+  const currentCategory = category ?? "ALL";
+
   if (loading && articles.length === 0) {
     return (
       <main style={{ padding: 16 }}>
-        <p style={{ color: "#999" }}>Cargando...</p>
+        <p style={{ color: "#6b7280" }}>Cargando...</p>
       </main>
     );
   }
 
   return (
-    <main style={{ padding: 16, maxWidth: 900, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 16 }}>
+    <main style={{ padding: 32, maxWidth: 960, margin: "0 auto" }}>
+      <h1
+        style={{
+          fontSize: 28,
+          fontWeight: 700,
+          marginBottom: 16,
+          color: "#111827",
+        }}
+      >
         Últimas noticias
       </h1>
 
       {/* Filtros simples */}
-      <div style={{ marginBottom: 16, display: "flex", gap: 8 }}>
+      <div style={{ marginBottom: 24, display: "flex", gap: 8 }}>
         <button
           type="button"
           onClick={() => handleFilterChange(null)}
           style={{
-            padding: "6px 16px",
+            padding: "8px 18px",
             borderRadius: 999,
             border:
-              currentCategory === "ALL" ? "1px solid #000" : "1px solid #d1d5db",
+              currentCategory === "ALL" ? "1px solid #111827" : "1px solid #d1d5db",
             backgroundColor:
-              currentCategory === "ALL" ? "#111827" : "#ffffff",
-            color: currentCategory === "ALL" ? "#ffffff" : "#111827",
+              currentCategory === "ALL" ? "#111827" : "transparent",
+            color: currentCategory === "ALL" ? "#f9fafb" : "#374151",
             fontSize: 14,
             cursor: "pointer",
           }}
@@ -151,15 +159,15 @@ export default function HomePage() {
           type="button"
           onClick={() => handleFilterChange("politica")}
           style={{
-            padding: "6px 16px",
+            padding: "8px 18px",
             borderRadius: 999,
             border:
               currentCategory === "politica"
-                ? "1px solid #000"
+                ? "1px solid #111827"
                 : "1px solid #d1d5db",
             backgroundColor:
-              currentCategory === "politica" ? "#111827" : "#ffffff",
-            color: currentCategory === "politica" ? "#ffffff" : "#111827",
+              currentCategory === "politica" ? "#111827" : "transparent",
+            color: currentCategory === "politica" ? "#f9fafb" : "#374151",
             fontSize: 14,
             cursor: "pointer",
           }}
@@ -171,15 +179,15 @@ export default function HomePage() {
           type="button"
           onClick={() => handleFilterChange("economia")}
           style={{
-            padding: "6px 16px",
+            padding: "8px 18px",
             borderRadius: 999,
             border:
               currentCategory === "economia"
-                ? "1px solid #000"
+                ? "1px solid #111827"
                 : "1px solid #d1d5db",
             backgroundColor:
-              currentCategory === "economia" ? "#111827" : "#ffffff",
-            color: currentCategory === "economia" ? "#ffffff" : "#111827",
+              currentCategory === "economia" ? "#111827" : "transparent",
+            color: currentCategory === "economia" ? "#f9fafb" : "#374151",
             fontSize: 14,
             cursor: "pointer",
           }}
@@ -191,15 +199,15 @@ export default function HomePage() {
           type="button"
           onClick={() => handleFilterChange("internacional")}
           style={{
-            padding: "6px 16px",
+            padding: "8px 18px",
             borderRadius: 999,
             border:
               currentCategory === "internacional"
-                ? "1px solid #000"
+                ? "1px solid #111827"
                 : "1px solid #d1d5db",
             backgroundColor:
-              currentCategory === "internacional" ? "#111827" : "#ffffff",
-            color: currentCategory === "internacional" ? "#ffffff" : "#111827",
+              currentCategory === "internacional" ? "#111827" : "transparent",
+            color: currentCategory === "internacional" ? "#f9fafb" : "#374151",
             fontSize: 14,
             cursor: "pointer",
           }}
@@ -209,57 +217,46 @@ export default function HomePage() {
       </div>
 
       {articles.length === 0 && (
-        <p style={{ color: "#999" }}>No hay artículos publicados.</p>
+        <p style={{ color: "#6b7280" }}>No hay artículos publicados.</p>
       )}
 
-      <ul className="article-list">
+      <ul
+        style={{
+          display: "grid",
+          gap: 24,
+          listStyle: "none",
+          padding: 0,
+        }}
+      >
         {articles.map((a) => (
-          <li key={a.id} className="article-card">
-            <div className="article-meta">
-              {a.category.toUpperCase()} ·{" "}
-              {new Date(a.publishedAt).toLocaleString("es-AR", {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}{" "}
-              · ({a.ideology})
-            </div>
-
-            <Link href={`/articulo/${a.slug}`} className="article-title">
-              {a.title}
-            </Link>
-
-            {a.summary ? (
-              <p className="article-summary">{a.summary}</p>
-            ) : (
-              <p className="article-summary article-summary--empty">
-                (sin resumen)
-              </p>
-            )}
-          </li>
+          <ArticleCard key={a.id} article={a} />
         ))}
       </ul>
 
       {/* Paginación simple "Cargar más" */}
-      <div style={{ marginTop: 24, textAlign: "center" }}>
+      <div style={{ marginTop: 32, textAlign: "center" }}>
         {hasMore ? (
           <button
             type="button"
             onClick={handleLoadMore}
             disabled={isLoadingMore}
             style={{
-              padding: "8px 20px",
+              padding: "10px 24px",
               borderRadius: 999,
               border: "1px solid #d1d5db",
               backgroundColor: "#111827",
-              color: "#ffffff",
+              color: "#f9fafb",
               cursor: isLoadingMore ? "default" : "pointer",
               opacity: isLoadingMore ? 0.7 : 1,
+              fontSize: 14,
             }}
           >
             {isLoadingMore ? "Cargando..." : "Cargar más"}
           </button>
         ) : (
-          <p style={{ color: "#777", fontSize: 14 }}>No hay más resultados.</p>
+          <p style={{ color: "#9ca3af", fontSize: 14 }}>
+            No hay más resultados.
+          </p>
         )}
       </div>
     </main>

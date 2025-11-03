@@ -1,29 +1,97 @@
-// components/ArticleCard.tsx
+// app/ArticleCard.tsx
 import Link from "next/link";
-import { ArticleListItem } from "@/app/types/article";
-import { formatDate } from "@/app/lib/formatDate";
 
-export default function ArticleCard({ article }: { article: ArticleListItem }) {
+type ArticleSummary = {
+  id: number;
+  slug: string;
+  title: string;
+  summary: string | null;
+  category: string;
+  ideology: string;
+  publishedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type Props = {
+  article: ArticleSummary;
+};
+
+export default function ArticleCard({ article }: Props) {
   return (
-    <article className="border-b border-neutral-700 pb-4 mb-4">
-      <header className="text-xs text-neutral-400 flex flex-wrap gap-2">
-        <span className="uppercase font-bold text-blue-400">{article.category}</span>
-        <span>{formatDate(article.publishedAt)}</span>
-        <span className="text-neutral-500">({article.ideology})</span>
-      </header>
+    <li
+      style={{
+        borderRadius: 16,
+        padding: 24,
+        backgroundColor: "#fff",
+        color: "#111827",
+        border: "1px solid #e5e7eb",
+        boxShadow: "0 10px 15px rgba(15,23,42,0.03)",
+        transition: "transform 0.1s ease, box-shadow 0.1s ease",
+      }}
+    >
+      {/* Meta (categoría, fecha, ideología) */}
+      <div
+        style={{
+          fontSize: 12,
+          color: "#6b7280",
+          marginBottom: 8,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 8,
+        }}
+      >
+        <span>{article.category.toUpperCase()}</span>
+        <span>·</span>
+        <span>
+          {new Date(article.publishedAt).toLocaleString("es-AR", {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })}
+        </span>
+        <span>·</span>
+        <span>({article.ideology})</span>
+      </div>
 
-      <h3 className="text-lg font-semibold text-neutral-100 leading-snug mt-2">
-        <Link
-          href={`/article/${article.slug}`}
-          className="hover:text-blue-300 hover:underline"
+      {/* Título linkeable */}
+      <Link
+        href={`/articulo/${article.slug}`}
+        style={{
+          fontSize: 18,
+          fontWeight: 600,
+          color: "#111827",
+          textDecoration: "none",
+        }}
+      >
+        {article.title}
+      </Link>
+
+      {/* Resumen */}
+      {article.summary ? (
+        <p
+          style={{
+            color: "#4b5563",
+            fontSize: 14,
+            marginTop: 8,
+            lineHeight: 1.5,
+          }}
         >
-          {article.title}
-        </Link>
-      </h3>
-
-      <p className="text-sm italic text-neutral-500 mt-1">
-        {article.summary ?? "(sin resumen)"}
-      </p>
-    </article>
+          {article.summary}
+        </p>
+      ) : (
+        <p
+          style={{
+            color: "#9ca3af",
+            fontSize: 14,
+            marginTop: 8,
+            fontStyle: "italic",
+          }}
+        >
+          (sin resumen)
+        </p>
+      )}
+    </li>
   );
 }
