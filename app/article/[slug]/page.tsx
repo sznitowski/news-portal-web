@@ -16,6 +16,16 @@ type ArticleFull = {
   updatedAt: string;
 };
 
+type ArticleListItem = {
+  id: number;
+  slug: string;
+  title: string;
+  summary: string | null;
+  category: string;
+  ideology: string;
+  publishedAt: string;
+};
+
 export default async function ArticlePage({
   params,
 }: {
@@ -23,6 +33,7 @@ export default async function ArticlePage({
 }) {
   const { slug } = await params;
 
+  // 1) Nota principal
   const url = buildApiUrl(`/articles/${slug}`);
   const res = await fetch(url, { cache: "no-store" });
 
@@ -35,6 +46,27 @@ export default async function ArticlePage({
   }
 
   const article: ArticleFull = await res.json();
+
+  // 2) Notas relacionadas (misma categoría, excluyendo la actual)
+  let related: ArticleListItem[] = [];
+  try {
+    const params = new URLSearchParams();
+    params.set("limit", "4");
+    params.set("page", "1");
+    params.set("category", article.category);
+
+    const relatedUrl = buildApiUrl("/articles", params);
+    const relatedRes = await fetch(relatedUrl, { cache: "no-store" });
+
+    if (relatedRes.ok) {
+      const all: ArticleListItem[] = await relatedRes.json();
+      related = all
+        .filter((a) => a.slug !== article.slug)
+        .slice(0, 3);
+    }
+  } catch (e) {
+    console.error("Error fetching related articles", e);
+  }
 
   return (
     <main
@@ -62,7 +94,7 @@ export default async function ArticlePage({
             style={{
               display: "inline-block",
               marginBottom: 8,
-              color: "#2563eb",
+              color: "#60a5fa",
               textDecoration: "none",
             }}
           >
@@ -149,6 +181,64 @@ export default async function ArticlePage({
         </span>
         <span style={{ fontStyle: "italic" }}>Slug: {article.slug}</span>
       </footer>
+
+      {/* 3) Notas relacionadas */}
+      {related.length > 0 && (
+        <section
+          style={{
+            marginTop: 32,
+            paddingTop: 24,
+            borderTop: "1px solid #e5e7eb",
+          }}
+        >
+          <h2
+            style={{
+              fontSize: 18,
+              fontWeight: 600,
+              marginBottom: 12,
+              color: "#111827",
+            }}
+          >
+            Más sobre {article.category}
+          </h2>
+
+          <ul
+            style={{
+              listStyle: "none",
+              padding: 0,
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            {related.map((a) => (
+              <li key={a.id}>
+                <Link
+                  href={`/article/${a.slug}`}
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 500,
+                    color: "#2563eb",
+                    textDecoration: "none",
+                  }}
+                >
+                  {a.title}
+                </Link>
+                {a.summary && (
+                  <p
+                    style={{
+                      fontSize: 13,
+                      color: "#6b7280",
+                      marginTop: 2,
+                    }}
+                  >
+                    {a.summary}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </main>
   );
 }
