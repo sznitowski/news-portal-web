@@ -100,18 +100,6 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, page]);
 
-  function handleFilterChange(nextCategory: string | null) {
-    const params = new URLSearchParams(searchParams.toString());
-
-    if (nextCategory) {
-      params.set("category", nextCategory);
-    } else {
-      params.delete("category");
-    }
-
-    router.push(`/?${params.toString()}`, { scroll: false });
-  }
-
   function handleLoadMore() {
     if (hasMore && !isLoadingMore) {
       setPage((p) => p + 1);
@@ -133,99 +121,30 @@ export default function HomePage() {
     );
   }
 
+  // Etiqueta bonita para la sección actual
+  const currentCategoryLabel =
+    currentCategory === "ALL"
+      ? "Todas"
+      : currentCategory.charAt(0).toUpperCase() + currentCategory.slice(1);
+
   return (
     <main style={{ padding: 16, maxWidth: 800, margin: "0 auto" }}>
       <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 16 }}>
         Últimas noticias
       </h1>
 
-      {/* Filtros simples */}
+      {/* Contexto de la sección actual (las pestañas están en el header) */}
       <div
         style={{
-          marginBottom: 16,
-          display: "flex",
-          gap: 8,
-          flexWrap: "wrap",
-          alignItems: "center",
+          marginBottom: 8,
+          fontSize: 14,
+          color: "#6b7280",
         }}
       >
-        <button
-          type="button"
-          onClick={() => handleFilterChange(null)}
-          style={{
-            padding: "6px 16px",
-            borderRadius: 999,
-            border:
-              currentCategory === "ALL" ? "1px solid #000" : "1px solid #ccc",
-            backgroundColor:
-              currentCategory === "ALL" ? "#000" : "transparent",
-            color: currentCategory === "ALL" ? "#fff" : "#000",
-            fontSize: 14,
-            cursor: "pointer",
-          }}
-        >
-          Todas
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleFilterChange("politica")}
-          style={{
-            padding: "6px 16px",
-            borderRadius: 999,
-            border:
-              currentCategory === "politica"
-                ? "1px solid #000"
-                : "1px solid #ccc",
-            backgroundColor:
-              currentCategory === "politica" ? "#000" : "transparent",
-            color: currentCategory === "politica" ? "#fff" : "#000",
-            fontSize: 14,
-            cursor: "pointer",
-          }}
-        >
-          Política
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleFilterChange("economia")}
-          style={{
-            padding: "6px 16px",
-            borderRadius: 999,
-            border:
-              currentCategory === "economia"
-                ? "1px solid #000"
-                : "1px solid #ccc",
-            backgroundColor:
-              currentCategory === "economia" ? "#000" : "transparent",
-            color: currentCategory === "economia" ? "#fff" : "#000",
-            fontSize: 14,
-            cursor: "pointer",
-          }}
-        >
-          Economía
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleFilterChange("internacional")}
-          style={{
-            padding: "6px 16px",
-            borderRadius: 999,
-            border:
-              currentCategory === "internacional"
-                ? "1px solid #000"
-                : "1px solid #ccc",
-            backgroundColor:
-              currentCategory === "internacional" ? "#000" : "transparent",
-            color: currentCategory === "internacional" ? "#fff" : "#000",
-            fontSize: 14,
-            cursor: "pointer",
-          }}
-        >
-          Internacional
-        </button>
+        Sección actual:{" "}
+        <span style={{ fontWeight: 600, color: "#111827" }}>
+          {currentCategoryLabel}
+        </span>
       </div>
 
       {/* Buscador */}
