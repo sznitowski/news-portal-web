@@ -1,12 +1,27 @@
 // app/article/[slug]/page.tsx
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { ArticleFull } from "./../../types/article";
 import { buildApiUrl } from "../../lib/api";
+
+type ArticleFull = {
+  id: number;
+  slug: string;
+  title: string;
+  summary: string | null;
+  bodyHtml: string;
+  category: string;
+  ideology: string;
+  publishedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const dynamic = "force-dynamic";
 
 function formatDateTime(iso: string) {
   const d = new Date(iso);
   return d.toLocaleString("es-AR", {
-    dateStyle: "medium",
+    dateStyle: "long",
     timeStyle: "short",
   });
 }
@@ -14,9 +29,9 @@ function formatDateTime(iso: string) {
 export default async function ArticlePage({
   params,
 }: {
+  // 👇 clave: en Next 16, params es un *Promise* en páginas async
   params: Promise<{ slug: string }>;
 }) {
-  // 👈 En Next 16 params es una Promise, así que lo desestructuramos con await
   const { slug } = await params;
 
   const url = buildApiUrl(`/articles/${slug}`);
@@ -27,43 +42,110 @@ export default async function ArticlePage({
   }
 
   if (!res.ok) {
-    throw new Error(`Error al cargar artículo (HTTP ${res.status})`);
+    throw new Error(`failed to fetch /articles/${slug} (status ${res.status})`);
   }
 
   const article: ArticleFull = await res.json();
 
   return (
-    <main className="max-w-3xl mx-auto px-4 py-10">
-      <div className="text-[11px] text-neutral-500 mb-2 flex flex-wrap gap-1">
-        <span className="uppercase tracking-wide">
-          {article.category || "sin categoría"}
+    <main style={{ padding: 16, maxWidth: 800, margin: "0 auto" }}>
+      {/* breadcrumb / volver */}
+      <div
+        style={{
+          fontSize: 13,
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <Link
+          href="/"
+          style={{
+            color: "#2563eb",
+            textDecoration: "none",
+          }}
+        >
+          ← Volver a la portada
+        </Link>
+
+        <span style={{ color: "#6b7280", fontSize: 12 }}>
+          {formatDateTime(article.publishedAt)}
         </span>
-        {article.publishedAt && (
-          <>
-            <span>·</span>
-            <span>{formatDateTime(article.publishedAt)}</span>
-          </>
-        )}
-        {article.ideology && (
-          <>
-            <span>·</span>
-            <span>({article.ideology})</span>
-          </>
-        )}
       </div>
 
-      <h1 className="text-3xl font-semibold text-slate-900 mb-4">
+      {/* meta superior */}
+      <div
+        style={{
+          fontSize: 12,
+          color: "#6b7280",
+          marginBottom: 8,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          display: "flex",
+          gap: 6,
+          flexWrap: "wrap",
+        }}
+      >
+        <span>{article.category}</span>
+        <span>·</span>
+        <span style={{ fontWeight: 600 }}>( {article.ideology} )</span>
+      </div>
+
+      {/* título */}
+      <h1
+        style={{
+          fontSize: 28,
+          fontWeight: 700,
+          color: "#111827",
+          lineHeight: 1.2,
+          marginBottom: 16,
+        }}
+      >
         {article.title}
       </h1>
 
+      {/* resumen */}
       {article.summary && (
-        <p className="text-lg text-neutral-700 mb-6">{article.summary}</p>
+        <p
+          style={{
+            color: "#4b5563",
+            fontSize: 16,
+            lineHeight: 1.5,
+            marginBottom: 24,
+          }}
+        >
+          {article.summary}
+        </p>
       )}
 
+      {/* cuerpo HTML */}
       <article
-        className="prose max-w-none"
+        style={{
+          color: "#111827",
+          fontSize: 16,
+          lineHeight: 1.7,
+        }}
         dangerouslySetInnerHTML={{ __html: article.bodyHtml }}
       />
+
+      {/* pie de nota */}
+      <hr style={{ margin: "32px 0", borderColor: "#e5e7eb" }} />
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          fontSize: 12,
+          color: "#9ca3af",
+          flexWrap: "wrap",
+          gap: 8,
+        }}
+      >
+        <span>Publicado: {formatDateTime(article.publishedAt)}</span>
+        <span>Slug: {article.slug}</span>
+      </div>
     </main>
   );
 }
