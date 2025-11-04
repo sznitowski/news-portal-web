@@ -156,3 +156,16 @@ footer {
   font-style: italic;
   color: #9ca3af;
 }
+
+.main-grid {
+  display: grid;
+  gap: 2rem;
+}
+
+/* En pantallas grandes: dos columnas */
+@media (min-width: 1024px) {
+  .main-grid {
+    grid-template-columns: minmax(0, 2.3fr) minmax(260px, 1fr);
+    align-items: flex-start;
+  }
+}
