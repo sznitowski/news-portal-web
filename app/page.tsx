@@ -3,10 +3,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { buildApiUrl } from "./lib/api";
 
-// Tipo básico que viene de GET /articles
+// Tipo que viene de GET /articles
 type ArticleSummary = {
   id: number;
   slug: string;
@@ -29,20 +29,17 @@ export default function HomePage() {
   const [hasMore, setHasMore] = useState(true);
   const [search, setSearch] = useState("");
 
-  const router = useRouter();
   const searchParams = useSearchParams();
-
   const category = searchParams.get("category") || undefined;
-  const currentCategory = category ?? "ALL";
 
-  // Cuando cambia la categoría de la URL, reseteamos lista y página
+  // reset de lista cuando cambia la categoría
   useEffect(() => {
     setArticles([]);
     setPage(1);
     setHasMore(true);
   }, [category]);
 
-  // Cargar artículos cuando cambian categoría o página
+  // carga de artículos (paginado simple)
   useEffect(() => {
     let cancelled = false;
 
@@ -78,7 +75,6 @@ export default function HomePage() {
           setArticles((prev) => [...prev, ...data]);
         }
 
-        // Si vino menos de PAGE_SIZE, no hay más resultados
         if (data.length < PAGE_SIZE) {
           setHasMore(false);
         }
@@ -97,180 +93,139 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, page]);
+  }, [category, page, articles.length]);
 
-  function handleCategoryClick(nextCategory: string | null) {
-    const params = new URLSearchParams(searchParams.toString());
-
-    if (nextCategory) {
-      params.set("category", nextCategory);
-    } else {
-      params.delete("category");
-    }
-
-    router.push(`/?${params.toString()}`, { scroll: false });
-  }
-
-  function handleLoadMore() {
-    if (hasMore && !isLoadingMore) {
-      setPage((p) => p + 1);
-    }
-  }
-
-  // Filtrado por búsqueda (en títulos)
+  // búsqueda por título
   const filteredArticles = useMemo(() => {
     if (!search.trim()) return articles;
     const q = search.toLowerCase();
     return articles.filter((a) => a.title.toLowerCase().includes(q));
   }, [articles, search]);
 
-  // Hero = primer artículo de la lista filtrada, resto = lista normal
-  const heroArticle = filteredArticles[0];
-  const restArticles = filteredArticles.slice(1);
+  // titulares rápidos (top 4 últimos)
+  const quickHeadlines = articles.slice(0, 4);
 
-  // Titulares rápidos: primeros 4 artículos cargados
-  const topHeadlines = useMemo(
-    () => articles.slice(0, 4),
-    [articles]
-  );
+  const today = new Date();
+  const todayLabel = today.toLocaleDateString("es-AR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 
   if (loading && articles.length === 0) {
     return (
       <main style={{ padding: 24 }}>
-        <p style={{ color: "#999" }}>Cargando...</p>
+        <p style={{ color: "#6b7280" }}>Cargando...</p>
       </main>
     );
   }
 
   return (
-    <main style={{ padding: 24 }}>
+    <main style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
+      {/* Banda negra con título + fecha / descripción */}
+      <section
+        style={{
+          marginBottom: 24,
+          backgroundColor: "#000",
+          color: "#fff",
+          padding: "16px 24px",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+          }}
+        >
+          <h1
+            style={{
+              fontSize: 28,
+              fontWeight: 700,
+              letterSpacing: "-0.03em",
+            }}
+          >
+            Últimas noticias
+          </h1>
+
+          <div
+            style={{
+              textAlign: "right",
+              fontSize: 12,
+              lineHeight: 1.4,
+            }}
+          >
+            <div style={{ fontWeight: 500 }}>
+              {todayLabel.charAt(0).toUpperCase() + todayLabel.slice(1)}
+            </div>
+            <div style={{ opacity: 0.9 }}>
+              Últimas publicaciones (scrapeadas → limpiadas → etiquetadas
+              &nbsp;&quot;RIGHT&quot;)
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Buscador */}
+      <div style={{ marginBottom: 24 }}>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por título..."
+          style={{
+            width: "100%",
+            maxWidth: 540,
+            padding: "10px 16px",
+            borderRadius: 999,
+            border: "1px solid #d1d5db",
+            fontSize: 14,
+          }}
+        />
+      </div>
+
+      {/* Layout principal: lista + sidebar */}
       <div
         style={{
-          maxWidth: 1200,
-          margin: "0 auto",
           display: "grid",
-          gridTemplateColumns: "minmax(0, 2.1fr) minmax(0, 1fr)",
+          gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)",
           gap: 32,
           alignItems: "flex-start",
         }}
       >
-        {/* Columna principal */}
+        {/* Lista de artículos */}
         <section>
-          {/* Barra negra de título + fecha la maneja el header, acá solo contenido */}
-          <div style={{ marginTop: 16, marginBottom: 16 }}>
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por título..."
-              style={{
-                width: "100%",
-                maxWidth: 420,
-                padding: "10px 16px",
-                borderRadius: 999,
-                border: "1px solid #d1d5db",
-                fontSize: 14,
-              }}
-            />
-          </div>
-
-          {/* Hero (nota principal) */}
-          {heroArticle && (
-            <article
-              style={{
-                marginBottom: 20,
-                borderRadius: 14,
-                padding: 20,
-                background:
-                  "linear-gradient(135deg, #f9fafb 0%, #ffffff 60%, #f3f4f6 100%)",
-                boxShadow: "0 18px 35px -18px rgba(15,23,42,0.4)",
-                border: "1px solid #e5e7eb",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#6b7280",
-                  marginBottom: 6,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  display: "flex",
-                  gap: 6,
-                  flexWrap: "wrap",
-                }}
-              >
-                <span>{heroArticle.category}</span>
-                <span>·</span>
-                <span>
-                  {new Date(heroArticle.publishedAt).toLocaleString("es-AR", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
-                </span>
-                <span>·</span>
-                <span style={{ fontWeight: 600 }}>( {heroArticle.ideology} )</span>
-              </div>
-
-              <Link
-                href={`/article/${heroArticle.slug}`}
-                style={{
-                  fontSize: 26,
-                  fontWeight: 700,
-                  lineHeight: 1.15,
-                  color: "#111827",
-                  textDecoration: "none",
-                }}
-              >
-                {heroArticle.title}
-              </Link>
-
-              {heroArticle.summary && (
-                <p
-                  style={{
-                    marginTop: 12,
-                    color: "#4b5563",
-                    fontSize: 15,
-                    lineHeight: 1.5,
-                    maxWidth: "90%",
-                  }}
-                >
-                  {heroArticle.summary}
-                </p>
-              )}
-            </article>
-          )}
-
-          {/* Mensajes según datos / búsqueda */}
           {articles.length === 0 && (
-            <p style={{ color: "#999" }}>No hay artículos publicados.</p>
+            <p style={{ color: "#9ca3af" }}>No hay artículos publicados.</p>
           )}
 
           {articles.length > 0 && filteredArticles.length === 0 && (
-            <p style={{ color: "#999" }}>
+            <p style={{ color: "#9ca3af" }}>
               No hay artículos que coincidan con la búsqueda.
             </p>
           )}
 
-          {/* Lista normal (sin el hero) */}
           <ul
             style={{
               display: "grid",
-              gap: 18,
+              gap: 24,
               listStyle: "none",
               padding: 0,
               margin: 0,
             }}
           >
-            {restArticles.map((a) => (
+            {filteredArticles.map((a) => (
               <li
                 key={a.id}
                 style={{
                   borderRadius: 12,
-                  padding: 16,
+                  padding: 24,
                   backgroundColor: "#f9fafb",
                   color: "#111827",
-                  boxShadow: "0 10px 15px -5px rgba(15,23,42,0.18)",
+                  boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)",
+                  border: "1px solid #e5e7eb",
                 }}
               >
                 <div
@@ -300,8 +255,8 @@ export default function HomePage() {
                 <Link
                   href={`/article/${a.slug}`}
                   style={{
-                    fontSize: 18,
-                    fontWeight: 600,
+                    fontSize: 20,
+                    fontWeight: 700,
                     color: "#111827",
                     textDecoration: "none",
                   }}
@@ -336,13 +291,17 @@ export default function HomePage() {
             ))}
           </ul>
 
-          {/* Paginación simple "Cargar más" */}
+          {/* Paginación "Cargar más" */}
           {articles.length > 0 && (
             <div style={{ marginTop: 24, textAlign: "center" }}>
               {hasMore ? (
                 <button
                   type="button"
-                  onClick={handleLoadMore}
+                  onClick={() => {
+                    if (!isLoadingMore) {
+                      setPage((p) => p + 1);
+                    }
+                  }}
                   disabled={isLoadingMore}
                   style={{
                     padding: "8px 20px",
@@ -365,60 +324,77 @@ export default function HomePage() {
           )}
         </section>
 
-        {/* Columna lateral: titulares rápidos */}
-        <aside>
-          <h2
+        {/* Sidebar de titulares rápidos (sticky) */}
+        <aside
+          style={{
+            alignSelf: "flex-start",
+            position: "sticky",
+            top: 120,
+          }}
+        >
+          <section
             style={{
-              fontSize: 18,
-              fontWeight: 600,
-              marginBottom: 12,
-              borderBottom: "1px solid #e5e7eb",
-              paddingBottom: 8,
+              borderRadius: 12,
+              padding: 16,
+              backgroundColor: "#fff",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 10px 15px -3px rgba(0,0,0,0.08)",
             }}
           >
-            Titulares rápidos
-          </h2>
-
-          {topHeadlines.length === 0 ? (
-            <p style={{ fontSize: 14, color: "#6b7280" }}>
-              Todavía no hay titulares para mostrar.
-            </p>
-          ) : (
-            <ol
+            <h2
               style={{
-                listStyle: "decimal",
-                paddingLeft: 20,
-                margin: 0,
-                display: "grid",
-                gap: 12,
-                fontSize: 14,
+                fontSize: 16,
+                fontWeight: 700,
+                marginBottom: 12,
               }}
             >
-              {topHeadlines.map((a) => (
-                <li key={a.id}>
-                  <Link
-                    href={`/article/${a.slug}`}
-                    style={{
-                      display: "block",
-                      fontWeight: 500,
-                      color: "#111827",
-                      textDecoration: "none",
-                      marginBottom: 4,
-                    }}
-                  >
-                    {a.title}
-                  </Link>
-                  <span style={{ fontSize: 12, color: "#6b7280" }}>
-                    {new Date(a.publishedAt).toLocaleDateString("es-AR", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
+              Titulares rápidos
+            </h2>
+
+            {quickHeadlines.length === 0 ? (
+              <p style={{ fontSize: 13, color: "#9ca3af" }}>
+                Todavía no hay artículos para mostrar aquí.
+              </p>
+            ) : (
+              <ol
+                style={{
+                  listStyle: "decimal",
+                  paddingLeft: 20,
+                  margin: 0,
+                  display: "grid",
+                  gap: 8,
+                  fontSize: 13,
+                  color: "#111827",
+                }}
+              >
+                {quickHeadlines.map((a) => (
+                  <li key={a.id}>
+                    <Link
+                      href={`/article/${a.slug}`}
+                      style={{
+                        textDecoration: "none",
+                        color: "#111827",
+                      }}
+                    >
+                      {a.title}
+                    </Link>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#6b7280",
+                      }}
+                    >
+                      {new Date(a.publishedAt).toLocaleDateString("es-AR", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
         </aside>
       </div>
     </main>
