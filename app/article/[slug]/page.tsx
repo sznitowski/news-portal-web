@@ -16,20 +16,9 @@ type ArticleFull = {
   updatedAt: string;
 };
 
-export const dynamic = "force-dynamic";
-
-function formatDateTime(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleString("es-AR", {
-    dateStyle: "long",
-    timeStyle: "short",
-  });
-}
-
 export default async function ArticlePage({
   params,
 }: {
-  // 👇 clave: en Next 16, params es un *Promise* en páginas async
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
@@ -48,71 +37,75 @@ export default async function ArticlePage({
   const article: ArticleFull = await res.json();
 
   return (
-    <main style={{ padding: 16, maxWidth: 800, margin: "0 auto" }}>
-      {/* breadcrumb / volver */}
-      <div
+    <main
+      style={{
+        padding: 16,
+        maxWidth: 900,
+        margin: "0 auto",
+      }}
+    >
+      {/* Barra superior: volver + metadatos */}
+      <header
         style={{
-          fontSize: 13,
-          marginBottom: 16,
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
-          gap: 8,
-        }}
-      >
-        <Link
-          href="/"
-          style={{
-            color: "#2563eb",
-            textDecoration: "none",
-          }}
-        >
-          ← Volver a la portada
-        </Link>
-
-        <span style={{ color: "#6b7280", fontSize: 12 }}>
-          {formatDateTime(article.publishedAt)}
-        </span>
-      </div>
-
-      {/* meta superior */}
-      <div
-        style={{
+          gap: 16,
+          alignItems: "flex-start",
+          marginBottom: 24,
           fontSize: 12,
           color: "#6b7280",
-          marginBottom: 8,
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          display: "flex",
-          gap: 6,
-          flexWrap: "wrap",
         }}
       >
-        <span>{article.category}</span>
-        <span>·</span>
-        <span style={{ fontWeight: 600 }}>( {article.ideology} )</span>
-      </div>
+        <div>
+          <Link
+            href="/"
+            style={{
+              display: "inline-block",
+              marginBottom: 8,
+              color: "#2563eb",
+              textDecoration: "none",
+            }}
+          >
+            ← Volver a la portada
+          </Link>
+          <div
+            style={{
+              textTransform: "uppercase",
+              letterSpacing: "0.14em",
+            }}
+          >
+            {article.category} · ({article.ideology})
+          </div>
+        </div>
 
-      {/* título */}
+        <div style={{ textAlign: "right" }}>
+          {new Date(article.publishedAt).toLocaleString("es-AR", {
+            dateStyle: "long",
+            timeStyle: "short",
+          })}
+        </div>
+      </header>
+
+      {/* Título */}
       <h1
         style={{
-          fontSize: 28,
-          fontWeight: 700,
-          color: "#111827",
+          fontSize: 32,
           lineHeight: 1.2,
-          marginBottom: 16,
+          fontWeight: 600,
+          marginBottom: 12,
+          color: "#111827",
         }}
       >
         {article.title}
       </h1>
 
-      {/* resumen */}
+      {/* Copete / resumen */}
       {article.summary && (
         <p
           style={{
-            color: "#4b5563",
-            fontSize: 16,
+            fontSize: 18,
             lineHeight: 1.5,
+            color: "#374151",
             marginBottom: 24,
           }}
         >
@@ -120,32 +113,42 @@ export default async function ArticlePage({
         </p>
       )}
 
-      {/* cuerpo HTML */}
+      {/* Cuerpo en HTML */}
       <article
         style={{
-          color: "#111827",
-          fontSize: 16,
+          fontSize: 15,
           lineHeight: 1.7,
+          color: "#111827",
+          borderTop: "1px solid #e5e7eb",
+          paddingTop: 24,
         }}
+        // el backend ya nos entrega HTML sanitizado
         dangerouslySetInnerHTML={{ __html: article.bodyHtml }}
       />
 
-      {/* pie de nota */}
-      <hr style={{ margin: "32px 0", borderColor: "#e5e7eb" }} />
-
-      <div
+      {/* Footer meta */}
+      <footer
         style={{
+          marginTop: 32,
+          paddingTop: 16,
+          borderTop: "1px solid #e5e7eb",
+          fontSize: 12,
+          color: "#6b7280",
           display: "flex",
           justifyContent: "space-between",
-          fontSize: 12,
-          color: "#9ca3af",
           flexWrap: "wrap",
           gap: 8,
         }}
       >
-        <span>Publicado: {formatDateTime(article.publishedAt)}</span>
-        <span>Slug: {article.slug}</span>
-      </div>
+        <span>
+          Publicado:{" "}
+          {new Date(article.publishedAt).toLocaleString("es-AR", {
+            dateStyle: "long",
+            timeStyle: "short",
+          })}
+        </span>
+        <span style={{ fontStyle: "italic" }}>Slug: {article.slug}</span>
+      </footer>
     </main>
   );
 }
