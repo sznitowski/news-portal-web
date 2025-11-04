@@ -35,7 +35,7 @@ export default function ArticleListClient({
         setErr(null);
 
         const url = category
-          ? `${API_BASE}/articles?cat=${encodeURIComponent(category)}`
+          ? `${API_BASE}/articles?category=${encodeURIComponent(category)}`
           : `${API_BASE}/articles`;
 
         const res = await fetch(url, { cache: "no-store" });

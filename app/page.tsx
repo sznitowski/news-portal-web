@@ -2,22 +2,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { buildApiUrl } from "./lib/api";
-import ArticleCard from "./components/ArticleCard";
+import type { ArticleListItem } from "./types/article";
 
-// Tipo básico que viene de GET /articles
-type ArticleSummary = {
-  id: number;
-  slug: string;
-  title: string;
-  summary: string | null;
-  category: string;
-  ideology: string;
-  publishedAt: string;
-  createdAt: string;
-  updatedAt: string;
-};
+type ArticleSummary = ArticleListItem;
 
 const PAGE_SIZE = 10;
 
@@ -32,15 +22,16 @@ export default function HomePage() {
   const searchParams = useSearchParams();
 
   const category = searchParams.get("category") || undefined;
+  const currentCategory = category ?? "ALL";
 
-  // Cuando cambia la categoría de la URL, reseteamos lista y página
+  // cuando cambia la categoría, reseteo lista y paginación
   useEffect(() => {
     setArticles([]);
     setPage(1);
     setHasMore(true);
   }, [category]);
 
-  // Cargar artículos cuando cambian categoría o página
+  // cargo artículos
   useEffect(() => {
     let cancelled = false;
 
@@ -62,6 +53,10 @@ export default function HomePage() {
         const res = await fetch(buildApiUrl("/articles", params), {
           cache: "no-store",
         });
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
 
         const data: ArticleSummary[] = await res.json();
 
@@ -91,8 +86,7 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, page]);
+  }, [category, page, articles.length]);
 
   function handleFilterChange(nextCategory: string | null) {
     const params = new URLSearchParams(searchParams.toString());
@@ -103,7 +97,8 @@ export default function HomePage() {
       params.delete("category");
     }
 
-    router.push(`/?${params.toString()}`, { scroll: false });
+    const qs = params.toString();
+    router.push(qs ? `/?${qs}` : "/", { scroll: false });
   }
 
   function handleLoadMore() {
@@ -112,45 +107,28 @@ export default function HomePage() {
     }
   }
 
-  const currentCategory = category ?? "ALL";
-
   if (loading && articles.length === 0) {
     return (
-      <main style={{ padding: 16 }}>
-        <p style={{ color: "#6b7280" }}>Cargando...</p>
+      <main className="max-w-4xl mx-auto px-4 py-10">
+        <p className="text-neutral-500">Cargando...</p>
       </main>
     );
   }
 
   return (
-    <main style={{ padding: 32, maxWidth: 960, margin: "0 auto" }}>
-      <h1
-        style={{
-          fontSize: 28,
-          fontWeight: 700,
-          marginBottom: 16,
-          color: "#111827",
-        }}
-      >
-        Últimas noticias
-      </h1>
+    <main className="max-w-4xl mx-auto px-4 py-10">
+      <h1 className="text-3xl font-semibold mb-6">Últimas noticias</h1>
 
-      {/* Filtros simples */}
-      <div style={{ marginBottom: 24, display: "flex", gap: 8 }}>
+      {/* filtros */}
+      <div className="mb-6 flex gap-2 flex-wrap">
         <button
           type="button"
           onClick={() => handleFilterChange(null)}
-          style={{
-            padding: "8px 18px",
-            borderRadius: 999,
-            border:
-              currentCategory === "ALL" ? "1px solid #111827" : "1px solid #d1d5db",
-            backgroundColor:
-              currentCategory === "ALL" ? "#111827" : "transparent",
-            color: currentCategory === "ALL" ? "#f9fafb" : "#374151",
-            fontSize: 14,
-            cursor: "pointer",
-          }}
+          className={`px-4 py-2 rounded-full text-sm border ${
+            currentCategory === "ALL"
+              ? "bg-black text-white border-black"
+              : "bg-white text-black border-neutral-300"
+          }`}
         >
           Todas
         </button>
@@ -158,19 +136,11 @@ export default function HomePage() {
         <button
           type="button"
           onClick={() => handleFilterChange("politica")}
-          style={{
-            padding: "8px 18px",
-            borderRadius: 999,
-            border:
-              currentCategory === "politica"
-                ? "1px solid #111827"
-                : "1px solid #d1d5db",
-            backgroundColor:
-              currentCategory === "politica" ? "#111827" : "transparent",
-            color: currentCategory === "politica" ? "#f9fafb" : "#374151",
-            fontSize: 14,
-            cursor: "pointer",
-          }}
+          className={`px-4 py-2 rounded-full text-sm border ${
+            currentCategory === "politica"
+              ? "bg-black text-white border-black"
+              : "bg-white text-black border-neutral-300"
+          }`}
         >
           Política
         </button>
@@ -178,19 +148,11 @@ export default function HomePage() {
         <button
           type="button"
           onClick={() => handleFilterChange("economia")}
-          style={{
-            padding: "8px 18px",
-            borderRadius: 999,
-            border:
-              currentCategory === "economia"
-                ? "1px solid #111827"
-                : "1px solid #d1d5db",
-            backgroundColor:
-              currentCategory === "economia" ? "#111827" : "transparent",
-            color: currentCategory === "economia" ? "#f9fafb" : "#374151",
-            fontSize: 14,
-            cursor: "pointer",
-          }}
+          className={`px-4 py-2 rounded-full text-sm border ${
+            currentCategory === "economia"
+              ? "bg-black text-white border-black"
+              : "bg-white text-black border-neutral-300"
+          }`}
         >
           Economía
         </button>
@@ -198,65 +160,80 @@ export default function HomePage() {
         <button
           type="button"
           onClick={() => handleFilterChange("internacional")}
-          style={{
-            padding: "8px 18px",
-            borderRadius: 999,
-            border:
-              currentCategory === "internacional"
-                ? "1px solid #111827"
-                : "1px solid #d1d5db",
-            backgroundColor:
-              currentCategory === "internacional" ? "#111827" : "transparent",
-            color: currentCategory === "internacional" ? "#f9fafb" : "#374151",
-            fontSize: 14,
-            cursor: "pointer",
-          }}
+          className={`px-4 py-2 rounded-full text-sm border ${
+            currentCategory === "internacional"
+              ? "bg-black text-white border-black"
+              : "bg-white text-black border-neutral-300"
+          }`}
         >
           Internacional
         </button>
       </div>
 
       {articles.length === 0 && (
-        <p style={{ color: "#6b7280" }}>No hay artículos publicados.</p>
+        <p className="text-neutral-500">No hay artículos publicados.</p>
       )}
 
-      <ul
-        style={{
-          display: "grid",
-          gap: 24,
-          listStyle: "none",
-          padding: 0,
-        }}
-      >
+      <ul className="space-y-4">
         {articles.map((a) => (
-          <ArticleCard key={a.id} article={a} />
+          <li
+            key={a.id}
+            className="rounded-xl border border-neutral-200 bg-white shadow-sm p-4"
+          >
+            <div className="text-[11px] text-neutral-500 mb-1 flex flex-wrap gap-1">
+              <span className="uppercase tracking-wide">
+                {a.category || "sin categoría"}
+              </span>
+              {a.publishedAt && (
+                <>
+                  <span>·</span>
+                  <span>
+                    {new Date(a.publishedAt).toLocaleString("es-AR", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </span>
+                </>
+              )}
+              {a.ideology && (
+                <>
+                  <span>·</span>
+                  <span>({a.ideology})</span>
+                </>
+              )}
+            </div>
+
+            <Link
+              href={`/article/${a.slug}`} // 👈 RUTA CORRECTA
+              className="text-lg font-semibold text-slate-900 hover:underline"
+            >
+              {a.title}
+            </Link>
+
+            {a.summary ? (
+              <p className="mt-2 text-sm text-neutral-700">{a.summary}</p>
+            ) : (
+              <p className="mt-2 text-sm text-neutral-400 italic">
+                (sin resumen)
+              </p>
+            )}
+          </li>
         ))}
       </ul>
 
-      {/* Paginación simple "Cargar más" */}
-      <div style={{ marginTop: 32, textAlign: "center" }}>
+      {/* paginación simple */}
+      <div className="mt-6 text-center">
         {hasMore ? (
           <button
             type="button"
             onClick={handleLoadMore}
             disabled={isLoadingMore}
-            style={{
-              padding: "10px 24px",
-              borderRadius: 999,
-              border: "1px solid #d1d5db",
-              backgroundColor: "#111827",
-              color: "#f9fafb",
-              cursor: isLoadingMore ? "default" : "pointer",
-              opacity: isLoadingMore ? 0.7 : 1,
-              fontSize: 14,
-            }}
+            className="px-5 py-2 rounded-full border border-neutral-300 bg-white text-sm hover:bg-neutral-100 disabled:opacity-60"
           >
             {isLoadingMore ? "Cargando..." : "Cargar más"}
           </button>
         ) : (
-          <p style={{ color: "#9ca3af", fontSize: 14 }}>
-            No hay más resultados.
-          </p>
+          <p className="text-sm text-neutral-500">No hay más resultados.</p>
         )}
       </div>
     </main>
