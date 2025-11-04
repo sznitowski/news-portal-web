@@ -100,6 +100,18 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, page]);
 
+  function handleFilterChange(nextCategory: string | null) {
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (nextCategory) {
+      params.set("category", nextCategory);
+    } else {
+      params.delete("category");
+    }
+
+    router.push(`/?${params.toString()}`, { scroll: false });
+  }
+
   function handleLoadMore() {
     if (hasMore && !isLoadingMore) {
       setPage((p) => p + 1);
@@ -121,30 +133,99 @@ export default function HomePage() {
     );
   }
 
-  // Etiqueta bonita para la sección actual
-  const currentCategoryLabel =
-    currentCategory === "ALL"
-      ? "Todas"
-      : currentCategory.charAt(0).toUpperCase() + currentCategory.slice(1);
-
   return (
-    <main style={{ padding: 16, maxWidth: 800, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 16 }}>
+    <main style={{ padding: 16, maxWidth: 900, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 26, fontWeight: 600, marginBottom: 16 }}>
         Últimas noticias
       </h1>
 
-      {/* Contexto de la sección actual (las pestañas están en el header) */}
+      {/* Filtros simples */}
       <div
         style={{
-          marginBottom: 8,
-          fontSize: 14,
-          color: "#6b7280",
+          marginBottom: 16,
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          alignItems: "center",
         }}
       >
-        Sección actual:{" "}
-        <span style={{ fontWeight: 600, color: "#111827" }}>
-          {currentCategoryLabel}
-        </span>
+        <button
+          type="button"
+          onClick={() => handleFilterChange(null)}
+          style={{
+            padding: "6px 16px",
+            borderRadius: 999,
+            border:
+              currentCategory === "ALL" ? "1px solid #000" : "1px solid #ccc",
+            backgroundColor:
+              currentCategory === "ALL" ? "#000" : "transparent",
+            color: currentCategory === "ALL" ? "#fff" : "#000",
+            fontSize: 14,
+            cursor: "pointer",
+          }}
+        >
+          Todas
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleFilterChange("politica")}
+          style={{
+            padding: "6px 16px",
+            borderRadius: 999,
+            border:
+              currentCategory === "politica"
+                ? "1px solid #000"
+                : "1px solid #ccc",
+            backgroundColor:
+              currentCategory === "politica" ? "#000" : "transparent",
+            color: currentCategory === "politica" ? "#fff" : "#000",
+            fontSize: 14,
+            cursor: "pointer",
+          }}
+        >
+          Política
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleFilterChange("economia")}
+          style={{
+            padding: "6px 16px",
+            borderRadius: 999,
+            border:
+              currentCategory === "economia"
+                ? "1px solid #000"
+                : "1px solid #ccc",
+            backgroundColor:
+              currentCategory === "economia" ? "#000" : "transparent",
+            color: currentCategory === "economia" ? "#fff" : "#000",
+            fontSize: 14,
+            cursor: "pointer",
+          }}
+        >
+          Economía
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleFilterChange("internacional")}
+          style={{
+            padding: "6px 16px",
+            borderRadius: 999,
+            border:
+              currentCategory === "internacional"
+                ? "1px solid #000"
+                : "1px solid #ccc",
+            backgroundColor:
+              currentCategory === "internacional" ? "#000" : "transparent",
+            color: currentCategory === "internacional" ? "#fff" : "#000",
+            fontSize: 14,
+            cursor: "pointer",
+          }}
+        >
+          Internacional
+        </button>
       </div>
 
       {/* Buscador */}
@@ -156,7 +237,7 @@ export default function HomePage() {
           placeholder="Buscar por título..."
           style={{
             width: "100%",
-            maxWidth: 320,
+            maxWidth: 360,
             padding: "8px 12px",
             borderRadius: 999,
             border: "1px solid #ccc",
@@ -176,80 +257,160 @@ export default function HomePage() {
         </p>
       )}
 
-      <ul style={{ display: "grid", gap: 24, listStyle: "none", padding: 0 }}>
-        {filteredArticles.map((a) => (
-          <li
-            key={a.id}
-            style={{
-              borderRadius: 12,
-              padding: 16,
-              backgroundColor: "#f9fafb",
-              color: "#111827",
-              boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 12,
-                color: "#6b7280",
-                marginBottom: 4,
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                display: "flex",
-                gap: 6,
-                flexWrap: "wrap",
-              }}
-            >
-              <span>{a.category}</span>
-              <span>·</span>
-              <span>
-                {new Date(a.publishedAt).toLocaleString("es-AR", {
-                  dateStyle: "short",
-                  timeStyle: "short",
-                })}
-              </span>
-              <span>·</span>
-              <span style={{ fontWeight: 600 }}>( {a.ideology} )</span>
-            </div>
-
-            <Link
-              href={`/article/${a.slug}`}
-              style={{
-                fontSize: 18,
-                fontWeight: 600,
-                color: "#111827",
-                textDecoration: "none",
-              }}
-            >
-              {a.title}
-            </Link>
-
-            {a.summary ? (
-              <p
+      {filteredArticles.length > 0 && (
+        <>
+          {/* Nota destacada (hero) */}
+          {(() => {
+            const hero = filteredArticles[0];
+            return (
+              <section
                 style={{
-                  color: "#4b5563",
-                  fontSize: 14,
-                  marginTop: 8,
-                  lineHeight: 1.4,
+                  marginBottom: 24,
+                  padding: 20,
+                  borderRadius: 16,
+                  backgroundColor: "#f3f4f6",
+                  boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)",
                 }}
               >
-                {a.summary}
-              </p>
-            ) : (
-              <p
-                style={{
-                  color: "#9ca3af",
-                  fontSize: 14,
-                  marginTop: 8,
-                  fontStyle: "italic",
-                }}
-              >
-                (sin resumen)
-              </p>
-            )}
-          </li>
-        ))}
-      </ul>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#6b7280",
+                    marginBottom: 8,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                    display: "flex",
+                    gap: 6,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span>{hero.category}</span>
+                  <span>·</span>
+                  <span>
+                    {new Date(hero.publishedAt).toLocaleString("es-AR", {
+                      dateStyle: "short",
+                      timeStyle: "short",
+                    })}
+                  </span>
+                  <span>·</span>
+                  <span style={{ fontWeight: 600 }}>( {hero.ideology} )</span>
+                </div>
+
+                <Link
+                  href={`/article/${hero.slug}`}
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 700,
+                    color: "#111827",
+                    textDecoration: "none",
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {hero.title}
+                </Link>
+
+                {hero.summary && (
+                  <p
+                    style={{
+                      color: "#4b5563",
+                      fontSize: 15,
+                      marginTop: 10,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {hero.summary}
+                  </p>
+                )}
+              </section>
+            );
+          })()}
+
+          {/* Resto de noticias */}
+          {filteredArticles.length > 1 && (
+            <ul
+              style={{
+                display: "grid",
+                gap: 20,
+                listStyle: "none",
+                padding: 0,
+              }}
+            >
+              {filteredArticles.slice(1).map((a) => (
+                <li
+                  key={a.id}
+                  style={{
+                    borderRadius: 12,
+                    padding: 16,
+                    backgroundColor: "#f9fafb",
+                    color: "#111827",
+                    boxShadow: "0 10px 15px -3px rgba(0,0,0,0.08)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#6b7280",
+                      marginBottom: 4,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      display: "flex",
+                      gap: 6,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span>{a.category}</span>
+                    <span>·</span>
+                    <span>
+                      {new Date(a.publishedAt).toLocaleString("es-AR", {
+                        dateStyle: "short",
+                        timeStyle: "short",
+                      })}
+                    </span>
+                    <span>·</span>
+                    <span style={{ fontWeight: 600 }}>( {a.ideology} )</span>
+                  </div>
+
+                  <Link
+                    href={`/article/${a.slug}`}
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 600,
+                      color: "#111827",
+                      textDecoration: "none",
+                    }}
+                  >
+                    {a.title}
+                  </Link>
+
+                  {a.summary ? (
+                    <p
+                      style={{
+                        color: "#4b5563",
+                        fontSize: 14,
+                        marginTop: 8,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {a.summary}
+                    </p>
+                  ) : (
+                    <p
+                      style={{
+                        color: "#9ca3af",
+                        fontSize: 14,
+                        marginTop: 8,
+                        fontStyle: "italic",
+                      }}
+                    >
+                      (sin resumen)
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
 
       {/* Paginación simple "Cargar más" */}
       {articles.length > 0 && (
