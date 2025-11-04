@@ -1,13 +1,23 @@
 // app/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { buildApiUrl } from "./lib/api";
-import type { ArticleListItem } from "./types/article";
 
-type ArticleSummary = ArticleListItem;
+// Tipo básico que viene de GET /articles
+type ArticleSummary = {
+  id: number;
+  slug: string;
+  title: string;
+  summary: string | null;
+  category: string;
+  ideology: string;
+  publishedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 const PAGE_SIZE = 10;
 
@@ -17,6 +27,7 @@ export default function HomePage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [search, setSearch] = useState("");
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -24,14 +35,14 @@ export default function HomePage() {
   const category = searchParams.get("category") || undefined;
   const currentCategory = category ?? "ALL";
 
-  // cuando cambia la categoría, reseteo lista y paginación
+  // Cuando cambia la categoría de la URL, reseteamos lista y página
   useEffect(() => {
     setArticles([]);
     setPage(1);
     setHasMore(true);
   }, [category]);
 
-  // cargo artículos
+  // Cargar artículos cuando cambian categoría o página
   useEffect(() => {
     let cancelled = false;
 
@@ -50,12 +61,11 @@ export default function HomePage() {
         params.set("page", page.toString());
         if (category) params.set("category", category);
 
-        const res = await fetch(buildApiUrl("/articles", params), {
-          cache: "no-store",
-        });
+        const url = buildApiUrl("/articles", params);
+        const res = await fetch(url, { cache: "no-store" });
 
         if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+          throw new Error(`failed to fetch /articles (status ${res.status})`);
         }
 
         const data: ArticleSummary[] = await res.json();
@@ -68,6 +78,7 @@ export default function HomePage() {
           setArticles((prev) => [...prev, ...data]);
         }
 
+        // Si vino menos de PAGE_SIZE, no hay más resultados
         if (data.length < PAGE_SIZE) {
           setHasMore(false);
         }
@@ -86,7 +97,8 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [category, page, articles.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category, page]);
 
   function handleFilterChange(nextCategory: string | null) {
     const params = new URLSearchParams(searchParams.toString());
@@ -97,8 +109,7 @@ export default function HomePage() {
       params.delete("category");
     }
 
-    const qs = params.toString();
-    router.push(qs ? `/?${qs}` : "/", { scroll: false });
+    router.push(`/?${params.toString()}`, { scroll: false });
   }
 
   function handleLoadMore() {
@@ -107,28 +118,51 @@ export default function HomePage() {
     }
   }
 
+  // Filtrado por búsqueda (en títulos)
+  const filteredArticles = useMemo(() => {
+    if (!search.trim()) return articles;
+    const q = search.toLowerCase();
+    return articles.filter((a) => a.title.toLowerCase().includes(q));
+  }, [articles, search]);
+
   if (loading && articles.length === 0) {
     return (
-      <main className="max-w-4xl mx-auto px-4 py-10">
-        <p className="text-neutral-500">Cargando...</p>
+      <main style={{ padding: 16 }}>
+        <p style={{ color: "#999" }}>Cargando...</p>
       </main>
     );
   }
 
   return (
-    <main className="max-w-4xl mx-auto px-4 py-10">
-      <h1 className="text-3xl font-semibold mb-6">Últimas noticias</h1>
+    <main style={{ padding: 16, maxWidth: 800, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 16 }}>
+        Últimas noticias
+      </h1>
 
-      {/* filtros */}
-      <div className="mb-6 flex gap-2 flex-wrap">
+      {/* Filtros simples */}
+      <div
+        style={{
+          marginBottom: 16,
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
         <button
           type="button"
           onClick={() => handleFilterChange(null)}
-          className={`px-4 py-2 rounded-full text-sm border ${
-            currentCategory === "ALL"
-              ? "bg-black text-white border-black"
-              : "bg-white text-black border-neutral-300"
-          }`}
+          style={{
+            padding: "6px 16px",
+            borderRadius: 999,
+            border:
+              currentCategory === "ALL" ? "1px solid #000" : "1px solid #ccc",
+            backgroundColor:
+              currentCategory === "ALL" ? "#000" : "transparent",
+            color: currentCategory === "ALL" ? "#fff" : "#000",
+            fontSize: 14,
+            cursor: "pointer",
+          }}
         >
           Todas
         </button>
@@ -136,11 +170,19 @@ export default function HomePage() {
         <button
           type="button"
           onClick={() => handleFilterChange("politica")}
-          className={`px-4 py-2 rounded-full text-sm border ${
-            currentCategory === "politica"
-              ? "bg-black text-white border-black"
-              : "bg-white text-black border-neutral-300"
-          }`}
+          style={{
+            padding: "6px 16px",
+            borderRadius: 999,
+            border:
+              currentCategory === "politica"
+                ? "1px solid #000"
+                : "1px solid #ccc",
+            backgroundColor:
+              currentCategory === "politica" ? "#000" : "transparent",
+            color: currentCategory === "politica" ? "#fff" : "#000",
+            fontSize: 14,
+            cursor: "pointer",
+          }}
         >
           Política
         </button>
@@ -148,11 +190,19 @@ export default function HomePage() {
         <button
           type="button"
           onClick={() => handleFilterChange("economia")}
-          className={`px-4 py-2 rounded-full text-sm border ${
-            currentCategory === "economia"
-              ? "bg-black text-white border-black"
-              : "bg-white text-black border-neutral-300"
-          }`}
+          style={{
+            padding: "6px 16px",
+            borderRadius: 999,
+            border:
+              currentCategory === "economia"
+                ? "1px solid #000"
+                : "1px solid #ccc",
+            backgroundColor:
+              currentCategory === "economia" ? "#000" : "transparent",
+            color: currentCategory === "economia" ? "#fff" : "#000",
+            fontSize: 14,
+            cursor: "pointer",
+          }}
         >
           Economía
         </button>
@@ -160,60 +210,121 @@ export default function HomePage() {
         <button
           type="button"
           onClick={() => handleFilterChange("internacional")}
-          className={`px-4 py-2 rounded-full text-sm border ${
-            currentCategory === "internacional"
-              ? "bg-black text-white border-black"
-              : "bg-white text-black border-neutral-300"
-          }`}
+          style={{
+            padding: "6px 16px",
+            borderRadius: 999,
+            border:
+              currentCategory === "internacional"
+                ? "1px solid #000"
+                : "1px solid #ccc",
+            backgroundColor:
+              currentCategory === "internacional" ? "#000" : "transparent",
+            color: currentCategory === "internacional" ? "#fff" : "#000",
+            fontSize: 14,
+            cursor: "pointer",
+          }}
         >
           Internacional
         </button>
       </div>
 
+      {/* Buscador */}
+      <div style={{ marginBottom: 16 }}>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por título..."
+          style={{
+            width: "100%",
+            maxWidth: 320,
+            padding: "8px 12px",
+            borderRadius: 999,
+            border: "1px solid #ccc",
+            fontSize: 14,
+          }}
+        />
+      </div>
+
+      {/* Mensajes según datos / búsqueda */}
       {articles.length === 0 && (
-        <p className="text-neutral-500">No hay artículos publicados.</p>
+        <p style={{ color: "#999" }}>No hay artículos publicados.</p>
       )}
 
-      <ul className="space-y-4">
-        {articles.map((a) => (
+      {articles.length > 0 && filteredArticles.length === 0 && (
+        <p style={{ color: "#999" }}>
+          No hay artículos que coincidan con la búsqueda.
+        </p>
+      )}
+
+      <ul style={{ display: "grid", gap: 24, listStyle: "none", padding: 0 }}>
+        {filteredArticles.map((a) => (
           <li
             key={a.id}
-            className="rounded-xl border border-neutral-200 bg-white shadow-sm p-4"
+            style={{
+              borderRadius: 12,
+              padding: 16,
+              backgroundColor: "#f9fafb",
+              color: "#111827",
+              boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)",
+            }}
           >
-            <div className="text-[11px] text-neutral-500 mb-1 flex flex-wrap gap-1">
-              <span className="uppercase tracking-wide">
-                {a.category || "sin categoría"}
+            <div
+              style={{
+                fontSize: 12,
+                color: "#6b7280",
+                marginBottom: 4,
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                display: "flex",
+                gap: 6,
+                flexWrap: "wrap",
+              }}
+            >
+              <span>{a.category}</span>
+              <span>·</span>
+              <span>
+                {new Date(a.publishedAt).toLocaleString("es-AR", {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                })}
               </span>
-              {a.publishedAt && (
-                <>
-                  <span>·</span>
-                  <span>
-                    {new Date(a.publishedAt).toLocaleString("es-AR", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                  </span>
-                </>
-              )}
-              {a.ideology && (
-                <>
-                  <span>·</span>
-                  <span>({a.ideology})</span>
-                </>
-              )}
+              <span>·</span>
+              <span style={{ fontWeight: 600 }}>( {a.ideology} )</span>
             </div>
 
             <Link
-              href={`/article/${a.slug}`} // 👈 RUTA CORRECTA
-              className="text-lg font-semibold text-slate-900 hover:underline"
+              href={`/article/${a.slug}`}
+              style={{
+                fontSize: 18,
+                fontWeight: 600,
+                color: "#111827",
+                textDecoration: "none",
+              }}
             >
               {a.title}
             </Link>
 
             {a.summary ? (
-              <p className="mt-2 text-sm text-neutral-700">{a.summary}</p>
+              <p
+                style={{
+                  color: "#4b5563",
+                  fontSize: 14,
+                  marginTop: 8,
+                  lineHeight: 1.4,
+                }}
+              >
+                {a.summary}
+              </p>
             ) : (
-              <p className="mt-2 text-sm text-neutral-400 italic">
+              <p
+                style={{
+                  color: "#9ca3af",
+                  fontSize: 14,
+                  marginTop: 8,
+                  fontStyle: "italic",
+                }}
+              >
                 (sin resumen)
               </p>
             )}
@@ -221,21 +332,33 @@ export default function HomePage() {
         ))}
       </ul>
 
-      {/* paginación simple */}
-      <div className="mt-6 text-center">
-        {hasMore ? (
-          <button
-            type="button"
-            onClick={handleLoadMore}
-            disabled={isLoadingMore}
-            className="px-5 py-2 rounded-full border border-neutral-300 bg-white text-sm hover:bg-neutral-100 disabled:opacity-60"
-          >
-            {isLoadingMore ? "Cargando..." : "Cargar más"}
-          </button>
-        ) : (
-          <p className="text-sm text-neutral-500">No hay más resultados.</p>
-        )}
-      </div>
+      {/* Paginación simple "Cargar más" */}
+      {articles.length > 0 && (
+        <div style={{ marginTop: 24, textAlign: "center" }}>
+          {hasMore ? (
+            <button
+              type="button"
+              onClick={handleLoadMore}
+              disabled={isLoadingMore}
+              style={{
+                padding: "8px 20px",
+                borderRadius: 999,
+                border: "1px solid #d1d5db",
+                backgroundColor: "#111827",
+                color: "#fff",
+                cursor: isLoadingMore ? "default" : "pointer",
+                opacity: isLoadingMore ? 0.6 : 1,
+              }}
+            >
+              {isLoadingMore ? "Cargando..." : "Cargar más"}
+            </button>
+          ) : (
+            <p style={{ color: "#6b7280", fontSize: 14 }}>
+              No hay más resultados.
+            </p>
+          )}
+        </div>
+      )}
     </main>
   );
 }
