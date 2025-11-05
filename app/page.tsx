@@ -19,7 +19,52 @@ type ArticleSummary = {
   updatedAt: string;
 };
 
+// Tipos para mercado (dólar)
+type DolarQuote = {
+  moneda: string;
+  casa: string;
+  nombre: string;
+  compra: number;
+  venta: number;
+  fechaActualizacion: string;
+};
+
+type DolarResponse = {
+  oficial?: DolarQuote | null;
+  blue?: DolarQuote | null;
+  tarjeta?: DolarQuote | null;
+  mep?: DolarQuote | null;
+  ccl?: DolarQuote | null;
+  raw?: DolarQuote[] | null;
+  error?: string | null;
+  [key: string]: DolarQuote | null | DolarQuote[] | string | undefined;
+};
+
+// Tipos para mercado (cripto)
+type CryptoQuote = {
+  usd: number;
+  usd_24h_change?: number;
+};
+
+type CryptoResponse = {
+  bitcoin?: CryptoQuote;
+  ethereum?: CryptoQuote;
+  solana?: CryptoQuote;
+  binancecoin?: CryptoQuote;
+  tether?: CryptoQuote;
+  [key: string]: CryptoQuote | undefined;
+};
+
 const PAGE_SIZE = 10;
+
+// helper simple para formatear moneda ARS
+function formatArs(value: number) {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
 
 export default function HomePage() {
   const [articles, setArticles] = useState<ArticleSummary[]>([]);
@@ -28,6 +73,11 @@ export default function HomePage() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [search, setSearch] = useState("");
+
+  // estado de mercado
+  const [dolarData, setDolarData] = useState<DolarResponse | null>(null);
+  const [cryptoData, setCryptoData] = useState<CryptoResponse | null>(null);
+  const [marketLoading, setMarketLoading] = useState(false);
 
   const searchParams = useSearchParams();
   const category = searchParams.get("category") || undefined;
@@ -95,6 +145,40 @@ export default function HomePage() {
     };
   }, [category, page, articles.length]);
 
+  // carga de datos de mercado (dólar + cripto)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMarket() {
+      setMarketLoading(true);
+      try {
+        const [dRes, cRes] = await Promise.all([
+          fetch(buildApiUrl("/market/dolar"), { cache: "no-store" }),
+          fetch(buildApiUrl("/market/crypto"), { cache: "no-store" }),
+        ]);
+
+        if (cancelled) return;
+
+        if (dRes.ok) {
+          setDolarData(await dRes.json());
+        }
+        if (cRes.ok) {
+          setCryptoData(await cRes.json());
+        }
+      } catch (err) {
+        console.error("error fetching market data", err);
+      } finally {
+        if (!cancelled) setMarketLoading(false);
+      }
+    }
+
+    loadMarket();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // búsqueda por título
   const filteredArticles = useMemo(() => {
     if (!search.trim()) return articles;
@@ -123,10 +207,18 @@ export default function HomePage() {
 
   return (
     <main style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
+      {/* Tira de mercado (dólar + cripto) */}
+      <MarketStrip
+        dolar={dolarData}
+        crypto={cryptoData}
+        loading={marketLoading}
+      />
+
       {/* Banda negra con título + fecha / descripción */}
       <section
         style={{
           marginBottom: 24,
+          marginTop: 8,
           backgroundColor: "#000",
           color: "#fff",
           padding: "16px 24px",
@@ -398,5 +490,177 @@ export default function HomePage() {
         </aside>
       </div>
     </main>
+  );
+}
+
+// --- componente de tira de mercado ---
+
+function MarketStrip({
+  dolar,
+  crypto,
+  loading,
+}: {
+  dolar: DolarResponse | null;
+  crypto: CryptoResponse | null;
+  loading: boolean;
+}) {
+  const dolarItems: { key: string; label: string }[] = [
+    { key: "oficial", label: "DÓLAR OFICIAL" },
+    { key: "tarjeta", label: "DÓLAR TARJETA" },
+    { key: "blue", label: "DÓLAR BLUE" },
+    { key: "mep", label: "DÓLAR MEP" },
+    { key: "ccl", label: "CONTADO CON LIQUI" },
+  ];
+
+  const cryptoItems: { key: keyof CryptoResponse; label: string }[] = [
+    { key: "bitcoin", label: "Bitcoin BTC" },
+    { key: "ethereum", label: "Ethereum ETH" },
+    { key: "solana", label: "Solana SOL" },
+    { key: "binancecoin", label: "BNB BNB" },
+    { key: "tether", label: "USDT USDTARS" },
+  ];
+
+  if (loading) {
+    return (
+      <section style={{ marginBottom: 16 }}>
+        <p style={{ fontSize: 12, color: "#9ca3af" }}>Cargando mercado...</p>
+      </section>
+    );
+  }
+
+  if (!dolar && !crypto) return null;
+
+  const cardStyle: React.CSSProperties = {
+    minWidth: 150,
+    padding: "10px 14px",
+    borderRadius: 12,
+    backgroundColor: "#f9fafb",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
+  };
+
+  return (
+    <section style={{ marginBottom: 16 }}>
+      {/* fila de dólares */}
+      {dolar && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 12,
+            marginBottom: crypto ? 8 : 0,
+          }}
+        >
+          {dolarItems.map(({ key, label }) => {
+            const quote = dolar[key] as DolarQuote | null | undefined;
+            if (!quote) return null;
+            return (
+              <div key={key} style={cardStyle}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    letterSpacing: "0.08em",
+                    color: "#6b7280",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {label}
+                </div>
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 700,
+                    marginTop: 4,
+                    color: "#111827",
+                  }}
+                >
+                  {formatArs(quote.venta)}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#9ca3af",
+                    marginTop: 2,
+                  }}
+                >
+                  Compra {formatArs(quote.compra)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* fila de criptos */}
+      {crypto && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 12,
+          }}
+        >
+          {cryptoItems.map(({ key, label }) => {
+            const item = crypto[key];
+            if (!item) return null;
+
+            const change = item.usd_24h_change;
+            let changeLabel = "";
+            let changeColor = "#6b7280";
+            let arrow = "";
+
+            if (typeof change === "number") {
+              const rounded = Math.round(change * 100) / 100;
+              arrow = rounded > 0 ? "▲" : rounded < 0 ? "▼" : "●";
+              changeColor =
+                rounded > 0 ? "#16a34a" : rounded < 0 ? "#b91c1c" : "#6b7280";
+              changeLabel = `${rounded > 0 ? "+" : ""}${rounded.toFixed(
+                2
+              )}% últimas 24 hs`;
+            }
+
+            return (
+              <div key={String(key)} style={cardStyle}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    letterSpacing: "0.08em",
+                    color: "#6b7280",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {label}
+                </div>
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 700,
+                    marginTop: 4,
+                    color: "#111827",
+                  }}
+                >
+                  {formatArs(item.usd)}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: changeColor,
+                    marginTop: 2,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  {arrow && <span>{arrow}</span>}
+                  <span>{changeLabel || "24 hs"}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
