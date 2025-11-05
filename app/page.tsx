@@ -55,6 +55,24 @@ type CryptoResponse = {
   [key: string]: CryptoQuote | undefined;
 };
 
+// Tipos para BCRA
+type BcraIndicator = {
+  id: number;
+  descripcion: string;
+  unidad: string | null;
+  moneda: string | null;
+  fecha: string | null;
+  valor: number | null;
+};
+
+type BcraSummary = {
+  reservas: BcraIndicator | null;
+  tipoCambioMinorista: BcraIndicator | null;
+  tipoCambioMayorista: BcraIndicator | null;
+  tasaBadlarPrivados: BcraIndicator | null;
+  tasaTm20Privados: BcraIndicator | null;
+};
+
 const PAGE_SIZE = 10;
 
 // helper simple para formatear moneda ARS
@@ -62,6 +80,14 @@ function formatArs(value: number) {
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
     currency: "ARS",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+// helper genérico para números
+function formatNumber(value: number | null | undefined) {
+  if (value == null) return "-";
+  return new Intl.NumberFormat("es-AR", {
     maximumFractionDigits: 2,
   }).format(value);
 }
@@ -77,6 +103,7 @@ export default function HomePage() {
   // estado de mercado
   const [dolarData, setDolarData] = useState<DolarResponse | null>(null);
   const [cryptoData, setCryptoData] = useState<CryptoResponse | null>(null);
+  const [bcraData, setBcraData] = useState<BcraSummary | null>(null);
   const [marketLoading, setMarketLoading] = useState(false);
 
   const searchParams = useSearchParams();
@@ -145,31 +172,51 @@ export default function HomePage() {
     };
   }, [category, page, articles.length]);
 
-  // carga de datos de mercado (dólar + cripto)
+  // carga de datos de mercado (dólar + cripto + BCRA)
   useEffect(() => {
     let cancelled = false;
 
-    async function loadMarket() {
+    function loadMarket() {
       setMarketLoading(true);
-      try {
-        const [dRes, cRes] = await Promise.all([
-          fetch(buildApiUrl("/market/dolar"), { cache: "no-store" }),
-          fetch(buildApiUrl("/market/crypto"), { cache: "no-store" }),
-        ]);
 
-        if (cancelled) return;
+      // DÓLAR
+      fetch(buildApiUrl("/market/dolar"), { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((json) => {
+          if (cancelled || !json) return;
+          setDolarData(json);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          console.error("error fetching /market/dolar", err);
+        });
 
-        if (dRes.ok) {
-          setDolarData(await dRes.json());
-        }
-        if (cRes.ok) {
-          setCryptoData(await cRes.json());
-        }
-      } catch (err) {
-        console.error("error fetching market data", err);
-      } finally {
-        if (!cancelled) setMarketLoading(false);
-      }
+      // CRIPTOS
+      fetch(buildApiUrl("/market/crypto"), { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((json) => {
+          if (cancelled || !json) return;
+          setCryptoData(json);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          console.error("error fetching /market/crypto", err);
+        })
+        .finally(() => {
+          if (!cancelled) setMarketLoading(false);
+        });
+
+      // BCRA (reservas, tasas, etc.)
+      fetch(buildApiUrl("/market/bcra"), { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((json) => {
+          if (cancelled || !json) return;
+          setBcraData(json);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          console.error("error fetching /market/bcra", err);
+        });
     }
 
     loadMarket();
@@ -207,10 +254,11 @@ export default function HomePage() {
 
   return (
     <main style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
-      {/* Tira de mercado (dólar + cripto) */}
+      {/* Tira de mercado (dólar + cripto + BCRA) */}
       <MarketStrip
         dolar={dolarData}
         crypto={cryptoData}
+        bcra={bcraData}
         loading={marketLoading}
       />
 
@@ -498,10 +546,12 @@ export default function HomePage() {
 function MarketStrip({
   dolar,
   crypto,
+  bcra,
   loading,
 }: {
   dolar: DolarResponse | null;
   crypto: CryptoResponse | null;
+  bcra: BcraSummary | null;
   loading: boolean;
 }) {
   const dolarItems: { key: string; label: string }[] = [
@@ -528,7 +578,7 @@ function MarketStrip({
     );
   }
 
-  if (!dolar && !crypto) return null;
+  if (!dolar && !crypto && !bcra) return null;
 
   const cardStyle: React.CSSProperties = {
     minWidth: 150,
@@ -548,7 +598,7 @@ function MarketStrip({
             display: "flex",
             flexWrap: "wrap",
             gap: 12,
-            marginBottom: crypto ? 8 : 0,
+            marginBottom: crypto || bcra ? 8 : 0,
           }}
         >
           {dolarItems.map(({ key, label }) => {
@@ -599,6 +649,7 @@ function MarketStrip({
             display: "flex",
             flexWrap: "wrap",
             gap: 12,
+            marginBottom: bcra ? 8 : 0,
           }}
         >
           {cryptoItems.map(({ key, label }) => {
@@ -655,6 +706,85 @@ function MarketStrip({
                 >
                   {arrow && <span>{arrow}</span>}
                   <span>{changeLabel || "24 hs"}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* fila de indicadores BCRA */}
+      {bcra && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 12,
+          }}
+        >
+          {[
+            { key: "reservas", label: "Reservas internacionales" },
+            {
+              key: "tipoCambioMinorista",
+              label: "TC minorista (prom. vendedor)",
+            },
+            {
+              key: "tipoCambioMayorista",
+              label: "TC mayorista de referencia",
+            },
+            { key: "tasaBadlarPrivados", label: "BADLAR bancos privados" },
+            { key: "tasaTm20Privados", label: "TM20 bancos privados" },
+          ].map(({ key, label }) => {
+            const ind = (bcra as any)[key] as BcraIndicator | null | undefined;
+            if (!ind) return null;
+
+            let valueLabel = "-";
+            if (ind.valor != null) {
+              if (ind.unidad?.toLowerCase().includes("porcentaje")) {
+                valueLabel = `${ind.valor.toFixed(2)} %`;
+              } else if (ind.unidad?.includes("millones de USD")) {
+                valueLabel =
+                  formatNumber(ind.valor) + " M USD";
+              } else if (
+                ind.unidad?.toLowerCase().includes("pesos argentinos")
+              ) {
+                valueLabel = formatArs(ind.valor);
+              } else {
+                valueLabel = formatNumber(ind.valor);
+              }
+            }
+
+            return (
+              <div key={key} style={cardStyle}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    letterSpacing: "0.08em",
+                    color: "#6b7280",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {label}
+                </div>
+                <div
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    marginTop: 4,
+                    color: "#111827",
+                  }}
+                >
+                  {valueLabel}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#9ca3af",
+                    marginTop: 2,
+                  }}
+                >
+                  {ind.unidad ?? ""}
                 </div>
               </div>
             );
