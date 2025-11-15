@@ -1,7 +1,7 @@
 // app/admin/manual/page.tsx
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, ClipboardEvent } from "react";
 
 type FormState = {
   title: string;
@@ -46,9 +46,41 @@ export default function ManualArticlePage() {
     setImageFile(file);
   };
 
+  // NUEVO: permitir pegar una captura de pantalla (Ctrl+V)
+  const handlePasteImage = (e: ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          setImageFile(file);
+          // limpiamos error anterior y avisamos qué pasó
+          setErrorMsg(null);
+          setSuccessMsg(
+            "Imagen pegada desde el portapapeles. Ahora hacé clic en “Procesar captura con IA”."
+          );
+        }
+        break;
+      }
+    }
+  };
+
+  // Atajos para programar la publicación (ahora, +15min, +1h)
+  const setDelay = (minutes: number) => {
+    setForm((prev) => {
+      const d = new Date();
+      d.setMinutes(d.getMinutes() + minutes);
+      const iso = d.toISOString(); // ya viene con Z
+      return { ...prev, publishedAt: iso };
+    });
+  };
+
   const handleProcessImage = async () => {
     if (!imageFile) {
-      setErrorMsg("Subí una imagen antes de procesarla.");
+      setErrorMsg("Subí o pegá una imagen antes de procesarla.");
       return;
     }
 
@@ -59,6 +91,9 @@ export default function ManualArticlePage() {
     try {
       const fd = new FormData();
       fd.append("image", imageFile);
+      // Enviamos también el formulario actual para que la IA
+      // sólo complete lo que falte.
+      fd.append("formJson", JSON.stringify(form));
 
       const res = await fetch("/api/manual-articles/from-image", {
         method: "POST",
@@ -73,29 +108,26 @@ export default function ManualArticlePage() {
       const suggested = await res.json();
 
       setForm((prev) => {
+        // El backend ya hizo el merge respetando lo que estaba completo.
         const next: FormState = {
           ...prev,
-          title: suggested.title ?? prev.title,
-          summary: suggested.summary ?? prev.summary,
-          category: suggested.category ?? prev.category,
-          ideology: suggested.ideology ?? prev.ideology,
-          imageUrl: suggested.imageUrl ?? prev.imageUrl,
+          ...suggested,
         };
 
-        const suggestedBody: string = suggested.bodyHtml ?? "";
-        const imgUrl: string | undefined = suggested.imageUrl;
+        const imgUrl: string | undefined =
+          suggested.imageUrl ?? next.imageUrl ?? undefined;
 
-        let finalBody = prev.bodyHtml;
+        let finalBody: string = next.bodyHtml ?? prev.bodyHtml;
 
-        // si la IA devuelve cuerpo, lo usamos como base
-        if (suggestedBody) {
-          finalBody = suggestedBody;
-        }
-
-        // si hay imagen subida/hosteada, la inyectamos al principio
+        // Si tenemos imagen, la inyectamos al principio evitando duplicados
         if (imgUrl) {
-          const imgTag = `<p><img src="${imgUrl}" alt="${suggested.title || "Imagen de la captura"}" /></p>`;
-          finalBody = imgTag + "\n\n" + (finalBody || "");
+          const imgTag = `<p><img src="${imgUrl}" alt="${
+            next.title || "Imagen de la captura"
+          }" /></p>`;
+
+          if (!finalBody || !finalBody.includes(imgTag)) {
+            finalBody = imgTag + "\n\n" + (finalBody || "");
+          }
         }
 
         next.bodyHtml = finalBody;
@@ -170,6 +202,7 @@ export default function ManualArticlePage() {
 
       {/* Bloque para subir captura */}
       <section
+        onPaste={handlePasteImage} // <<--- NUEVO: soporta Ctrl+V
         style={{
           padding: "12px 16px",
           borderRadius: 8,
@@ -193,6 +226,11 @@ export default function ManualArticlePage() {
           backend, se genera texto sugerido y se inserta la imagen en el cuerpo
           de la nota. Ahora mismo devuelve datos de prueba; después se conecta a
           una IA real.
+        </p>
+        <p style={{ fontSize: "0.85rem", color: "#444", marginBottom: 12 }}>
+          También podés <strong>copiar una captura</strong> y pegarla con{" "}
+          <code>Ctrl+V</code> en esta caja: se cargará automáticamente como
+          imagen a procesar.
         </p>
 
         <div
@@ -424,6 +462,58 @@ export default function ManualArticlePage() {
             Formato: 2025-11-15T12:00:00Z (después lo cambiamos por un
             datepicker).
           </small>
+
+          <div
+            style={{
+              marginTop: 8,
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              fontSize: "0.85rem",
+              alignItems: "center",
+            }}
+          >
+            <span style={{ color: "#555" }}>Atajos rápidos:</span>
+            <button
+              type="button"
+              onClick={() => setDelay(0)}
+              style={{
+                padding: "4px 8px",
+                borderRadius: 4,
+                border: "1px solid #ccc",
+                background: "#f3f4f6",
+                cursor: "pointer",
+              }}
+            >
+              Ahora
+            </button>
+            <button
+              type="button"
+              onClick={() => setDelay(15)}
+              style={{
+                padding: "4px 8px",
+                borderRadius: 4,
+                border: "1px solid #ccc",
+                background: "#f3f4f6",
+                cursor: "pointer",
+              }}
+            >
+              +15 min
+            </button>
+            <button
+              type="button"
+              onClick={() => setDelay(60)}
+              style={{
+                padding: "4px 8px",
+                borderRadius: 4,
+                border: "1px solid #ccc",
+                background: "#f3f4f6",
+                cursor: "pointer",
+              }}
+            >
+              +1 hora
+            </button>
+          </div>
         </div>
 
         {/* Mensajes */}
