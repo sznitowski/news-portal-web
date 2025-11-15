@@ -17,7 +17,8 @@ type ArticleSummary = {
   updatedAt: string;
 };
 
-const PAGE_SIZE = 10;
+// SUBIMOS EL PAGE_SIZE PARA TRAER TODA LA DATA ACTUAL
+const PAGE_SIZE = 50;
 
 export default function NewsListSection({ category }: { category?: string }) {
   const [articles, setArticles] = useState<ArticleSummary[]>([]);
@@ -265,31 +266,30 @@ export default function NewsListSection({ category }: { category?: string }) {
           </ul>
 
           {/* Cargar más */}
-          {articles.length > 0 && (
+          {articles.length > 0 && hasMore && (
             <div style={{ marginTop: 24, textAlign: "center" }}>
-              {hasMore ? (
-                <button
-                  type="button"
-                  onClick={() => !isLoadingMore && setPage((p) => p + 1)}
-                  disabled={isLoadingMore}
-                  style={{
-                    padding: "8px 20px",
-                    borderRadius: 999,
-                    border: "1px solid #d1d5db",
-                    backgroundColor: "#111827",
-                    color: "#fff",
-                    cursor: isLoadingMore ? "default" : "pointer",
-                    opacity: isLoadingMore ? 0.6 : 1,
-                  }}
-                >
-                  {isLoadingMore ? "Cargando..." : "Cargar más"}
-                </button>
-              ) : (
-                <p style={{ color: "#6b7280", fontSize: 14 }}>
-                  No hay más resultados.
-                </p>
-              )}
+              <button
+                type="button"
+                onClick={() => !isLoadingMore && setPage((p) => p + 1)}
+                disabled={isLoadingMore}
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: 999,
+                  border: "1px solid #d1d5db",
+                  backgroundColor: "#111827",
+                  color: "#fff",
+                  cursor: isLoadingMore ? "default" : "pointer",
+                  opacity: isLoadingMore ? 0.6 : 1,
+                }}
+              >
+                {isLoadingMore ? "Cargando..." : "Cargar más"}
+              </button>
             </div>
+          )}
+          {!hasMore && articles.length > 0 && (
+            <p style={{ color: "#6b7280", fontSize: 14, marginTop: 16 }}>
+              No hay más resultados.
+            </p>
           )}
         </section>
 

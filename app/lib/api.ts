@@ -1,9 +1,14 @@
 // app/lib/api.ts
 import type { ArticleListItem, ArticleFull } from "../types/article";
 
-// viene de .env.local (NEXT_PUBLIC_API_BASE=http://localhost:5001)
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:5001";
+// viene de .env.local (NEXT_PUBLIC_API_URL=http://localhost:5001)
+const RAW_API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ??
+  process.env.NEXT_PUBLIC_API_BASE ?? // fallback por si algún día la usás
+  "http://localhost:5001";
+
+// normalizo para que no termine en "/"
+const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 
 /**
  * Helper para armar URLs de la API.
@@ -11,11 +16,8 @@ const API_BASE =
  * - Opcionalmente, un URLSearchParams con query (?page=1&limit=10...)
  */
 export function buildApiUrl(path: string, params?: URLSearchParams): string {
-  if (!path.startsWith("/")) {
-    path = `/${path}`;
-  }
-
-  const url = new URL(API_BASE + path);
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const url = new URL(`${API_BASE}${cleanPath}`);
 
   if (params) {
     params.forEach((value, key) => {
