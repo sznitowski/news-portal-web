@@ -10,7 +10,7 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Últimas noticias", category: null },      // antes: "Todas"
+  { label: "Últimas noticias", category: null }, // antes: "Todas"
   { label: "Política", category: "politica" },
   { label: "Economía", category: "economia" },
   { label: "Internacional", category: "internacional" },
@@ -52,47 +52,74 @@ export default function SiteHeader() {
           style={{
             display: "flex",
             justifyContent: "center",
+            alignItems: "center",
             gap: 32,
             fontSize: 15,
           }}
         >
-          {NAV_ITEMS.map((item) => {
-            const isActive =
-              (item.category === null && !currentCategory) ||
-              currentCategory === item.category;
+          {/* Grupo de pestañas principales */}
+          <div
+            style={{
+              display: "flex",
+              gap: 32,
+            }}
+          >
+            {NAV_ITEMS.map((item) => {
+              const isActive =
+                (item.category === null && !currentCategory) ||
+                currentCategory === item.category;
 
-            const href = item.category
-              ? `/?category=${item.category}`
-              : "/";
+              const href = item.category ? `/?category=${item.category}` : "/";
 
-            return (
-              <Link
-                key={item.label}
-                href={href}
-                style={{
-                  position: "relative",
-                  paddingBottom: 6,
-                  fontWeight: isActive ? 600 : 400,
-                  color: isActive ? "#ffffff" : "#e5e7eb",
-                  textDecoration: "none",
-                }}
-              >
-                {item.label}
-                {isActive && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      height: 2,
-                      backgroundColor: "#ffffff",
-                    }}
-                  />
-                )}
-              </Link>
-            );
-          })}
+              return (
+                <Link
+                  key={item.label}
+                  href={href}
+                  style={{
+                    position: "relative",
+                    paddingBottom: 6,
+                    fontWeight: isActive ? 600 : 400,
+                    color: isActive ? "#ffffff" : "#e5e7eb",
+                    textDecoration: "none",
+                  }}
+                >
+                  {item.label}
+                  {isActive && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: 2,
+                        backgroundColor: "#ffffff",
+                      }}
+                    />
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Botón Admin (lleva a /admin/manual) */}
+          <Link
+            href="/admin/manual"
+            style={{
+              marginLeft: 24,
+              padding: "4px 12px",
+              borderRadius: 9999,
+              border: "1px solid #e5e7eb",
+              textDecoration: "none",
+              fontSize: 13,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              fontWeight: 600,
+              color: "#f9fafb",
+              backgroundColor: "transparent",
+            }}
+          >
+            Admin
+          </Link>
         </nav>
       </div>
     </header>
