@@ -10,7 +10,7 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Últimas noticias", category: null }, // antes: "Todas"
+  { label: "Últimas noticias", category: null },
   { label: "Política", category: "politica" },
   { label: "Economía", category: "economia" },
   { label: "Internacional", category: "internacional" },
@@ -57,7 +57,7 @@ export default function SiteHeader() {
             fontSize: 15,
           }}
         >
-          {/* Grupo de pestañas principales */}
+          {/* Tabs de secciones */}
           <div
             style={{
               display: "flex",
@@ -101,25 +101,51 @@ export default function SiteHeader() {
             })}
           </div>
 
-          {/* Botón Admin (lleva a /admin/manual) */}
-          <Link
-            href="/admin/manual"
+          {/* Accesos de administración */}
+          <div
             style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
               marginLeft: 24,
-              padding: "4px 12px",
-              borderRadius: 9999,
-              border: "1px solid #e5e7eb",
-              textDecoration: "none",
-              fontSize: 13,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              fontWeight: 600,
-              color: "#f9fafb",
-              backgroundColor: "transparent",
             }}
           >
-            Admin
-          </Link>
+            {/* Botón 1: carga manual */}
+            <Link
+              href="/admin/articles/new"
+              style={{
+                padding: "4px 12px",
+                borderRadius: 9999,
+                border: "1px solid #ffffff",
+                textDecoration: "none",
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#000",
+                backgroundColor: "#fff",
+              }}
+            >
+              Publicar nota
+            </Link>
+
+            {/* Botón 2: carga por imagen (IA) */}
+            <Link
+              href="/admin/manual"
+              style={{
+                padding: "4px 12px",
+                borderRadius: 9999,
+                border: "1px solid #e5e7eb",
+                textDecoration: "none",
+                fontSize: 13,
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                fontWeight: 600,
+                color: "#f9fafb",
+                backgroundColor: "transparent",
+              }}
+            >
+              Imagen (IA)
+            </Link>
+          </div>
         </nav>
       </div>
     </header>

@@ -10,7 +10,7 @@ type FormState = {
   category: string;
   ideology: string;
   publishedAt: string;
-  imageUrl?: string; // NUEVO: URL de la imagen en el backend (/uploads/...)
+  imageUrl?: string; // URL de la imagen en el backend (/uploads/...)
 };
 
 export default function ManualArticlePage() {
@@ -158,13 +158,14 @@ export default function ManualArticlePage() {
   return (
     <main style={{ maxWidth: 800, margin: "40px auto", padding: "0 16px" }}>
       <h1 style={{ fontSize: "2rem", marginBottom: 24 }}>
-        Carga manual de artículos
+        Cargar artículo desde imagen (IA)
       </h1>
 
       <p style={{ marginBottom: 24, color: "#555" }}>
-        Esta pantalla permite crear notas a mano (texto ya procesado). También
-        podés subir una captura de una publicación oficial para rellenar los
-        campos automáticamente y alojar la imagen en el backend.
+        Subí una captura de una publicación (Twitter, Facebook, portal de
+        noticias, etc.) o una imagen de portada. La IA sugiere título, resumen,
+        cuerpo e inserta la imagen en la nota. Después podés ajustar todo antes
+        de publicar.
       </p>
 
       {/* Bloque para subir captura */}
@@ -183,7 +184,7 @@ export default function ManualArticlePage() {
             marginBottom: 8,
           }}
         >
-          Opcional: procesar captura de pantalla
+          Procesar captura de pantalla
         </h2>
         <p style={{ fontSize: "0.9rem", color: "#666", marginBottom: 12 }}>
           Subí una captura de una publicación oficial (ej. captura de Twitter /

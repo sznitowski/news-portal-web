@@ -1,6 +1,7 @@
 // app/admin/articles/new/page.tsx
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useState } from "react";
 import ImageUploader from "../../../components/ImageUploader";
 
@@ -34,7 +35,7 @@ export default function NewArticlePage() {
         },
         body: JSON.stringify({
           title,
-          body,      // el route.ts lo mapea a bodyHtml si hace falta
+          body, // el route.ts lo mapea a bodyHtml si hace falta
           category,
           imageUrl,
         }),
@@ -71,11 +72,33 @@ export default function NewArticlePage() {
 
   return (
     <main style={{ maxWidth: 800, margin: "40px auto", padding: "0 16px" }}>
-      <h1 style={{ fontSize: "2rem", marginBottom: 16 }}>Crear nueva nota</h1>
+      <h1 style={{ fontSize: "2rem", marginBottom: 8 }}>Crear nueva nota</h1>
 
-      <p style={{ marginBottom: 24, color: "#555" }}>
+      <p style={{ marginBottom: 8, color: "#555" }}>
         Carga rápida de una nota con título, categoría, cuerpo de texto e
         imagen principal.
+      </p>
+
+      <p
+        style={{
+          marginBottom: 24,
+          fontSize: "0.9rem",
+          color: "#666",
+        }}
+      >
+        Si preferís generar la nota a partir de una captura con IA, usá la
+        opción{" "}
+        <Link
+          href="/admin/manual"
+          style={{
+            fontWeight: 600,
+            textDecoration: "underline",
+            textDecorationStyle: "dotted",
+          }}
+        >
+          Cargar desde imagen (IA)
+        </Link>{" "}
+        en el panel de administración.
       </p>
 
       <form onSubmit={handleSubmit} style={{ display: "grid", gap: 16 }}>
@@ -127,7 +150,7 @@ export default function NewArticlePage() {
           </select>
         </div>
 
-        {/* Imagen principal (mismo estilo de tarjeta que la carga manual) */}
+        {/* Imagen principal */}
         <section
           style={{
             padding: "12px 16px",
