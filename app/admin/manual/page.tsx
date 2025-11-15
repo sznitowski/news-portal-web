@@ -10,6 +10,7 @@ type FormState = {
   category: string;
   ideology: string;
   publishedAt: string;
+  imageUrl?: string; // NUEVO: URL de la imagen en el backend (/uploads/...)
 };
 
 export default function ManualArticlePage() {
@@ -20,13 +21,14 @@ export default function ManualArticlePage() {
     category: "Noticias",
     ideology: "oficialismo",
     publishedAt: new Date().toISOString().slice(0, 19) + "Z",
+    imageUrl: "",
   });
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // NUEVO: estado para imagen y su procesamiento
+  // estado para imagen y su procesamiento
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
 
@@ -70,15 +72,36 @@ export default function ManualArticlePage() {
 
       const suggested = await res.json();
 
-      // Mezclamos lo sugerido con lo existente
-      setForm((prev) => ({
-        ...prev,
-        title: suggested.title ?? prev.title,
-        summary: suggested.summary ?? prev.summary,
-        bodyHtml: suggested.bodyHtml ?? prev.bodyHtml,
-        category: suggested.category ?? prev.category,
-        ideology: suggested.ideology ?? prev.ideology,
-      }));
+      setForm((prev) => {
+        const next: FormState = {
+          ...prev,
+          title: suggested.title ?? prev.title,
+          summary: suggested.summary ?? prev.summary,
+          category: suggested.category ?? prev.category,
+          ideology: suggested.ideology ?? prev.ideology,
+          imageUrl: suggested.imageUrl ?? prev.imageUrl,
+        };
+
+        const suggestedBody: string = suggested.bodyHtml ?? "";
+        const imgUrl: string | undefined = suggested.imageUrl;
+
+        let finalBody = prev.bodyHtml;
+
+        // si la IA devuelve cuerpo, lo usamos como base
+        if (suggestedBody) {
+          finalBody = suggestedBody;
+        }
+
+        // si hay imagen subida/hosteada, la inyectamos al principio
+        if (imgUrl) {
+          const imgTag = `<p><img src="${imgUrl}" alt="${suggested.title || "Imagen de la captura"}" /></p>`;
+          finalBody = imgTag + "\n\n" + (finalBody || "");
+        }
+
+        next.bodyHtml = finalBody;
+
+        return next;
+      });
 
       setSuccessMsg("Campos rellenados a partir de la captura (dummy IA).");
     } catch (err: any) {
@@ -102,6 +125,7 @@ export default function ManualArticlePage() {
         headers: {
           "Content-Type": "application/json",
         },
+        // mandamos todo el form; el backend va a usar title/summary/bodyHtml/etc.
         body: JSON.stringify(form),
       });
 
@@ -121,7 +145,9 @@ export default function ManualArticlePage() {
         title: "",
         summary: "",
         bodyHtml: "",
+        imageUrl: "",
       }));
+      setImageFile(null);
     } catch (err: any) {
       setErrorMsg(err.message ?? "Error inesperado al crear la nota");
     } finally {
@@ -136,11 +162,12 @@ export default function ManualArticlePage() {
       </h1>
 
       <p style={{ marginBottom: 24, color: "#555" }}>
-        Esta pantalla permite crear notas a mano (texto ya procesado). Más
-        adelante se puede conectar con procesamiento por imagen / IA.
+        Esta pantalla permite crear notas a mano (texto ya procesado). También
+        podés subir una captura de una publicación oficial para rellenar los
+        campos automáticamente y alojar la imagen en el backend.
       </p>
 
-      {/* NUEVO: bloque para subir captura */}
+      {/* Bloque para subir captura */}
       <section
         style={{
           padding: "12px 16px",
@@ -160,10 +187,11 @@ export default function ManualArticlePage() {
         </h2>
         <p style={{ fontSize: "0.9rem", color: "#666", marginBottom: 12 }}>
           Subí una captura de una publicación oficial (ej. captura de Twitter /
-          Facebook), y luego hacé clic en{" "}
-          <strong>“Procesar captura con IA”</strong> para rellenar
-          automáticamente título, resumen y cuerpo. Ahora mismo devuelve datos
-          de prueba; después se conecta a una IA real.
+          Facebook). Al hacer clic en{" "}
+          <strong>“Procesar captura con IA”</strong>, se sube la imagen al
+          backend, se genera texto sugerido y se inserta la imagen en el cuerpo
+          de la nota. Ahora mismo devuelve datos de prueba; después se conecta a
+          una IA real.
         </p>
 
         <div
@@ -200,6 +228,30 @@ export default function ManualArticlePage() {
               : "Procesar captura con IA"}
           </button>
         </div>
+
+        {/* Preview de imagen si tenemos URL */}
+        {form.imageUrl && (
+          <div style={{ marginTop: 16 }}>
+            <p
+              style={{
+                fontSize: "0.9rem",
+                color: "#444",
+                marginBottom: 8,
+              }}
+            >
+              Vista previa de la imagen subida:
+            </p>
+            <img
+              src={form.imageUrl}
+              alt="Preview captura"
+              style={{
+                maxWidth: "100%",
+                borderRadius: 8,
+                border: "1px solid #ddd",
+              }}
+            />
+          </div>
+        )}
       </section>
 
       <form onSubmit={handleSubmit} style={{ display: "grid", gap: 16 }}>
@@ -276,7 +328,8 @@ export default function ManualArticlePage() {
             }}
           />
           <small style={{ color: "#777" }}>
-            Ejemplo: {"<p>Texto principal procesado por IA desde una captura.</p>"}
+            Ejemplo:{" "}
+            {"<p>Texto principal procesado por IA desde una captura.</p>"}
           </small>
         </div>
 

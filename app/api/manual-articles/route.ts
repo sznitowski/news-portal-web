@@ -5,10 +5,12 @@ import { buildApiUrl } from "../../lib/api"; // ojo con esta ruta
 interface ManualArticlePayload {
   title: string;
   summary?: string;
-  bodyHtml?: string;
+  bodyHtml?: string;   // HTML que ya venías usando
+  body?: string;       // NUEVO: texto plano que viene del form
   category?: string;
   ideology?: string;
   publishedAt?: string;
+  imageUrl?: string;   // NUEVO: URL pública de la imagen
 }
 
 export async function POST(req: NextRequest) {
@@ -38,13 +40,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Normalizamos publishedAt a ISO con Z si viene sin zona
   const publishedAt =
     payload.publishedAt && !payload.publishedAt.endsWith("Z")
       ? new Date(payload.publishedAt).toISOString()
       : payload.publishedAt;
 
+  // Si no viene bodyHtml pero sí viene body (del formulario),
+  // lo mandamos en bodyHtml para que el backend lo use igual que antes.
   const bodyToSend: ManualArticlePayload = {
     ...payload,
+    bodyHtml: payload.bodyHtml ?? payload.body,
     publishedAt,
   };
 

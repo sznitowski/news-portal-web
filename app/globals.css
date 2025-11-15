@@ -169,3 +169,30 @@ footer {
     align-items: flex-start;
   }
 }
+
+.article-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 16px auto;
+}
+
+.article-body figure {
+  margin: 16px 0;
+  text-align: center;
+}
+
+.article-body figcaption {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+/* iframes para videos (YouTube, etc.) */
+.article-body iframe {
+  width: 100%;
+  max-width: 100%;
+  min-height: 360px;
+  border: none;
+}
+

@@ -57,7 +57,7 @@ export default function ArticleCard({ article }: Props) {
 
       {/* Título linkeable */}
       <Link
-        href={`/articulo/${article.slug}`}
+        href={`/article/${article.slug}`}
         style={{
           fontSize: 18,
           fontWeight: 600,

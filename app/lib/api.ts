@@ -1,14 +1,17 @@
 // app/lib/api.ts
 import type { ArticleListItem, ArticleFull } from "../types/article";
 
-// viene de .env.local (NEXT_PUBLIC_API_URL=http://localhost:5001)
+/**
+ * Base de la API (backend Nest).
+ * Sale de .env.local -> NEXT_PUBLIC_API_URL
+ */
 const RAW_API_BASE =
   process.env.NEXT_PUBLIC_API_URL ??
-  process.env.NEXT_PUBLIC_API_BASE ?? // fallback por si algún día la usás
+  process.env.NEXT_PUBLIC_API_BASE ?? // fallback por si después la querés usar
   "http://localhost:5001";
 
 // normalizo para que no termine en "/"
-const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
+export const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 
 /**
  * Helper para armar URLs de la API.
@@ -29,8 +32,27 @@ export function buildApiUrl(path: string, params?: URLSearchParams): string {
 }
 
 /**
+ * Convierte una URL relativa devuelta por el backend (ej: "/uploads/archivo.png")
+ * en una URL absoluta (ej: "http://localhost:5001/uploads/archivo.png").
+ * Si ya viene absoluta, la devuelve tal cual.
+ */
+export function getPublicUrl(pathOrUrl: string): string {
+  if (!pathOrUrl) return "";
+
+  // si ya es absoluta (http/https), no toco nada
+  if (/^https?:\/\//i.test(pathOrUrl)) {
+    return pathOrUrl;
+  }
+
+  const cleanPath = pathOrUrl.startsWith("/")
+    ? pathOrUrl
+    : `/${pathOrUrl}`;
+
+  return `${API_BASE}${cleanPath}`;
+}
+
+/**
  * Lista de artículos (paginada + filtro opcional por categoría)
- * No la estás usando todavía en el front, pero queda disponible.
  */
 export async function getLatestArticles(
   page = 1,
@@ -77,4 +99,45 @@ export async function getArticleBySlug(
   }
 
   return res.json();
+}
+
+/* =======================
+ * Upload de imágenes
+ * ======================= */
+
+export interface UploadImageResponse {
+  success: boolean;
+  filename: string;
+  url: string; // viene como "/uploads/archivo.ext"
+}
+
+/**
+ * Sube una imagen al backend Nest y devuelve la URL pública absoluta
+ * (ej: "http://localhost:5001/uploads/archivo.png").
+ *
+ * IMPORTANTE: usar solo desde componentes "use client" (recibe un File del browser).
+ */
+export async function uploadImage(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("image", file);
+
+  const res = await fetch(buildApiUrl("/internal/uploads/image"), {
+    method: "POST",
+    body: formData,
+    // credentials: "include", // descomentá si después usás cookies
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Error al subir imagen (${res.status}): ${text}`);
+  }
+
+  const data = (await res.json()) as UploadImageResponse;
+
+  if (!data.success || !data.url) {
+    throw new Error("El backend devolvió una respuesta inválida al subir la imagen");
+  }
+
+  // URL absoluta para usar directo en <img src=...>
+  return getPublicUrl(data.url);
 }
