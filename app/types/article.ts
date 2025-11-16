@@ -14,6 +14,20 @@ export type ArticleListItem = {
   updatedAt: string;   // ISO string
 };
 
+export type ArticleRow = {
+  id: number;
+  slug: string;
+  title: string;
+  summary: string;
+  body_html: string;
+  category: string;
+  ideology: string | null;
+  source_ideology: string | null;   // <--- NUEVO
+  image_url: string | null;
+  published_at: Date;
+  // ...
+};
+
 // Lo que devuelve GET /articles/:slug
 // Incluye bodyHtml (el cuerpo limpio listo para render)
 export type ArticleFull = ArticleListItem & {
