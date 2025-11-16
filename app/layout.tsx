@@ -2,7 +2,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Providers from "./Providers";
-import SiteHeader from "./components/SiteHeader";
+import Navbar from "./components/navbar/Navbar";
 
 export const metadata: Metadata = {
   title: "Mi Portal de Noticias",
@@ -19,7 +19,7 @@ export default function RootLayout({
       <body className="bg-neutral-950 text-neutral-100 antialiased min-h-screen">
         <Providers>
           {/* HEADER GLOBAL */}
-          <SiteHeader />
+          <Navbar />
 
           {/* CONTENIDO */}
           <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
