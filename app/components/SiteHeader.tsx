@@ -33,35 +33,62 @@ export default function SiteHeader() {
         style={{
           maxWidth: 1120,
           margin: "0 auto",
-          textAlign: "center",
         }}
       >
-        {/* Título del sitio (solo lectura, nada de admin acá) */}
+        {/* Título del sitio */}
         <h1
           style={{
             fontSize: 32,
             fontWeight: 700,
             letterSpacing: "0.04em",
             marginBottom: 12,
+            textAlign: "center",
           }}
         >
           Mi Portal de Noticias
         </h1>
 
-        {/* Navbar de secciones para el lector */}
+        {/* Barra: login izq, secciones centradas, espacio der para balancear */}
         <nav
-          aria-label="Secciones"
+          aria-label="Navegación principal"
           style={{
-            display: "flex",
-            justifyContent: "center",
+            display: "grid",
+            gridTemplateColumns: "160px 1fr 160px",
             alignItems: "center",
-            gap: 32,
-            fontSize: 15,
           }}
         >
+          {/* Izquierda: botón Iniciar sesión */}
           <div
             style={{
               display: "flex",
+              justifyContent: "flex-start",
+            }}
+          >
+            <Link
+              href="/admin"
+              style={{
+                fontSize: 12,
+                padding: "4px 12px",
+                borderRadius: 9999,
+                border: "1px solid #e5e7eb",
+                textDecoration: "none",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                fontWeight: 600,
+                color: "#e5e7eb",
+                backgroundColor: "transparent",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Iniciar sesión
+            </Link>
+          </div>
+
+          {/* Centro: tabs de secciones */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
               gap: 32,
             }}
           >
@@ -82,6 +109,7 @@ export default function SiteHeader() {
                     fontWeight: isActive ? 600 : 400,
                     color: isActive ? "#ffffff" : "#e5e7eb",
                     textDecoration: "none",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {item.label}
@@ -101,6 +129,9 @@ export default function SiteHeader() {
               );
             })}
           </div>
+
+          {/* Derecha: espacio vacío para que el centro sea realmente centro */}
+          <div />
         </nav>
       </div>
     </header>
