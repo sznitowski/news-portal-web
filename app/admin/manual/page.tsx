@@ -19,7 +19,7 @@ export default function ManualArticlePage() {
     summary: "",
     bodyHtml: "",
     category: "Noticias",
-    ideology: "oficialismo",
+    ideology: "neutral", 
     publishedAt: new Date().toISOString().slice(0, 19) + "Z",
     imageUrl: "",
   });

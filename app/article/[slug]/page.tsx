@@ -14,6 +14,7 @@ type ArticleDetail = {
   bodyHtml: string | null;
   category: string | null;
   ideology: string | null;
+  sourceIdeology?: string | null; // opcional, por si lo querés usar después
   publishedAt: string | null;
 };
 
@@ -24,6 +25,7 @@ type ArticleListItem = {
   summary: string | null;
   category: string | null;
   ideology: string | null;
+  sourceIdeology?: string | null;
   publishedAt: string | null;
 };
 
@@ -40,6 +42,21 @@ const asideCardStyle: CSSProperties = {
   padding: 16,
   boxShadow: "0 18px 35px -20px rgba(15,23,42,0.35)",
 };
+
+// Mostrar ideología solo cuando sea política y no sea neutral
+function shouldShowIdeology(
+  category: string | null,
+  ideology: string | null
+): boolean {
+  if (!category || !ideology) return false;
+  const cat = category.toLowerCase();
+  const ide = ideology.toLowerCase();
+
+  if (ide === "neutral") return false;
+  if (cat !== "politica") return false;
+
+  return true;
+}
 
 export default async function ArticlePage({
   params,
@@ -81,6 +98,9 @@ export default async function ArticlePage({
     ? formatDate(article.publishedAt)
     : null;
 
+  const categoryLabel = (article.category ?? "sin categoría").toUpperCase();
+  const showIdeology = shouldShowIdeology(article.category, article.ideology);
+
   return (
     <main
       style={{
@@ -119,8 +139,13 @@ export default async function ArticlePage({
         }}
       >
         <span>
-          {(article.category ?? "sin categoría").toUpperCase()} ·{" "}
-          {article.ideology ? `(${article.ideology})` : ""}
+          {categoryLabel}
+          {showIdeology && (
+            <>
+              {" · "}
+              <span>({article.ideology})</span>
+            </>
+          )}
         </span>
         {publishedAtLabel && <span>{publishedAtLabel}</span>}
       </section>
