@@ -7,10 +7,11 @@ export type ArticleListItem = {
   title: string;
   summary: string | null;
   category: string;
-  ideology: string;
+  ideology: string | null;         // ahora permitimos null
+  sourceIdeology: string | null;   
   publishedAt: string; // ISO string
-  createdAt: string; // ISO string
-  updatedAt: string; // ISO string
+  createdAt: string;   // ISO string
+  updatedAt: string;   // ISO string
 };
 
 // Lo que devuelve GET /articles/:slug
