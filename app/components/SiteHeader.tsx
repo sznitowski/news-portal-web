@@ -36,6 +36,7 @@ export default function SiteHeader() {
           textAlign: "center",
         }}
       >
+        {/* Título del sitio (solo lectura, nada de admin acá) */}
         <h1
           style={{
             fontSize: 32,
@@ -47,6 +48,7 @@ export default function SiteHeader() {
           Mi Portal de Noticias
         </h1>
 
+        {/* Navbar de secciones para el lector */}
         <nav
           aria-label="Secciones"
           style={{
@@ -57,7 +59,6 @@ export default function SiteHeader() {
             fontSize: 15,
           }}
         >
-          {/* Tabs de secciones */}
           <div
             style={{
               display: "flex",
@@ -99,52 +100,6 @@ export default function SiteHeader() {
                 </Link>
               );
             })}
-          </div>
-
-          {/* Accesos de administración */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginLeft: 24,
-            }}
-          >
-            {/* Botón 1: carga manual */}
-            <Link
-              href="/admin/articles/new"
-              style={{
-                padding: "4px 12px",
-                borderRadius: 9999,
-                border: "1px solid #ffffff",
-                textDecoration: "none",
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#000",
-                backgroundColor: "#fff",
-              }}
-            >
-              Publicar nota
-            </Link>
-
-            {/* Botón 2: carga por imagen (IA) */}
-            <Link
-              href="/admin/manual"
-              style={{
-                padding: "4px 12px",
-                borderRadius: 9999,
-                border: "1px solid #e5e7eb",
-                textDecoration: "none",
-                fontSize: 13,
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                fontWeight: 600,
-                color: "#f9fafb",
-                backgroundColor: "transparent",
-              }}
-            >
-              Imagen (IA)
-            </Link>
           </div>
         </nav>
       </div>

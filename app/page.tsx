@@ -12,13 +12,13 @@ export default function HomePage() {
   const isEconomy = category === "economia";
 
   return (
-    <main style={{ padding: 24 }}>
+    <div style={{ padding: 24 }}>
       {isEconomy && <EconomiaSection />}
 
-      {/* Sacamos este bloque */}
+      {/* Si en algún momento querés volver a mostrar la franja de Casa Rosada, se reactiva esto */}
       {/* <CasaRosadaStrip /> */}
 
       <NewsListSection category={category} />
-    </main>
+    </div>
   );
 }
