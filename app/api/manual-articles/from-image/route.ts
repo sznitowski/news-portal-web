@@ -2,8 +2,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildApiUrl } from "../../../lib/api"; // 3 niveles para volver a /lib
 
+type ArticleFromImage = {
+  title?: string;
+  summary?: string;
+  bodyHtml?: string;
+  category?: string;
+  ideology?: string;
+};
+
 // Helper: si el valor existente tiene texto, se respeta;
 // si está vacío, se usa el de la IA.
+// Si ambos están vacíos, devuelve undefined.
 function preferExisting(existing?: unknown, ai?: unknown): string | undefined {
   const ex =
     typeof existing === "string"
@@ -24,7 +33,8 @@ function preferExisting(existing?: unknown, ai?: unknown): string | undefined {
       : String(ai).trim();
 
   if (aiStr.length > 0) {
-    return typeof ai === "string" ? ai : String(ai);
+    // usamos el valor ya normalizado
+    return aiStr;
   }
 
   return undefined;
@@ -42,7 +52,8 @@ export async function POST(req: NextRequest) {
     if (typeof formJsonRaw === "string" && formJsonRaw.length > 0) {
       try {
         existing = JSON.parse(formJsonRaw);
-      } catch {
+      } catch (e) {
+        console.error("[from-image-ai] Error parseando formJson existente", e);
         existing = {};
       }
     }
@@ -56,7 +67,7 @@ export async function POST(req: NextRequest) {
 
     // 2) Subir la imagen al backend /internal/uploads/image
     const uploadForm = new FormData();
-    uploadForm.append("image", image, image.name || "capture.jpg");
+    uploadForm.append("image", image, (image as any).name || "capture.jpg");
 
     const uploadUrl = buildApiUrl("/internal/uploads/image");
 
@@ -72,9 +83,15 @@ export async function POST(req: NextRequest) {
       uploadJson = uploadText ? JSON.parse(uploadText) : null;
     } catch {
       // puede venir texto plano si algo falla
+      uploadJson = null;
     }
 
     if (!uploadRes.ok || !uploadJson?.url) {
+      console.error(
+        "[from-image-ai] Error subiendo imagen",
+        uploadRes.status,
+        uploadJson ?? uploadText
+      );
       return NextResponse.json(
         {
           message:
@@ -101,22 +118,24 @@ export async function POST(req: NextRequest) {
         "x-ingest-key": ingestKey,
       },
       body: JSON.stringify({ imageUrl: imagePublicUrl }),
+      cache: "no-store",
     });
 
     const aiText = await aiRes.text();
-    let aiJson: any = null;
+    let aiJson: ArticleFromImage | null = null;
     try {
-      aiJson = aiText ? JSON.parse(aiText) : null;
-    } catch {
+      aiJson = aiText ? (JSON.parse(aiText) as ArticleFromImage) : null;
+    } catch (e) {
+      console.error("[from-image-ai] Error parseando respuesta IA", e, aiText);
       aiJson = null;
     }
 
-    // Si la IA falla, devolvemos error (o podrías meter un fallback dummy acá)
+    // Si la IA falla, devolvemos error
     if (!aiRes.ok || !aiJson) {
       return NextResponse.json(
         {
           message:
-            aiJson?.message ??
+            (aiJson as any)?.message ??
             `Error procesando imagen con IA (status ${aiRes.status})`,
           raw: aiJson ?? aiText,
         },

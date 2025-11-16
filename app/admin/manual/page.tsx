@@ -57,8 +57,8 @@ export default function ManualArticlePage() {
     }
   };
 
-  // Permitir pegar una captura de pantalla (Ctrl+V)
-  const handlePasteImage = (e: ClipboardEvent<HTMLElement>) => {
+  // Permitir pegar una captura de pantalla (Ctrl+V) en la zona dedicada
+  const handlePasteImage = (e: ClipboardEvent<HTMLDivElement>) => {
     const items = e.clipboardData?.items;
     if (!items) return;
 
@@ -68,7 +68,7 @@ export default function ManualArticlePage() {
         const file = item.getAsFile();
         if (file) {
           handleScreenshotFile(file);
-          // Evitamos que intente pegar binario en algún textarea
+          // Evitamos que quede pegado binario/ruido en el div
           e.preventDefault();
         }
         break;
@@ -103,6 +103,7 @@ export default function ManualArticlePage() {
       // sólo complete lo que falte.
       fd.append("formJson", JSON.stringify(form));
 
+      // 👇 OJO: volvemos a /from-image (sin -ai) porque ese es el handler de Next
       const res = await fetch("/api/manual-articles/from-image", {
         method: "POST",
         body: fd,
@@ -143,10 +144,10 @@ export default function ManualArticlePage() {
         return next;
       });
 
-      setSuccessMsg("Campos rellenados a partir de la captura (dummy IA).");
+      setSuccessMsg("Campos rellenados a partir de la captura con IA.");
     } catch (err: any) {
       setErrorMsg(
-        err.message ?? "Error al procesar la captura con la IA (dummy)."
+        err.message ?? "Error al procesar la captura con la IA."
       );
     } finally {
       setImageLoading(false);
@@ -210,7 +211,6 @@ export default function ManualArticlePage() {
 
       {/* Bloque para subir captura */}
       <section
-        onPaste={handlePasteImage} // soporta Ctrl+V
         style={{
           padding: "12px 16px",
           borderRadius: 8,
@@ -232,29 +232,42 @@ export default function ManualArticlePage() {
           Facebook). Al hacer clic en{" "}
           <strong>“Procesar captura con IA”</strong>, se sube la imagen al
           backend, se genera texto sugerido y se inserta la imagen en el cuerpo
-          de la nota. Ahora mismo devuelve datos de prueba; después se conecta a
-          una IA real.
+          de la nota.
         </p>
         <p style={{ fontSize: "0.85rem", color: "#444", marginBottom: 12 }}>
-          También podés <strong>copiar una captura</strong> y pegarla con{" "}
-          <code>Ctrl+V</code> en esta caja: se cargará automáticamente como
-          imagen a procesar.
+          Tenés dos opciones:
         </p>
 
+        {/* Zona para seleccionar archivo + botón procesar */}
         <div
           style={{
             display: "flex",
             gap: 12,
             alignItems: "center",
             flexWrap: "wrap",
+            marginBottom: 12,
           }}
         >
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImageChange}
-            style={{ maxWidth: 260 }}
-          />
+          {/* Botón lindo para elegir archivo */}
+          <label
+            style={{
+              padding: "8px 14px",
+              borderRadius: 6,
+              border: "1px solid #ccc",
+              background: "#f3f4f6",
+              cursor: "pointer",
+              fontSize: "0.9rem",
+              fontWeight: 500,
+            }}
+          >
+            Seleccionar imagen desde el dispositivo
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              style={{ display: "none" }}
+            />
+          </label>
 
           <button
             type="button"
@@ -264,7 +277,7 @@ export default function ManualArticlePage() {
               padding: "8px 14px",
               borderRadius: 6,
               border: "none",
-              background: imageLoading ? "#999" : "#222",
+              background: imageLoading || !imageFile ? "#999" : "#222",
               color: "#fff",
               fontWeight: 600,
               cursor: imageLoading || !imageFile ? "default" : "pointer",
@@ -274,6 +287,32 @@ export default function ManualArticlePage() {
               ? "Procesando captura..."
               : "Procesar captura con IA"}
           </button>
+        </div>
+
+        {/* Zona dedicada para pegar con Ctrl+V */}
+        <div
+          onPaste={handlePasteImage}
+          tabIndex={0}
+          onClick={(e) => (e.currentTarget as HTMLDivElement).focus()}
+          style={{
+            marginTop: 4,
+            padding: "16px",
+            borderRadius: 8,
+            border: "2px dashed #999",
+            background: "#fafafa",
+            textAlign: "center",
+            cursor: "text",
+          }}
+        >
+          <p style={{ marginBottom: 4, fontSize: "0.9rem", color: "#333" }}>
+            O hacé clic acá y luego presioná <code>Ctrl+V</code> para pegar una
+            captura desde el portapapeles.
+          </p>
+          <p style={{ fontSize: "0.8rem", color: "#666" }}>
+            Usá la herramienta de recorte (por ejemplo{" "}
+            <strong>Win+Shift+S</strong> en Windows) para copiar una imagen al
+            portapapeles y después pegala en este cuadro.
+          </p>
         </div>
 
         {/* Preview de imagen si tenemos URL */}
