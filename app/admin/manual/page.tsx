@@ -41,13 +41,24 @@ export default function ManualArticlePage() {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
+  // ÚNICO lugar donde seteamos la imagen seleccionada/pegada
+  const handleScreenshotFile = (file: File) => {
     setImageFile(file);
+    setErrorMsg(null);
+    setSuccessMsg(
+      'Imagen lista para procesar. Ahora hacé clic en "Procesar captura con IA".'
+    );
   };
 
-  // NUEVO: permitir pegar una captura de pantalla (Ctrl+V)
-  const handlePasteImage = (e: ClipboardEvent<HTMLDivElement>) => {
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    if (file) {
+      handleScreenshotFile(file);
+    }
+  };
+
+  // Permitir pegar una captura de pantalla (Ctrl+V)
+  const handlePasteImage = (e: ClipboardEvent<HTMLElement>) => {
     const items = e.clipboardData?.items;
     if (!items) return;
 
@@ -56,12 +67,9 @@ export default function ManualArticlePage() {
       if (item.type.startsWith("image/")) {
         const file = item.getAsFile();
         if (file) {
-          setImageFile(file);
-          // limpiamos error anterior y avisamos qué pasó
-          setErrorMsg(null);
-          setSuccessMsg(
-            "Imagen pegada desde el portapapeles. Ahora hacé clic en “Procesar captura con IA”."
-          );
+          handleScreenshotFile(file);
+          // Evitamos que intente pegar binario en algún textarea
+          e.preventDefault();
         }
         break;
       }
@@ -202,7 +210,7 @@ export default function ManualArticlePage() {
 
       {/* Bloque para subir captura */}
       <section
-        onPaste={handlePasteImage} // <<--- NUEVO: soporta Ctrl+V
+        onPaste={handlePasteImage} // soporta Ctrl+V
         style={{
           padding: "12px 16px",
           borderRadius: 8,
