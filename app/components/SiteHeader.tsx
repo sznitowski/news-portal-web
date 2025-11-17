@@ -35,7 +35,6 @@ export default function SiteHeader() {
           margin: "0 auto",
         }}
       >
-        {/* Título del sitio */}
         <h1
           style={{
             fontSize: 32,
@@ -48,7 +47,6 @@ export default function SiteHeader() {
           Mi Portal de Noticias
         </h1>
 
-        {/* Barra: login izq, secciones centradas, espacio der para balancear */}
         <nav
           aria-label="Navegación principal"
           style={{
@@ -57,7 +55,7 @@ export default function SiteHeader() {
             alignItems: "center",
           }}
         >
-          {/* Izquierda: botón Iniciar sesión */}
+          {/* Botón Iniciar sesión -> /login */}
           <div
             style={{
               display: "flex",
@@ -65,7 +63,7 @@ export default function SiteHeader() {
             }}
           >
             <Link
-              href="/admin"
+              href="/login"
               style={{
                 fontSize: 12,
                 padding: "4px 12px",
@@ -84,7 +82,7 @@ export default function SiteHeader() {
             </Link>
           </div>
 
-          {/* Centro: tabs de secciones */}
+          {/* Tabs centro */}
           <div
             style={{
               display: "flex",
@@ -130,7 +128,6 @@ export default function SiteHeader() {
             })}
           </div>
 
-          {/* Derecha: espacio vacío para que el centro sea realmente centro */}
           <div />
         </nav>
       </div>

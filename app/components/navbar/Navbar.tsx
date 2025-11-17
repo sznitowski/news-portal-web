@@ -14,8 +14,8 @@ function NavLink({ href, children }: NavLinkProps) {
 
   const active =
     pathname === href ||
-    // marcamos /admin como activo también cuando estás exactamente en /admin
-    (href === "/admin" && pathname === "/admin");
+    // activo también si estás en una subruta, ej: /admin/articles/new
+    (pathname.startsWith(href) && href !== "/");
 
   return (
     <Link
@@ -38,10 +38,16 @@ function NavLink({ href, children }: NavLinkProps) {
 }
 
 export default function Navbar() {
+  const pathname = usePathname();
+
+  // 🔴 Ocultamos COMPLETAMENTE el navbar si no estás en /admin
+  if (!pathname.startsWith("/admin")) {
+    return null;
+  }
+
   return (
     <header
       style={{
-        // sub-barra oscura, más baja y sin sticky
         backgroundColor: "#020617",
         borderBottom: "1px solid rgba(31,41,55,0.9)",
       }}
@@ -81,22 +87,10 @@ export default function Navbar() {
             justifyContent: "flex-end",
           }}
         >
-          {/* Panel principal de admin */}
           <NavLink href="/admin">Panel editorial</NavLink>
-
-          {/* Publicar nota manual */}
           <NavLink href="/admin/articles/new">Publicar nota</NavLink>
-
-          {/* Carga por imagen + IA */}
           <NavLink href="/admin/manual">Imagen (IA)</NavLink>
-
-          {/* Ver portada pública */}
           <NavLink href="/">Ver portada</NavLink>
-
-          {/* Cuando tengas secciones nuevas:
-              <NavLink href="/admin/dashboard">Dashboard</NavLink>
-              <NavLink href="/admin/media">Edición de fotos</NavLink>
-              etc. */}
         </div>
       </nav>
     </header>
