@@ -1,3 +1,4 @@
+/* app/globals.css */
 @import "tailwindcss";
 
 /* Variables de color / fuentes del template */
@@ -26,74 +27,6 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   margin: 0;
-}
-
-/* ===========================
-   HEADER + NAVBAR
-   =========================== */
-
-header {
-  background-color: #000000;
-  color: #ffffff;
-  padding: 12px 24px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-header > div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-header h1 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 700;
-}
-
-header p {
-  margin: 0;
-  font-size: 12px;
-  color: #d1d5db;
-}
-
-header nav {
-  display: flex;
-  gap: 16px;
-  font-size: 14px;
-}
-
-header nav a {
-  color: #e5e7eb;
-  text-decoration: none;
-}
-
-header nav a:hover {
-  color: #ffffff;
-  text-decoration: underline;
-}
-
-/* Solo el main externo del layout */
-body > main {
-  background-color: #ffffff;
-  min-height: calc(100vh - 96px); /* aprox alto header+footer */
-}
-
-/* ===========================
-   FOOTER
-   =========================== */
-
-footer {
-  border-top: 1px solid #e5e7eb;
-  padding: 10px 24px;
-  font-size: 12px;
-  color: #6b7280;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
 }
 
 /* ===========================
@@ -195,4 +128,3 @@ footer {
   min-height: 360px;
   border: none;
 }
-
