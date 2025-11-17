@@ -3,11 +3,19 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { buildApiUrl } from "../lib/api";
 
 type NavItem = {
   label: string;
   category: string | null;
 };
+
+type CurrentUser = {
+  id?: number;
+  email?: string;
+  name?: string;
+} | null;
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Últimas noticias", category: null },
@@ -19,6 +27,56 @@ const NAV_ITEMS: NavItem[] = [
 export default function SiteHeader() {
   const searchParams = useSearchParams();
   const currentCategory = searchParams.get("category");
+
+  const [user, setUser] = useState<CurrentUser>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  // Chequear si hay sesión activa contra el backend (/auth/me)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkAuth() {
+      try {
+        const res = await fetch(buildApiUrl("/auth/me"), {
+          credentials: "include",
+        });
+
+        if (cancelled) return;
+
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data);
+        } else {
+          setUser(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingAuth(false);
+        }
+      }
+    }
+
+    checkAuth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      // usamos el mismo endpoint que en /admin
+      await fetch("/admin/logout", { method: "POST" });
+      setUser(null);
+      window.location.href = "/";
+    } catch (err) {
+      console.error("Error al cerrar sesión", err);
+    }
+  };
 
   return (
     <header
@@ -55,31 +113,72 @@ export default function SiteHeader() {
             alignItems: "center",
           }}
         >
-          {/* Botón Iniciar sesión -> /login */}
+          {/* Izquierda: login o usuario + logout */}
           <div
             style={{
               display: "flex",
               justifyContent: "flex-start",
             }}
           >
-            <Link
-              href="/login"
-              style={{
-                fontSize: 12,
-                padding: "4px 12px",
-                borderRadius: 9999,
-                border: "1px solid #e5e7eb",
-                textDecoration: "none",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                fontWeight: 600,
-                color: "#e5e7eb",
-                backgroundColor: "transparent",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Iniciar sesión
-            </Link>
+            {checkingAuth ? null : user ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    color: "#e5e7eb",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {user.name ?? user.email ?? "Editor"}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 10px",
+                    borderRadius: 9999,
+                    border: "1px solid #e5e7eb",
+                    backgroundColor: "transparent",
+                    color: "#e5e7eb",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Cerrar sesión
+                </button>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                style={{
+                  fontSize: 12,
+                  padding: "4px 12px",
+                  borderRadius: 9999,
+                  border: "1px solid #e5e7eb",
+                  textDecoration: "none",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  fontWeight: 600,
+                  color: "#e5e7eb",
+                  backgroundColor: "transparent",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Iniciar sesión
+              </Link>
+            )}
           </div>
 
           {/* Tabs centro */}
@@ -128,6 +227,7 @@ export default function SiteHeader() {
             })}
           </div>
 
+          {/* Derecha: por ahora vacío (futuro: búsqueda, filtros, etc.) */}
           <div />
         </nav>
       </div>

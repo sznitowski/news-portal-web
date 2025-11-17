@@ -2,47 +2,32 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-
-type NavLinkProps = {
-  href: string;
-  children: React.ReactNode;
-};
-
-function NavLink({ href, children }: NavLinkProps) {
-  const pathname = usePathname();
-
-  const active =
-    pathname === href ||
-    // activo también si estás en una subruta, ej: /admin/articles/new
-    (pathname.startsWith(href) && href !== "/");
-
-  return (
-    <Link
-      href={href}
-      style={{
-        fontSize: 13,
-        padding: "4px 10px",
-        borderRadius: 999,
-        textDecoration: "none",
-        color: active ? "#020617" : "#e5e7eb",
-        backgroundColor: active ? "#e5e7eb" : "transparent",
-        border: active ? "1px solid #e5e7eb" : "1px solid transparent",
-        transition: "background-color 0.15s ease, color 0.15s ease",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {children}
-    </Link>
-  );
-}
+import { usePathname, useRouter } from "next/navigation";
+import React from "react";
 
 export default function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
 
-  // 🔴 Ocultamos COMPLETAMENTE el navbar si no estás en /admin
+  // Solo mostramos esta barra en rutas /admin
   if (!pathname.startsWith("/admin")) {
     return null;
+  }
+
+  const [open, setOpen] = React.useState(false);
+
+  // Cada vez que cambia de ruta, cerramos el menú
+  React.useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  function go(href: string) {
+    if (pathname === href) {
+      setOpen(false);
+      return;
+    }
+    setOpen(false);
+    router.push(href);
   }
 
   return (
@@ -77,22 +62,107 @@ export default function Navbar() {
           Info libertario · Panel editorial
         </div>
 
-        {/* Accesos de administración */}
+        {/* Dropdown + Ver portada */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 6,
-            flexWrap: "wrap",
-            justifyContent: "flex-end",
+            gap: 16,
           }}
         >
-          <NavLink href="/admin">Panel editorial</NavLink>
-          <NavLink href="/admin/articles/new">Publicar nota</NavLink>
-          <NavLink href="/admin/manual">Imagen (IA)</NavLink>
-          <NavLink href="/">Ver portada</NavLink>
+          {/* Dropdown Panel editorial */}
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setOpen((o) => !o)}
+              style={{
+                fontSize: 13,
+                padding: "6px 14px",
+                borderRadius: 999,
+                border: "1px solid #374151",
+                backgroundColor: "#020617",
+                color: "#e5e7eb",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                cursor: "pointer",
+              }}
+            >
+              Panel editorial
+              <span style={{ fontSize: 10 }}>{open ? "▲" : "▼"}</span>
+            </button>
+
+            {open && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "110%",
+                  right: 0,
+                  minWidth: 220,
+                  borderRadius: 12,
+                  border: "1px solid rgba(31,41,55,0.9)",
+                  backgroundColor: "#020617",
+                  padding: 8,
+                  boxShadow: "0 18px 45px rgba(0,0,0,0.55)",
+                  zIndex: 50,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => go("/admin/editor")}
+                  style={dropdownItemStyle}
+                >
+                  Edición de notas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => go("/admin/articles/new")}
+                  style={dropdownItemStyle}
+                >
+                  Publicar nota manual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => go("/admin/manual")}
+                  style={dropdownItemStyle}
+                >
+                  Publicar desde imagen (IA)
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Ver portada pública */}
+          <Link
+            href="/"
+            style={{
+              fontSize: 13,
+              padding: "6px 14px",
+              borderRadius: 999,
+              border: "1px solid #4b5563",
+              textDecoration: "none",
+              color: "#e5e7eb",
+              backgroundColor: "transparent",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Ver portada
+          </Link>
         </div>
       </nav>
     </header>
   );
 }
+
+const dropdownItemStyle: React.CSSProperties = {
+  width: "100%",
+  textAlign: "left",
+  padding: "6px 10px",
+  borderRadius: 8,
+  border: "none",
+  background: "transparent",
+  color: "#e5e7eb",
+  fontSize: 13,
+  cursor: "pointer",
+  marginBottom: 2,
+};
