@@ -17,6 +17,18 @@ type ArticleSummary = {
   updatedAt: string;
 };
 
+type ArticlesResponse = {
+  items: ArticleSummary[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
+};
+
 // SUBIMOS EL PAGE_SIZE PARA TRAER TODA LA DATA ACTUAL
 const PAGE_SIZE = 50;
 
@@ -54,13 +66,17 @@ export default function NewsListSection({ category }: { category?: string }) {
         const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        const data: ArticleSummary[] = await res.json();
+        const data: ArticlesResponse = await res.json();
         if (cancelled) return;
 
-        if (page === 1) setArticles(data);
-        else setArticles((prev) => [...prev, ...data]);
+        if (page === 1) {
+          setArticles(data.items);
+        } else {
+          setArticles((prev) => [...prev, ...data.items]);
+        }
 
-        if (data.length < PAGE_SIZE) setHasMore(false);
+        // usar meta del backend
+        setHasMore(data.meta.hasNextPage);
       } catch {
         // noop
       } finally {
@@ -75,7 +91,8 @@ export default function NewsListSection({ category }: { category?: string }) {
     return () => {
       cancelled = true;
     };
-  }, [category, page, articles.length]);
+    // ya no dependemos de articles.length para evitar dobles fetch
+  }, [category, page]);
 
   const filteredArticles = useMemo(() => {
     if (!search.trim()) return articles;
@@ -93,24 +110,30 @@ export default function NewsListSection({ category }: { category?: string }) {
     year: "numeric",
   });
 
-  if (loading && articles.length === 0) {
-    return (
-      <section style={{ padding: 24 }}>
-        <p style={{ color: "#6b7280" }}>Cargando...</p>
-      </section>
-    );
-  }
-
   return (
-    <section style={{ maxWidth: 1200, margin: "0 auto" }}>
-      {/* Banda negra */}
+    <section
+      style={{
+        maxWidth: 1120,
+        margin: "32px auto 64px",
+        padding: 28,
+        borderRadius: 32,
+        background:
+          "radial-gradient(140% 140% at 0% 0%, #e5e7eb 0%, #f9fafb 45%, #ffffff 100%)",
+        boxShadow: "0 40px 90px rgba(15,23,42,0.25)",
+        border: "1px solid #e5e7eb",
+      }}
+    >
+      {/* Banda superior */}
       <div
         style={{
           marginBottom: 24,
-          marginTop: 8,
-          backgroundColor: "#000",
-          color: "#fff",
-          padding: "16px 24px",
+          marginTop: 4,
+          borderRadius: 18,
+          background:
+            "linear-gradient(90deg,#020617 0%,#0f172a 40%,#111827 100%)",
+          color: "#f9fafb",
+          padding: "14px 22px",
+          boxShadow: "0 20px 40px rgba(15,23,42,0.65)",
         }}
       >
         <div
@@ -123,7 +146,7 @@ export default function NewsListSection({ category }: { category?: string }) {
         >
           <h2
             style={{
-              fontSize: 28,
+              fontSize: 26,
               fontWeight: 700,
               letterSpacing: "-0.03em",
             }}
@@ -157,6 +180,7 @@ export default function NewsListSection({ category }: { category?: string }) {
             borderRadius: 999,
             border: "1px solid #d1d5db",
             fontSize: 14,
+            boxShadow: "0 6px 18px rgba(148,163,184,0.4)",
           }}
         />
       </div>
@@ -194,11 +218,11 @@ export default function NewsListSection({ category }: { category?: string }) {
               <li
                 key={a.id}
                 style={{
-                  borderRadius: 12,
-                  padding: 24,
-                  backgroundColor: "#f9fafb",
+                  borderRadius: 18,
+                  padding: 22,
+                  backgroundColor: "#ffffff",
                   color: "#111827",
-                  boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)",
+                  boxShadow: "0 18px 40px -18px rgba(15,23,42,0.35)",
                   border: "1px solid #e5e7eb",
                 }}
               >
@@ -244,7 +268,7 @@ export default function NewsListSection({ category }: { category?: string }) {
                       color: "#4b5563",
                       fontSize: 14,
                       marginTop: 8,
-                      lineHeight: 1.4,
+                      lineHeight: 1.5,
                     }}
                   >
                     {a.summary}
@@ -303,11 +327,11 @@ export default function NewsListSection({ category }: { category?: string }) {
         >
           <section
             style={{
-              borderRadius: 12,
+              borderRadius: 18,
               padding: 16,
-              backgroundColor: "#fff",
+              backgroundColor: "#ffffff",
               border: "1px solid #e5e7eb",
-              boxShadow: "0 10px 15px -3px rgba(0,0,0,0.08)",
+              boxShadow: "0 18px 40px -18px rgba(15,23,42,0.35)",
             }}
           >
             <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>

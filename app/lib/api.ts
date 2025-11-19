@@ -1,4 +1,3 @@
-// app/lib/api.ts
 import type { ArticleListItem, ArticleFull } from "../types/article";
 
 /**
@@ -44,9 +43,7 @@ export function getPublicUrl(pathOrUrl: string): string {
     return pathOrUrl;
   }
 
-  const cleanPath = pathOrUrl.startsWith("/")
-    ? pathOrUrl
-    : `/${pathOrUrl}`;
+  const cleanPath = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
 
   return `${API_BASE}${cleanPath}`;
 }
@@ -57,7 +54,7 @@ export function getPublicUrl(pathOrUrl: string): string {
 export async function getLatestArticles(
   page = 1,
   limit = 10,
-  category?: string
+  category?: string,
 ): Promise<ArticleListItem[]> {
   const params = new URLSearchParams();
   params.set("page", String(page));
@@ -82,7 +79,7 @@ export async function getLatestArticles(
  * Detalle por slug
  */
 export async function getArticleBySlug(
-  slug: string
+  slug: string,
 ): Promise<ArticleFull | null> {
   const res = await fetch(buildApiUrl(`/articles/${slug}`), {
     cache: "no-store",
@@ -94,7 +91,7 @@ export async function getArticleBySlug(
 
   if (!res.ok) {
     throw new Error(
-      `failed to fetch /articles/:slug (status ${res.status})`
+      `failed to fetch /articles/:slug (status ${res.status})`,
     );
   }
 
@@ -112,8 +109,8 @@ export interface UploadImageResponse {
 }
 
 /**
- * Sube una imagen al backend Nest y devuelve la URL pública absoluta
- * (ej: "http://localhost:5001/uploads/archivo.png").
+ * Sube una imagen al backend Nest (vía NEXT /api/uploads/image)
+ * y devuelve la URL pública absoluta para usar en <img src="...">
  *
  * IMPORTANTE: usar solo desde componentes "use client" (recibe un File del browser).
  */
@@ -121,23 +118,35 @@ export async function uploadImage(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("image", file);
 
-  const res = await fetch(buildApiUrl("/internal/uploads/image"), {
+  // OJO: hablamos con el route interno de Next,
+  // no directo al backend Nest.
+  const res = await fetch("/api/uploads/image", {
     method: "POST",
     body: formData,
-    // credentials: "include", // descomentá si después usás cookies
   });
 
+  const text = await res.text().catch(() => "");
+
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Error al subir imagen (${res.status}): ${text}`);
+    throw new Error(
+      `Error al subir imagen (${res.status}): ${text || "sin detalle"}`,
+    );
   }
 
-  const data = (await res.json()) as UploadImageResponse;
+  let data: Partial<UploadImageResponse> = {};
+  if (text) {
+    try {
+      data = JSON.parse(text) as Partial<UploadImageResponse>;
+    } catch {
+      // si algún día cambiamos el shape y no es JSON, data queda vacío
+    }
+  }
 
-  if (!data.success || !data.url) {
-    throw new Error("El backend devolvió una respuesta inválida al subir la imagen");
+  const rawUrl = data.url;
+  if (!rawUrl) {
+    throw new Error("El backend no devolvió URL de imagen");
   }
 
   // URL absoluta para usar directo en <img src=...>
-  return getPublicUrl(data.url);
+  return getPublicUrl(rawUrl);
 }

@@ -1,4 +1,3 @@
-// app/components/navbar/Navbar.tsx
 "use client";
 
 import Link from "next/link";
@@ -116,14 +115,7 @@ export default function Navbar() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => go("/admin/articles/new")}
-                  style={dropdownItemStyle}
-                >
-                  Publicar nota manual
-                </button>
-                <button
-                  type="button"
-                  onClick={() => go("/admin/manual")}
+                  onClick={() => go("/admin/from-image-ai")}
                   style={dropdownItemStyle}
                 >
                   Publicar desde imagen (IA)

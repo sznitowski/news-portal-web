@@ -14,7 +14,7 @@ type ArticleDetail = {
   bodyHtml: string | null;
   category: string | null;
   ideology: string | null;
-  sourceIdeology?: string | null; // opcional, por si lo querés usar después
+  sourceIdeology?: string | null;
   publishedAt: string | null;
 };
 
@@ -29,54 +29,59 @@ type ArticleListItem = {
   publishedAt: string | null;
 };
 
-const cardStyle: CSSProperties = {
-  borderRadius: 18,
-  backgroundColor: "#f9fafb",
-  padding: 24,
-  boxShadow: "0 22px 45px -22px rgba(15,23,42,0.45)",
+const mainCard: CSSProperties = {
+  borderRadius: 28,
+  padding: 32,
+  background:
+    "radial-gradient(circle at 0% 0%, rgba(56,189,248,0.10), transparent 55%), #020617",
+  color: "#e5e7eb",
+  boxShadow: "0 40px 80px rgba(15,23,42,0.9)",
 };
 
-const asideCardStyle: CSSProperties = {
-  borderRadius: 18,
-  backgroundColor: "#f9fafb",
-  padding: 16,
-  boxShadow: "0 18px 35px -20px rgba(15,23,42,0.35)",
+const asideCard: CSSProperties = {
+  borderRadius: 20,
+  padding: 18,
+  backgroundColor: "#020617",
+  border: "1px solid rgba(148,163,184,0.25)",
+  boxShadow: "0 24px 60px rgba(15,23,42,0.7)",
 };
 
-// Mostrar ideología solo cuando sea política y no sea neutral
-function shouldShowIdeology(
-  category: string | null,
-  ideology: string | null
-): boolean {
+const metaPill: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "4px 10px",
+  borderRadius: 999,
+  fontSize: 11,
+  letterSpacing: "0.14em",
+  textTransform: "uppercase",
+  backgroundColor: "rgba(15,23,42,0.8)",
+  border: "1px solid rgba(148,163,184,0.6)",
+  color: "#e5e7eb",
+};
+
+// Mostrar ideología sólo cuando sea política y no neutral
+function shouldShowIdeology(category: string | null, ideology: string | null) {
   if (!category || !ideology) return false;
   const cat = category.toLowerCase();
   const ide = ideology.toLowerCase();
-
-  if (ide === "neutral") return false;
   if (cat !== "politica") return false;
-
+  if (ide === "neutral") return false;
   return true;
 }
 
 export default async function ArticlePage({
   params,
 }: {
-  // 👈 importante: Promise
   params: Promise<{ slug: string }>;
 }) {
-  // 👈 importante: await
   const { slug } = await params;
 
   // --- detalle del artículo ---
   const detailUrl = buildApiUrl(`/articles/${encodeURIComponent(slug)}`);
   const detailRes = await fetch(detailUrl, { cache: "no-store" });
 
-  if (detailRes.status === 404) {
-    notFound();
-  }
-  if (!detailRes.ok) {
-    throw new Error("Error al cargar el artículo");
-  }
+  if (detailRes.status === 404) notFound();
+  if (!detailRes.ok) throw new Error("Error al cargar el artículo");
 
   const article: ArticleDetail = await detailRes.json();
 
@@ -104,137 +109,194 @@ export default async function ArticlePage({
   return (
     <main
       style={{
-        padding: "32px 24px 64px",
-        maxWidth: 1200,
-        margin: "0 auto",
+        minHeight: "100vh",
+        background:
+          "radial-gradient(circle at top, #0f172a, #020617 55%, #020617 100%)",
+        padding: "40px 24px 72px",
       }}
     >
-      {/* volver a portada */}
-      <div style={{ marginBottom: 16 }}>
-        <Link
-          href="/"
+      <div style={{ maxWidth: 1120, margin: "0 auto" }}>
+        {/* Volver */}
+        <div style={{ marginBottom: 16 }}>
+          <Link
+            href="/"
+            style={{
+              fontSize: 13,
+              color: "#cbd5f5",
+              textDecoration: "none",
+            }}
+          >
+            ← Volver a la portada
+          </Link>
+        </div>
+
+        {/* Cinta superior tipo etiqueta */}
+        <div
           style={{
-            fontSize: 14,
-            color: "#e5e7eb",
-            textDecoration: "none",
+            marginBottom: 20,
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 16,
+            alignItems: "center",
           }}
         >
-          ← Volver a la portada
-        </Link>
-      </div>
-
-      {/* barra negra con meta */}
-      <section
-        style={{
-          backgroundColor: "#020617",
-          color: "#e5e7eb",
-          padding: "10px 16px",
-          fontSize: 12,
-          letterSpacing: "0.09em",
-          textTransform: "uppercase",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 24,
-        }}
-      >
-        <span>
-          {categoryLabel}
-          {showIdeology && (
-            <>
-              {" · "}
-              <span>({article.ideology})</span>
-            </>
-          )}
-        </span>
-        {publishedAtLabel && <span>{publishedAtLabel}</span>}
-      </section>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 3fr) minmax(0, 1.8fr)",
-          gap: 24,
-        }}
-      >
-        {/* columna principal */}
-        <article style={cardStyle}>
-          <h1
-            style={{
-              fontSize: 32,
-              lineHeight: 1.2,
-              fontWeight: 700,
-              marginBottom: 16,
-            }}
-          >
-            {article.title}
-          </h1>
-
-          {article.summary && (
-            <p
-              style={{
-                fontSize: 16,
-                color: "#4b5563",
-                marginBottom: 24,
-              }}
-            >
-              {article.summary}
-            </p>
-          )}
-
-          <div
-            style={{
-              fontSize: 15,
-              lineHeight: 1.7,
-              color: "#111827",
-            }}
-            dangerouslySetInnerHTML={{ __html: article.bodyHtml ?? "" }}
-          />
-
-          <p
-            style={{
-              marginTop: 24,
-              fontSize: 13,
-              color: "#6b7280",
-              borderTop: "1px solid #e5e7eb",
-              paddingTop: 12,
-            }}
-          >
-            {publishedAtLabel && (
-              <>
-                Publicado: {publishedAtLabel}
-                {" · "}
-              </>
-            )}
-            <span
-              style={{
-                fontStyle: "italic",
-                color: "#9ca3af",
-              }}
-            >
-              Slug: {article.slug}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={metaPill}>
+              {categoryLabel}
+              {showIdeology && (
+                <>
+                  {" · "}
+                  {article.ideology?.toUpperCase()}
+                </>
+              )}
             </span>
-          </p>
-        </article>
+          </div>
 
-        {/* columna lateral */}
-        <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Más sobre la categoría */}
-          <div style={asideCardStyle}>
-            <h2
+          {publishedAtLabel && (
+            <div
               style={{
-                fontSize: 16,
-                fontWeight: 600,
-                marginBottom: 8,
+                fontSize: 12,
+                color: "#9ca3af",
+                textTransform: "uppercase",
+                letterSpacing: "0.12em",
               }}
             >
-              Más sobre {article.category?.toLowerCase() ?? "esta categoría"}
-            </h2>
-            {moreArticles.length === 0 ? (
-              <p style={{ fontSize: 14, color: "#6b7280" }}>
-                No hay más artículos en esta categoría.
-              </p>
-            ) : (
+              {publishedAtLabel}
+            </div>
+          )}
+        </div>
+
+        {/* Grid principal */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 3fr) minmax(0, 1.6fr)",
+            gap: 24,
+          }}
+        >
+          {/* Columna principal */}
+          <article style={mainCard}>
+            <header style={{ marginBottom: 20 }}>
+              <h1
+                style={{
+                  fontSize: 32,
+                  lineHeight: 1.15,
+                  fontWeight: 700,
+                  marginBottom: 10,
+                }}
+              >
+                {article.title}
+              </h1>
+
+              {article.summary && (
+                <p
+                  style={{
+                    fontSize: 15,
+                    color: "#cbd5f5",
+                    maxWidth: 640,
+                  }}
+                >
+                  {article.summary}
+                </p>
+              )}
+            </header>
+
+            <div
+              style={{
+                fontSize: 15,
+                lineHeight: 1.7,
+                color: "#e5e7eb",
+              }}
+              dangerouslySetInnerHTML={{
+                __html: article.bodyHtml ?? "",
+              }}
+            />
+
+            <footer
+              style={{
+                marginTop: 28,
+                paddingTop: 16,
+                borderTop: "1px solid rgba(148,163,184,0.4)",
+                fontSize: 12,
+                color: "#9ca3af",
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 16,
+                flexWrap: "wrap",
+              }}
+            >
+              <span>
+                {publishedAtLabel && (
+                  <>
+                    Publicado: {publishedAtLabel}
+                    {" · "}
+                  </>
+                )}
+                Slug: <span style={{ fontStyle: "italic" }}>{article.slug}</span>
+              </span>
+            </footer>
+          </article>
+
+          {/* Columna lateral */}
+          <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Más sobre la categoría */}
+            <div style={asideCard}>
+              <h2
+                style={{
+                  fontSize: 15,
+                  fontWeight: 600,
+                  marginBottom: 10,
+                  color: "#e5e7eb",
+                }}
+              >
+                Más sobre{" "}
+                {article.category?.toLowerCase() ?? "esta categoría"}
+              </h2>
+
+              {moreArticles.length === 0 ? (
+                <p style={{ fontSize: 13, color: "#9ca3af" }}>
+                  No hay más artículos en esta categoría.
+                </p>
+              ) : (
+                <ul
+                  style={{
+                    listStyle: "none",
+                    padding: 0,
+                    margin: 0,
+                    display: "grid",
+                    gap: 8,
+                  }}
+                >
+                  {moreArticles.map((a) => (
+                    <li key={a.id}>
+                      <Link
+                        href={`/article/${a.slug}`}
+                        style={{
+                          fontSize: 13,
+                          color: "#bfdbfe",
+                          textDecoration: "none",
+                        }}
+                      >
+                        {a.title}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Titulares rápidos */}
+            <div style={asideCard}>
+              <h2
+                style={{
+                  fontSize: 15,
+                  fontWeight: 600,
+                  marginBottom: 10,
+                  color: "#e5e7eb",
+                }}
+              >
+                Titulares rápidos
+              </h2>
               <ul
                 style={{
                   listStyle: "none",
@@ -244,71 +306,44 @@ export default async function ArticlePage({
                   gap: 8,
                 }}
               >
-                {moreArticles.map((a) => (
-                  <li key={a.id}>
+                {moreArticles.map((a, idx) => (
+                  <li key={a.id} style={{ fontSize: 13 }}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        minWidth: 18,
+                        marginRight: 4,
+                        color: "#6b7280",
+                      }}
+                    >
+                      {idx + 1}.
+                    </span>
                     <Link
                       href={`/article/${a.slug}`}
                       style={{
-                        fontSize: 14,
-                        color: "#1d4ed8",
+                        color: "#e5e7eb",
                         textDecoration: "none",
                       }}
                     >
                       {a.title}
                     </Link>
+                    {a.publishedAt && (
+                      <div
+                        style={{
+                          color: "#9ca3af",
+                          fontSize: 11,
+                          marginTop: 2,
+                        }}
+                      >
+                        {formatDate(a.publishedAt)}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
-            )}
-          </div>
-
-          {/* Titulares rápidos */}
-          <div style={asideCardStyle}>
-            <h2
-              style={{
-                fontSize: 16,
-                fontWeight: 600,
-                marginBottom: 12,
-              }}
-            >
-              Titulares rápidos
-            </h2>
-            <ul
-              style={{
-                padding: 0,
-                listStyle: "none",
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              {moreArticles.map((a, idx) => (
-                <li key={a.id} style={{ fontSize: 13 }}>
-                  <span
-                    style={{
-                      display: "inline-block",
-                      minWidth: 18,
-                      marginRight: 4,
-                      color: "#9ca3af",
-                    }}
-                  >
-                    {idx + 1}.
-                  </span>
-                  <Link
-                    href={`/article/${a.slug}`}
-                    style={{ color: "#111827", textDecoration: "none" }}
-                  >
-                    {a.title}
-                  </Link>
-                  {a.publishedAt && (
-                    <div style={{ color: "#9ca3af", fontSize: 12 }}>
-                      {formatDate(a.publishedAt)}
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
+            </div>
+          </section>
+        </div>
       </div>
     </main>
   );
