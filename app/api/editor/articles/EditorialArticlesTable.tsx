@@ -1,7 +1,7 @@
 // app/api/editor/articles/EditorialArticlesTable.tsx
 "use client";
-import React from "react";     
-import { useEffect, useState } from "react";
+
+import React, { useEffect, useState } from "react";
 
 type EditorialStatus = "draft" | "published" | "archived";
 
@@ -42,7 +42,7 @@ function formatDate(value: string | null) {
 export default function EditorialArticlesTable() {
   const [articles, setArticles] = useState<EditorialArticle[]>([]);
   const [statusFilter, setStatusFilter] = useState<"all" | EditorialStatus>(
-    "all",
+    "all"
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,12 +67,25 @@ export default function EditorialArticlesTable() {
       if (!res.ok) {
         const body = await res.text();
         throw new Error(
-          `Error ${res.status} al cargar artículos: ${body.slice(0, 200)}`,
+          `Error ${res.status} al cargar artículos: ${body.slice(0, 200)}`
         );
       }
 
-      const data = (await res.json()) as EditorialArticle[];
-      setArticles(data);
+      const raw = await res.json();
+
+      // 🔑 Siempre garantizamos un array
+      let list: EditorialArticle[] = [];
+      if (Array.isArray(raw)) {
+        list = raw;
+      } else if (Array.isArray(raw.items)) {
+        list = raw.items;
+      } else if (Array.isArray(raw.data)) {
+        list = raw.data;
+      } else {
+        list = [];
+      }
+
+      setArticles(list);
     } catch (e: any) {
       setError(e?.message ?? "Error desconocido");
     } finally {
@@ -87,7 +100,7 @@ export default function EditorialArticlesTable() {
 
   async function handleAction(
     id: number,
-    action: "publish" | "unpublish",
+    action: "publish" | "unpublish"
   ): Promise<void> {
     setLoading(true);
     setError(null);
@@ -104,15 +117,14 @@ export default function EditorialArticlesTable() {
       if (!res.ok) {
         const body = await res.text();
         throw new Error(
-          `Error ${res.status} al ${action}: ${body.slice(0, 200)}`,
+          `Error ${res.status} al ${action}: ${body.slice(0, 200)}`
         );
       }
 
       const updated = (await res.json()) as EditorialArticle;
 
-      // Actualizar la fila en memoria
       setArticles((prev) =>
-        prev.map((a) => (a.id === updated.id ? updated : a)),
+        prev.map((a) => (a.id === updated.id ? updated : a))
       );
     } catch (e: any) {
       setError(e?.message ?? "Error desconocido");
@@ -223,9 +235,9 @@ export default function EditorialArticlesTable() {
                         style={{
                           fontSize: 12,
                           color: "#aaa",
-                          maxWidth: 500,
-                          whiteSpace: "nowrap",
-                          textOverflow: "ellipsis",
+                          // antes: maxWidth: 500, whiteSpace: "nowrap"
+                          maxWidth: 260,
+                          whiteSpace: "normal",
                           overflow: "hidden",
                         }}
                       >

@@ -5,7 +5,7 @@ import EditorialArticlesTable from "../../api/editor/articles/EditorialArticlesT
 
 export default function AdminEditorPage() {
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10">
+    <main className="mx-auto max-w-6xl px-4 py-10">
       <div className="relative overflow-hidden rounded-3xl border border-slate-800/80 bg-slate-950/80 text-slate-50 shadow-[0_40px_90px_rgba(0,0,0,0.75)]">
         <div className="pointer-events-none absolute inset-0 opacity-70 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(16,185,129,0.22),transparent_60%)]" />
 
