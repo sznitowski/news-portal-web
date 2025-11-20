@@ -1,127 +1,372 @@
+// app/components/ArticleListClient.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import Loader from "./ui/Loader";
-import ErrorMessage from "./ui/ErrorMessage";
-import EmptyState from "./ui/EmptyState";
 import Link from "next/link";
-import { ArticleListItem } from "../types/article";
+import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5001";
+type PublicArticle = {
+  id: number;
+  slug: string;
+  title: string;
+  summary: string | null;
+  category: string;
+  ideology: string | null;
+  sourceIdeology: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  bodyHtml: string | null; // 👈 viene el HTML con <img ...>
 
-function formatDateHuman(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString("es-AR", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
+  // opcionales, por si en el futuro agregás columnas específicas
+  coverImageUrl?: string | null;
+  imageUrl?: string | null;
+};
 
-function shouldShowIdeology(category?: string | null, ideology?: string | null) {
-  if (!category || !ideology) return false;
-  const cat = category.toLowerCase();
-  const ide = ideology.toLowerCase();
-  if (ide === "neutral") return false;
-  if (cat !== "politica") return false;
-  return true;
-}
+type PublicArticlesMeta = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
 
-export default function ArticleListClient({ category }: { category?: string }) {
-  const [data, setData] = useState<ArticleListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+type Props = {
+  initialArticles: PublicArticle[];
+  initialMeta: PublicArticlesMeta;
+};
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        setErr(null);
+export default function ArticleListClient({
+  initialArticles,
+  initialMeta: _initialMeta,
+}: Props) {
+  const [search, setSearch] = useState("");
+  const searchParams = useSearchParams();
 
-        const url = category
-          ? `${API_BASE}/articles?category=${encodeURIComponent(category)}`
-          : `${API_BASE}/articles`;
+  const categoryParam = searchParams.get("category");
 
-        const res = await fetch(url, { cache: "no-store" });
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        const json = await res.json();
-        setData(json);
-      } catch (e: any) {
-        setErr(e.message || "Error al cargar artículos");
-      } finally {
-        setLoading(false);
-      }
-    };
+  const normalizedCategory = useMemo(() => {
+    if (!categoryParam) return null;
 
-    fetchData();
-  }, [category]);
+    const cat = categoryParam.toLowerCase();
+    const allowed = ["noticias", "politica", "economia", "internacional"];
 
-  if (loading) {
-    return <Loader label="Cargando artículos..." />;
-  }
+    if (!allowed.includes(cat)) return null;
+    return cat;
+  }, [categoryParam]);
 
-  if (err) {
-    return <ErrorMessage message={err} />;
-  }
+  const articles = useMemo(
+    () =>
+      [...initialArticles].sort((a, b) => {
+        const da = new Date(a.publishedAt ?? a.createdAt).getTime();
+        const db = new Date(b.publishedAt ?? b.createdAt).getTime();
+        return db - da;
+      }),
+    [initialArticles],
+  );
 
-  if (!data || data.length === 0) {
-    return (
-      <EmptyState message="(Todavía no hay artículos publicados en esta categoría)" />
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+
+    let base = articles;
+    if (normalizedCategory) {
+      base = base.filter(
+        (a) => a.category.toLowerCase() === normalizedCategory,
+      );
+    }
+
+    if (!term) return base;
+
+    return base.filter((a) =>
+      a.title.toLowerCase().includes(term),
     );
-  }
+  }, [articles, search, normalizedCategory]);
+
+  const hero = filtered[0];
+  const rest = filtered.slice(1);
+  const timeline = filtered.slice(0, 12);
 
   return (
-    <div className="space-y-4">
-      {data.map((a) => (
-        <article
-          key={a.id}
-          className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-4 hover:bg-neutral-800/60 transition"
-        >
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-400 mb-2">
-            <span className="uppercase tracking-wide text-amber-400 font-semibold">
-              {a.category || "sin categoría"}
-            </span>
-            <span>•</span>
-            <span>{formatDateHuman(a.publishedAt)}</span>
-            {shouldShowIdeology(a.category, a.ideology) && (
-              <>
-                <span>•</span>
-                <span className="uppercase tracking-wide text-violet-300 font-semibold">
-                  {a.ideology}
-                </span>
-              </>
+    <section className="rounded-[32px] bg-slate-50 px-4 py-6 shadow-[0_18px_40px_rgba(15,23,42,0.18)] ring-1 ring-slate-200 md:px-8 md:py-8">
+      {/* Encabezado + buscador */}
+      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-50">
+            Últimas noticias
+          </div>
+          <p className="mt-3 max-w-xl text-xs md:text-sm text-slate-600">
+            Últimas publicaciones del portal, ordenadas por fecha de publicación.
+            Las notas deben estar{" "}
+            <span className="font-semibold">publicadas</span> en el panel
+            editorial para aparecer acá.
+          </p>
+        </div>
+
+        <div className="w-full max-w-sm">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por título..."
+            className="h-11 w-full rounded-full border border-slate-300 bg-white px-4 text-sm text-slate-900 shadow-[0_10px_30px_rgba(15,23,42,0.12)] outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-300/60"
+          />
+        </div>
+      </header>
+
+      {/* Contenido principal: hero + lista + historial */}
+      {filtered.length === 0 ? (
+        <p className="mt-8 text-sm text-slate-500">
+          No hay artículos para mostrar. Publicá alguna nota desde el panel
+          editorial.
+        </p>
+      ) : (
+        <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,2.1fr)_minmax(0,1.2fr)]">
+          {/* Columna izquierda: hero + notas comunes */}
+          <div className="space-y-6">
+            {hero && <HeroArticle article={hero} />}
+
+            {rest.length > 0 && (
+              <div className="space-y-4">
+                {rest.slice(0, 8).map((a) => (
+                  <CommonArticleRow key={a.id} article={a} />
+                ))}
+              </div>
             )}
           </div>
 
-          <h2 className="text-lg font-semibold text-white leading-snug">
-            <Link
-              href={`/article/${a.slug}`}
-              className="hover:underline text-white"
-            >
-              {a.title}
-            </Link>
-          </h2>
+          {/* Columna derecha: historial / timeline */}
+          <LatestTimeline articles={timeline} />
+        </div>
+      )}
+    </section>
+  );
+}
 
-          {a.summary ? (
-            <p className="mt-2 text-sm text-neutral-300">{a.summary}</p>
+// =============================
+// Subcomponentes
+// =============================
+
+type HeroProps = {
+  article: PublicArticle;
+};
+
+function HeroArticle({ article }: HeroProps) {
+  const when = getDateParts(article.publishedAt ?? article.createdAt);
+
+  // 1) coverImageUrl
+  // 2) imageUrl
+  // 3) primera <img> encontrada en bodyHtml
+  const mainImageUrl =
+    article.coverImageUrl ||
+    article.imageUrl ||
+    extractFirstImageFromHtml(article.bodyHtml) ||
+    null;
+
+  return (
+    <article className="overflow-hidden rounded-[28px] bg-white shadow-[0_22px_55px_rgba(15,23,42,0.18)] ring-1 ring-slate-200">
+      <div className="grid gap-0 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)]">
+        {/* Imagen principal */}
+        <div className="relative min-h-[220px]">
+          {mainImageUrl ? (
+            <>
+              <img
+                src={mainImageUrl}
+                alt={article.title}
+                className="h-full w-full object-cover"
+              />
+              {/* degradado suave para que el texto del badge se lea */}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+            </>
           ) : (
-            <p className="mt-2 text-sm text-neutral-500 italic">
-              (sin resumen)
-            </p>
+            <div className="h-full w-full bg-gradient-to-br from-slate-900 via-slate-800 to-sky-700" />
           )}
 
-          <div className="mt-3">
-            <Link
-              href={`/article/${a.slug}`}
-              className="text-sm text-blue-400 hover:text-blue-300 hover:underline"
-            >
-              Leer nota completa →
-            </Link>
+          {/* Badge + aclaración abajo a la izquierda */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-start gap-2 p-4 text-xs text-slate-100 md:p-5">
+            <div className="inline-flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]">
+              <svg
+                className="h-3 w-3"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  d="M9 4.5L7.5 6H5A2 2 0 003 8v8a2 2 0 002 2h12a2 2 0 002-2V8a2 2 0 00-2-2h-2.5L14 4.5z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="3"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+              </svg>
+              <span>Imagen de la nota</span>
+            </div>
+
+            {!mainImageUrl && (
+              <p className="max-w-xs text-[11px] text-slate-200/85">
+                Más adelante se va a mostrar acá la imagen real de la nota.
+              </p>
+            )}
           </div>
-        </article>
-      ))}
-    </div>
+        </div>
+
+        {/* Texto */}
+        <div className="flex flex-col gap-3 p-5 md:p-6">
+          <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-500">
+            <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-50">
+              Destacado
+            </span>
+            <span>{article.category}</span>
+            {article.ideology && (
+              <span className="rounded-full border border-slate-300 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                {article.ideology}
+              </span>
+            )}
+          </div>
+
+          <Link
+            href={`/article/${article.slug}`}
+            className="text-xl font-semibold leading-snug text-slate-900 hover:text-sky-700 md:text-2xl"
+          >
+            {article.title}
+          </Link>
+
+          {article.summary && (
+            <p className="text-sm text-slate-600">{article.summary}</p>
+          )}
+
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+            <span>
+              {when.date} · {when.time}
+            </span>
+            <span className="h-1 w-1 rounded-full bg-slate-400" />
+            <span>ID {article.id}</span>
+          </div>
+        </div>
+      </div>
+    </article>
   );
+}
+
+type RowProps = {
+  article: PublicArticle;
+};
+
+function CommonArticleRow({ article }: RowProps) {
+  const when = getDateParts(article.publishedAt ?? article.createdAt);
+
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-[0_12px_35px_rgba(15,23,42,0.14)] transition hover:border-sky-300/80 hover:shadow-[0_18px_45px_rgba(15,23,42,0.18)]">
+      <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+          <span>{article.category}</span>
+          {article.ideology && (
+            <>
+              <span className="h-1 w-1 rounded-full bg-slate-400" />
+              <span>{article.ideology}</span>
+            </>
+          )}
+        </div>
+
+        <Link
+          href={`/article/${article.slug}`}
+          className="mt-1 text-sm font-semibold leading-snug text-slate-900 hover:text-sky-700"
+        >
+          {article.title}
+        </Link>
+
+        {article.summary && (
+          <p className="mt-1 line-clamp-2 text-xs text-slate-600">
+            {article.summary}
+          </p>
+        )}
+
+        <div className="mt-1 text-[11px] text-slate-500">
+          {when.date} · {when.time}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+type TimelineProps = {
+  articles: PublicArticle[];
+};
+
+function LatestTimeline({ articles }: TimelineProps) {
+  return (
+    <aside className="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.22)]">
+      <h2 className="text-sm font-semibold text-slate-900">
+        Historial reciente
+      </h2>
+      <p className="mt-1 text-[11px] text-slate-500">
+        Últimos titulares con horario. Ideal para un vistazo rápido.
+      </p>
+
+      <div className="mt-4 space-y-4">
+        {articles.map((a) => {
+          const when = getDateParts(a.publishedAt ?? a.createdAt);
+
+          return (
+            <div
+              key={a.id}
+              className="relative border-l border-slate-200 pl-4"
+            >
+              <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-sky-500" />
+              <Link
+                href={`/article/${a.slug}`}
+                className="block text-xs font-semibold leading-snug text-slate-900 hover:text-sky-700"
+              >
+                {a.title}
+              </Link>
+              <div className="mt-0.5 text-[10px] text-slate-500">
+                {when.date} · {when.time}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </aside>
+  );
+}
+
+// =============================
+// Helpers
+// =============================
+
+function getDateParts(value: string | null) {
+  if (!value) {
+    return { date: "-", time: "" };
+  }
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    return { date: value, time: "" };
+  }
+
+  const date = d.toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
+  const time = d.toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return { date, time };
+}
+
+// Saca el src de la primera <img ...> que encuentre en el HTML
+function extractFirstImageFromHtml(
+  html: string | null | undefined,
+): string | null {
+  if (!html) return null;
+  const match = html.match(/<img[^>]+src="([^">]+)"/i);
+  return match ? match[1] : null;
 }

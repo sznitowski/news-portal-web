@@ -29,6 +29,11 @@ type ArticleListItem = {
   publishedAt: string | null;
 };
 
+type ArticlesResponse = {
+  items?: ArticleListItem[];
+  meta?: unknown;
+};
+
 const mainCard: CSSProperties = {
   borderRadius: 28,
   padding: 32,
@@ -72,8 +77,10 @@ function shouldShowIdeology(category: string | null, ideology: string | null) {
 export default async function ArticlePage({
   params,
 }: {
+  // 👈 en Next 16 params es un Promise
   params: Promise<{ slug: string }>;
 }) {
+  // 👇 lo resolvemos antes de usarlo
   const { slug } = await params;
 
   // --- detalle del artículo ---
@@ -95,7 +102,15 @@ export default async function ArticlePage({
 
   let moreArticles: ArticleListItem[] = [];
   if (moreRes.ok) {
-    const list: ArticleListItem[] = await moreRes.json();
+    const json = (await moreRes.json()) as ArticlesResponse | ArticleListItem[];
+
+    // Soporta tanto array "pelado" como { items, meta }
+    const list: ArticleListItem[] = Array.isArray(json)
+      ? json
+      : Array.isArray(json.items)
+      ? json.items!
+      : [];
+
     moreArticles = list.filter((a) => a.slug !== article.slug);
   }
 
