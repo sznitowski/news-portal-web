@@ -1,7 +1,6 @@
 // app/article/[slug]/page.tsx
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { CSSProperties } from "react";
 
 import { buildApiUrl } from "../../lib/api";
 import { formatDate } from "../../lib/formatDate";
@@ -34,36 +33,6 @@ type ArticlesResponse = {
   meta?: unknown;
 };
 
-const mainCard: CSSProperties = {
-  borderRadius: 28,
-  padding: 32,
-  background:
-    "radial-gradient(circle at 0% 0%, rgba(56,189,248,0.10), transparent 55%), #020617",
-  color: "#e5e7eb",
-  boxShadow: "0 40px 80px rgba(15,23,42,0.9)",
-};
-
-const asideCard: CSSProperties = {
-  borderRadius: 20,
-  padding: 18,
-  backgroundColor: "#020617",
-  border: "1px solid rgba(148,163,184,0.25)",
-  boxShadow: "0 24px 60px rgba(15,23,42,0.7)",
-};
-
-const metaPill: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "4px 10px",
-  borderRadius: 999,
-  fontSize: 11,
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-  backgroundColor: "rgba(15,23,42,0.8)",
-  border: "1px solid rgba(148,163,184,0.6)",
-  color: "#e5e7eb",
-};
-
 // Mostrar ideología sólo cuando sea política y no neutral
 function shouldShowIdeology(category: string | null, ideology: string | null) {
   if (!category || !ideology) return false;
@@ -77,10 +46,9 @@ function shouldShowIdeology(category: string | null, ideology: string | null) {
 export default async function ArticlePage({
   params,
 }: {
-  // 👈 en Next 16 params es un Promise
+  // Next 16: params es un Promise
   params: Promise<{ slug: string }>;
 }) {
-  // 👇 lo resolvemos antes de usarlo
   const { slug } = await params;
 
   // --- detalle del artículo ---
@@ -94,9 +62,9 @@ export default async function ArticlePage({
 
   // --- más artículos de la misma categoría ---
   const moreUrl = buildApiUrl(
-    `/articles?limit=4&page=1&category=${encodeURIComponent(
-      article.category ?? ""
-    )}`
+    `/articles?limit=8&page=1&category=${encodeURIComponent(
+      article.category ?? "",
+    )}`,
   );
   const moreRes = await fetch(moreUrl, { cache: "no-store" });
 
@@ -104,7 +72,6 @@ export default async function ArticlePage({
   if (moreRes.ok) {
     const json = (await moreRes.json()) as ArticlesResponse | ArticleListItem[];
 
-    // Soporta tanto array "pelado" como { items, meta }
     const list: ArticleListItem[] = Array.isArray(json)
       ? json
       : Array.isArray(json.items)
@@ -122,178 +89,113 @@ export default async function ArticlePage({
   const showIdeology = shouldShowIdeology(article.category, article.ideology);
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background:
-          "radial-gradient(circle at top, #0f172a, #020617 55%, #020617 100%)",
-        padding: "40px 24px 72px",
-      }}
-    >
-      <div style={{ maxWidth: 1120, margin: "0 auto" }}>
+    <main className="min-h-screen bg-slate-50 px-4 py-8 md:px-6 md:py-10">
+      <div className="mx-auto max-w-5xl lg:max-w-6xl">
         {/* Volver */}
-        <div style={{ marginBottom: 16 }}>
+        <div className="mb-4">
           <Link
             href="/"
-            style={{
-              fontSize: 13,
-              color: "#cbd5f5",
-              textDecoration: "none",
-            }}
+            className="text-sm text-slate-500 hover:text-slate-800"
           >
             ← Volver a la portada
           </Link>
         </div>
 
-        {/* Cinta superior tipo etiqueta */}
-        <div
-          style={{
-            marginBottom: 20,
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 16,
-            alignItems: "center",
-          }}
-        >
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span style={metaPill}>
+        {/* Cinta superior */}
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-50 shadow-[0_10px_30px_rgba(15,23,42,0.35)]">
               {categoryLabel}
               {showIdeology && (
-                <>
-                  {" · "}
-                  {article.ideology?.toUpperCase()}
-                </>
+                <span className="ml-1 text-[10px] text-sky-200">
+                  · {article.ideology?.toUpperCase()}
+                </span>
               )}
             </span>
           </div>
 
           {publishedAtLabel && (
-            <div
-              style={{
-                fontSize: 12,
-                color: "#9ca3af",
-                textTransform: "uppercase",
-                letterSpacing: "0.12em",
-              }}
-            >
+            <div className="text-xs font-medium uppercase tracking-[0.15em] text-slate-500">
               {publishedAtLabel}
             </div>
           )}
         </div>
 
         {/* Grid principal */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 3fr) minmax(0, 1.6fr)",
-            gap: 24,
-          }}
-        >
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)] lg:items-start">
           {/* Columna principal */}
-          <article style={mainCard}>
-            <header style={{ marginBottom: 20 }}>
-              <h1
-                style={{
-                  fontSize: 32,
-                  lineHeight: 1.15,
-                  fontWeight: 700,
-                  marginBottom: 10,
-                }}
-              >
+          <article className="rounded-[28px] bg-white px-5 py-6 shadow-[0_22px_55px_rgba(15,23,42,0.18)] ring-1 ring-slate-200 md:px-7 md:py-7">
+            <header className="mb-4 md:mb-5">
+              <h1 className="text-2xl font-semibold leading-snug text-slate-900 md:text-3xl">
                 {article.title}
               </h1>
 
               {article.summary && (
-                <p
-                  style={{
-                    fontSize: 15,
-                    color: "#cbd5f5",
-                    maxWidth: 640,
-                  }}
-                >
+                <p className="mt-3 max-w-2xl text-sm text-slate-600 md:text-[15px]">
                   {article.summary}
                 </p>
               )}
             </header>
 
+            {/* Cuerpo de la nota */}
             <div
-              style={{
-                fontSize: 15,
-                lineHeight: 1.7,
-                color: "#e5e7eb",
-              }}
+              className="article-body text-[15px] leading-relaxed text-slate-800"
               dangerouslySetInnerHTML={{
                 __html: article.bodyHtml ?? "",
               }}
             />
 
-            <footer
-              style={{
-                marginTop: 28,
-                paddingTop: 16,
-                borderTop: "1px solid rgba(148,163,184,0.4)",
-                fontSize: 12,
-                color: "#9ca3af",
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 16,
-                flexWrap: "wrap",
-              }}
-            >
-              <span>
-                {publishedAtLabel && (
-                  <>
-                    Publicado: {publishedAtLabel}
-                    {" · "}
-                  </>
-                )}
-                Slug: <span style={{ fontStyle: "italic" }}>{article.slug}</span>
-              </span>
+            <footer className="mt-6 border-t border-slate-200 pt-3 text-xs text-slate-500 md:mt-7 md:pt-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span>
+                  {publishedAtLabel && (
+                    <>
+                      Publicado: {publishedAtLabel}
+                      {" · "}
+                    </>
+                  )}
+                  Slug:{" "}
+                  <span className="italic text-slate-600">
+                    {article.slug}
+                  </span>
+                </span>
+              </div>
             </footer>
           </article>
 
           {/* Columna lateral */}
-          <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <section className="flex flex-col gap-4">
             {/* Más sobre la categoría */}
-            <div style={asideCard}>
-              <h2
-                style={{
-                  fontSize: 15,
-                  fontWeight: 600,
-                  marginBottom: 10,
-                  color: "#e5e7eb",
-                }}
-              >
+            <div className="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.16)]">
+              <h2 className="text-sm font-semibold text-slate-900">
                 Más sobre{" "}
-                {article.category?.toLowerCase() ?? "esta categoría"}
+                {article.category
+                  ? article.category.toLowerCase()
+                  : "esta categoría"}
               </h2>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Otras notas recientes en la misma temática.
+              </p>
 
               {moreArticles.length === 0 ? (
-                <p style={{ fontSize: 13, color: "#9ca3af" }}>
+                <p className="mt-3 text-xs text-slate-500">
                   No hay más artículos en esta categoría.
                 </p>
               ) : (
-                <ul
-                  style={{
-                    listStyle: "none",
-                    padding: 0,
-                    margin: 0,
-                    display: "grid",
-                    gap: 8,
-                  }}
-                >
-                  {moreArticles.map((a) => (
+                <ul className="mt-3 grid gap-2 text-xs">
+                  {moreArticles.slice(0, 5).map((a) => (
                     <li key={a.id}>
                       <Link
                         href={`/article/${a.slug}`}
-                        style={{
-                          fontSize: 13,
-                          color: "#bfdbfe",
-                          textDecoration: "none",
-                        }}
+                        className="text-slate-900 hover:text-sky-700"
                       >
                         {a.title}
                       </Link>
+                      {a.publishedAt && (
+                        <div className="text-[10px] text-slate-500">
+                          {formatDate(a.publishedAt)}
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -301,55 +203,29 @@ export default async function ArticlePage({
             </div>
 
             {/* Titulares rápidos */}
-            <div style={asideCard}>
-              <h2
-                style={{
-                  fontSize: 15,
-                  fontWeight: 600,
-                  marginBottom: 10,
-                  color: "#e5e7eb",
-                }}
-              >
+            <div className="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.20)]">
+              <h2 className="text-sm font-semibold text-slate-900">
                 Titulares rápidos
               </h2>
-              <ul
-                style={{
-                  listStyle: "none",
-                  padding: 0,
-                  margin: 0,
-                  display: "grid",
-                  gap: 8,
-                }}
-              >
-                {moreArticles.map((a, idx) => (
-                  <li key={a.id} style={{ fontSize: 13 }}>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        minWidth: 18,
-                        marginRight: 4,
-                        color: "#6b7280",
-                      }}
-                    >
-                      {idx + 1}.
-                    </span>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Vistazo relámpago a las últimas notas de esta sección.
+              </p>
+
+              <ul className="mt-4 space-y-3">
+                {moreArticles.slice(0, 8).map((a, idx) => (
+                  <li
+                    key={a.id}
+                    className="relative border-l border-slate-200 pl-4"
+                  >
+                    <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-sky-500" />
                     <Link
                       href={`/article/${a.slug}`}
-                      style={{
-                        color: "#e5e7eb",
-                        textDecoration: "none",
-                      }}
+                      className="block text-xs font-semibold leading-snug text-slate-900 hover:text-sky-700"
                     >
-                      {a.title}
+                      {idx + 1}. {a.title}
                     </Link>
                     {a.publishedAt && (
-                      <div
-                        style={{
-                          color: "#9ca3af",
-                          fontSize: 11,
-                          marginTop: 2,
-                        }}
-                      >
+                      <div className="mt-0.5 text-[10px] text-slate-500">
                         {formatDate(a.publishedAt)}
                       </div>
                     )}

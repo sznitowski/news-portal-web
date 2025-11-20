@@ -1,3 +1,4 @@
+// app/components/SiteHeader.tsx
 "use client";
 
 import Link from "next/link";
@@ -18,7 +19,7 @@ type CurrentUser = {
 } | null;
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Últimas noticias", category: null },
+  { label: "Inicio", category: null },
   { label: "Política", category: "politica" },
   { label: "Economía", category: "economia" },
   { label: "Internacional", category: "internacional" },
@@ -30,7 +31,11 @@ export default function SiteHeader() {
 
   const [user, setUser] = useState<CurrentUser>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
 
+  // ==============================
+  // Auth / usuario actual
+  // ==============================
   useEffect(() => {
     async function checkAuth() {
       try {
@@ -71,87 +76,300 @@ export default function SiteHeader() {
         window.localStorage.removeItem("news_user");
         document.cookie =
           "editor_auth=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        window.location.href = "/";
       }
-      setUser(null);
-      window.location.href = "/";
     } catch (err) {
       console.error("Error al cerrar sesión", err);
     }
   };
 
+  const goPanel = (path: string) => {
+    if (typeof window !== "undefined") {
+      window.location.href = path;
+    }
+  };
+
+  const isAdmin = !!user && user.role === "ADMIN";
+
+  // ==============================
+  // Render
+  // ==============================
   return (
-    <header
-      style={{
-        backgroundColor: "#020617",
-        color: "#e5e7eb",
-        padding: "14px 24px",
-        borderBottom: "1px solid rgba(15,23,42,0.9)",
-        boxShadow: "0 14px 40px rgba(15,23,42,0.9)",
-        position: "sticky",
-        top: 0,
-        zIndex: 40,
-      }}
-    >
+    <>
+      {/* Barra superior: botón panel / logo centrado / usuario */}
       <div
         style={{
-          maxWidth: 1120,
-          margin: "0 auto",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 28,
+          backgroundColor: "#ffffff",
+          borderBottom: "1px solid rgba(226,232,240,0.9)",
         }}
       >
-        {/* Marca izquierda */}
-        <Link
-          href="/"
+        <div
           style={{
-            display: "flex",
+            maxWidth: 1120,
+            margin: "0 auto",
+            padding: "10px 16px 6px",
+            display: "grid",
+            gridTemplateColumns: "auto 1fr auto",
             alignItems: "center",
-            gap: 10,
-            textDecoration: "none",
-            color: "inherit",
-            whiteSpace: "nowrap",
+            columnGap: 24,
           }}
         >
-          <span
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 10,
-              background:
-                "linear-gradient(135deg,#38bdf8,#6366f1,#a855f7,#22c55e)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 800,
-              fontSize: 16,
-              color: "#0b1120",
-              boxShadow: "0 10px 25px rgba(15,23,42,0.7)",
-            }}
-          >
-            Mi
-          </span>
-          <span
-            style={{
-              fontSize: 20,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            Portal de Noticias
-          </span>
-        </Link>
+          {/* IZQUIERDA: Panel editorial o Iniciar sesión */}
+          <div style={{ justifySelf: "start" }}>
+            {checkingAuth ? null : isAdmin ? (
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <button
+                  type="button"
+                  onClick={() => setPanelOpen((o) => !o)}
+                  style={{
+                    fontSize: 13,
+                    padding: "6px 18px",
+                    borderRadius: 999,
+                    border: "1px solid #111827",
+                    backgroundColor: "#111827",
+                    color: "#f9fafb",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.14em",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "0 16px 40px rgba(15,23,42,0.35)",
+                  }}
+                >
+                  PANEL EDITORIAL
+                </button>
 
-        {/* Tabs centro */}
+                {panelOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      marginTop: 8,
+                      left: 0,
+                      minWidth: 260,
+                      borderRadius: 16,
+                      border: "1px solid rgba(148,163,184,0.5)",
+                      backgroundColor: "#ffffff",
+                      boxShadow: "0 22px 55px rgba(15,23,42,0.35)",
+                      padding: 10,
+                      zIndex: 50,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => goPanel("/admin/editor")}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "8px 10px",
+                        borderRadius: 10,
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: "#020617",
+                        }}
+                      >
+                        Edición de notas
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "#6b7280",
+                        }}
+                      >
+                        Crear, editar y publicar artículos.
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => goPanel("/admin/from-image-ai")}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "8px 10px",
+                        borderRadius: 10,
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: "#020617",
+                        }}
+                      >
+                        Publicar desde imagen (IA)
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "#6b7280",
+                        }}
+                      >
+                        Subir captura y dejar que la IA sugiera la nota.
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                style={{
+                  fontSize: 13,
+                  padding: "6px 18px",
+                  borderRadius: 999,
+                  border: "1px solid #e5e7eb",
+                  textDecoration: "none",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.14em",
+                  fontWeight: 600,
+                  color: "#111827",
+                  backgroundColor: "#ffffff",
+                  boxShadow: "0 12px 30px rgba(148,163,184,0.35)",
+                }}
+              >
+                Iniciar sesión
+              </Link>
+            )}
+          </div>
+
+          {/* CENTRO: Logo + nombre del sitio, SIEMPRE CENTRADO */}
+          <div style={{ justifySelf: "center" }}>
+            <Link
+              href="/"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 12,
+                textDecoration: "none",
+                color: "#020617",
+              }}
+            >
+              <span
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 14,
+                  background:
+                    "linear-gradient(135deg,#22c55e,#22c55e,#8b5cf6,#0ea5e9)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 800,
+                  fontSize: 18,
+                  color: "#020617",
+                  boxShadow: "0 16px 40px rgba(15,23,42,0.45)",
+                }}
+              >
+                CL
+              </span>
+              <span>
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 700,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  CANALIBERTARIO
+                </div>
+                <div
+                  style={{
+                    marginTop: 2,
+                    fontSize: 11,
+                    letterSpacing: "0.26em",
+                    textTransform: "uppercase",
+                    color: "#6b7280",
+                  }}
+                >
+                  Noticias · Economía · Política
+                </div>
+              </span>
+            </Link>
+          </div>
+
+          {/* DERECHA: Usuario / Invitado + salir */}
+          <div style={{ justifySelf: "end" }}>
+            {checkingAuth ? null : !user ? (
+              <span
+                style={{
+                  fontSize: 12,
+                  letterSpacing: "0.2em",
+                  textTransform: "uppercase",
+                  color: "#9ca3af",
+                }}
+              >
+                Invitado
+              </span>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 12,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: "#4b5563",
+                  }}
+                >
+                  {user.email ?? user.name ?? "Editor"}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  style={{
+                    fontSize: 12,
+                    padding: "6px 16px",
+                    borderRadius: 999,
+                    border: "1px solid #020617",
+                    backgroundColor: "#020617",
+                    color: "#f9fafb",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.14em",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Salir
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Barra de secciones (sticky) */}
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 30,
+          backgroundColor: "#ffffff",
+          borderBottom: "1px solid rgba(226,232,240,0.9)",
+        }}
+      >
         <nav
-          aria-label="Navegación principal"
+          aria-label="Secciones"
           style={{
-            flex: 1,
+            maxWidth: 1120,
+            margin: "0 auto",
+            padding: "6px 16px 4px",
             display: "flex",
-            justifyContent: "center",
-            gap: 28,
+            gap: 32,
           }}
         >
           {NAV_ITEMS.map((item) => {
@@ -167,13 +385,14 @@ export default function SiteHeader() {
                 href={href}
                 style={{
                   position: "relative",
-                  paddingBottom: 6,
+                  padding: "8px 0 10px",
                   fontSize: 14,
-                  fontWeight: isActive ? 600 : 400,
-                  color: isActive ? "#f9fafb" : "#9ca3af",
+                  fontWeight: isActive ? 600 : 500,
+                  color: isActive ? "#111827" : "#6b7280",
                   textDecoration: "none",
-                  textTransform: "none",
-                  whiteSpace: "nowrap",
+                  borderBottom: isActive
+                    ? "2px solid transparent"
+                    : "2px solid transparent",
                 }}
               >
                 {item.label}
@@ -187,7 +406,7 @@ export default function SiteHeader() {
                       height: 2,
                       borderRadius: 999,
                       background:
-                        "linear-gradient(90deg,#38bdf8,#6366f1,#a855f7)",
+                        "linear-gradient(90deg,#22c55e,#8b5cf6,#0ea5e9)",
                     }}
                   />
                 )}
@@ -195,100 +414,7 @@ export default function SiteHeader() {
             );
           })}
         </nav>
-
-        {/* Derecha: panel editorial + login/usuario */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            minWidth: 160,
-            justifyContent: "flex-end",
-          }}
-        >
-          {/* Botón Panel editorial solo para ADMIN */}
-          {user && user.role === "ADMIN" && (
-            <Link
-              href="/admin"
-              style={{
-                fontSize: 11,
-                padding: "6px 14px",
-                borderRadius: 999,
-                border: "1px solid rgba(148,163,184,0.9)",
-                textDecoration: "none",
-                textTransform: "uppercase",
-                letterSpacing: "0.12em",
-                fontWeight: 600,
-                color: "#e5e7eb",
-                background:
-                  "radial-gradient(120% 120% at 0% 0%,#1e293b 0,#020617 60%,#020617 100%)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Panel editorial
-            </Link>
-          )}
-
-          {checkingAuth ? null : !user ? (
-            <Link
-              href="/login"
-              style={{
-                fontSize: 11,
-                padding: "6px 16px",
-                borderRadius: 999,
-                border: "1px solid rgba(148,163,184,0.9)",
-                textDecoration: "none",
-                textTransform: "uppercase",
-                letterSpacing: "0.12em",
-                fontWeight: 600,
-                color: "#e5e7eb",
-                background:
-                  "radial-gradient(120% 120% at 0% 0%,#0f172a 0,#020617 60%,#020617 100%)",
-              }}
-            >
-              Iniciar sesión
-            </Link>
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.09em",
-                  color: "#e5e7eb",
-                }}
-              >
-                {user.name ?? user.email ?? "Editor"}
-              </span>
-              <button
-                type="button"
-                onClick={handleLogout}
-                style={{
-                  fontSize: 11,
-                  padding: "4px 12px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(248,250,252,0.9)",
-                  backgroundColor: "transparent",
-                  color: "#e5e7eb",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.12em",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Salir
-              </button>
-            </div>
-          )}
-        </div>
       </div>
-    </header>
+    </>
   );
 }
