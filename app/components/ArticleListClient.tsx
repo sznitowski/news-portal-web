@@ -4,7 +4,6 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import EconomiaSection from "../sections/EconomiaSection";
 
 type PublicArticle = {
   id: number;
@@ -19,11 +18,8 @@ type PublicArticle = {
   updatedAt: string;
   bodyHtml: string | null;
 
-  // opcionales
   coverImageUrl?: string | null;
   imageUrl?: string | null;
-
-  // si más adelante guardás vistas en la API, usás esto
   viewCount?: number | null;
 };
 
@@ -35,7 +31,7 @@ type PublicArticlesMeta = {
 };
 
 type Props = {
-  initialArticles: PublicArticle[]; // 👈 ARRAY
+  initialArticles: PublicArticle[];
   initialMeta: PublicArticlesMeta;
 };
 
@@ -87,14 +83,11 @@ export default function ArticleListClient({
   const hero = filtered[0];
   const rest = filtered.slice(1);
 
-  // últimas 6 dentro del filtro actual (home o categoría)
   const latest6 = filtered.slice(0, 6);
 
-  // top 5 más vistas — si todavía no tenés viewCount, queda en placeholder
   const mostViewed5 = useMemo(() => {
     if (!initialArticles || initialArticles.length === 0) return [];
 
-    // si nunca seteaste viewCount, todos serán undefined → queda vacío
     const withViews = initialArticles.filter(
       (a) => typeof a.viewCount === "number",
     );
@@ -106,66 +99,56 @@ export default function ArticleListClient({
   }, [initialArticles]);
 
   return (
-    <div className="space-y-8">
-      {/* BLOQUE DE NOTICIAS (siempre arriba) */}
-      <section className="rounded-[32px] bg-slate-50 px-4 py-6 shadow-[0_18px_40px_rgba(15,23,42,0.18)] ring-1 ring-slate-200 md:px-8 md:py-8">
-        {/* Encabezado + buscador */}
-        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-50">
-              Últimas noticias
-            </div>
-            <p className="mt-3 max-w-xl text-xs text-slate-600 md:text-sm">
-              Últimas publicaciones del portal, ordenadas por fecha de
-              publicación. Las notas deben estar{" "}
-              <span className="font-semibold">publicadas</span> en el panel
-              editorial para aparecer acá.
-            </p>
+    <section className="rounded-[32px] bg-slate-50 px-4 py-6 shadow-[0_18px_40px_rgba(15,23,42,0.18)] ring-1 ring-slate-200 md:px-8 md:py-8">
+      {/* Encabezado + buscador */}
+      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-50">
+            Últimas noticias
           </div>
-
-          <div className="w-full max-w-sm">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por título..."
-              className="h-11 w-full rounded-full border border-slate-300 bg-white px-4 text-sm text-slate-900 shadow-[0_10px_30px_rgba(15,23,42,0.12)] outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-300/60"
-            />
-          </div>
-        </header>
-
-        {filtered.length === 0 ? (
-          <p className="mt-8 text-sm text-slate-500">
-            No hay artículos para mostrar. Publicá alguna nota desde el panel
-            editorial.
+          <p className="mt-3 max-w-xl text-xs text-slate-600 md:text-sm">
+            Últimas publicaciones del portal, ordenadas por fecha de
+            publicación. Las notas deben estar{" "}
+            <span className="font-semibold">publicadas</span> en el panel
+            editorial para aparecer acá.
           </p>
-        ) : (
-          <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,2.1fr)_minmax(0,1.2fr)]">
-            {/* Columna izquierda: hero + notas comunes */}
-            <div className="space-y-6">
-              {hero && <HeroArticle article={hero} />}
+        </div>
 
-              {rest.length > 0 && (
-                <div className="space-y-4">
-                  {rest.slice(0, 8).map((a) => (
-                    <CommonArticleRow key={a.id} article={a} />
-                  ))}
-                </div>
-              )}
-            </div>
+        <div className="w-full max-w-sm">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por título..."
+            className="h-11 w-full rounded-full border border-slate-300 bg-white px-4 text-sm text-slate-900 shadow-[0_10px_30px_rgba(15,23,42,0.12)] outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-300/60"
+          />
+        </div>
+      </header>
 
-            {/* Columna derecha: últimas 6 + más leídas */}
-            <LatestSidebar latest={latest6} mostViewed={mostViewed5} />
+      {filtered.length === 0 ? (
+        <p className="mt-8 text-sm text-slate-500">
+          No hay artículos para mostrar. Publicá alguna nota desde el panel
+          editorial.
+        </p>
+      ) : (
+        <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,2.1fr)_minmax(0,1.2fr)]">
+          {/* Columna izquierda: hero + notas comunes */}
+          <div className="space-y-6">
+            {hero && <HeroArticle article={hero} />}
+
+            {rest.length > 0 && (
+              <div className="space-y-4">
+                {rest.slice(0, 8).map((a) => (
+                  <CommonArticleRow key={a.id} article={a} />
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </section>
 
-      {/* PANEL ECONÓMICO: sólo en categoría Economía, debajo de las noticias */}
-      {normalizedCategory === "economia" && (
-        <section>
-          <EconomiaSection />
-        </section>
+          {/* Columna derecha: últimas 6 + más leídas */}
+          <LatestSidebar latest={latest6} mostViewed={mostViewed5} />
+        </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -363,7 +346,7 @@ function LatestSidebar({ latest, mostViewed }: SidebarProps) {
         </p>
 
         {mostViewed.length === 0 ? (
-          <p className="mt-4 text-[11px] text-slate-500 italic">
+          <p className="mt-4 text-[11px] italic text-slate-500">
             Todavía no estamos guardando vistas. Más adelante este bloque va a
             mostrar las notas más leídas del portal.
           </p>
@@ -424,7 +407,6 @@ function getDateParts(value: string | null) {
   return { date, time };
 }
 
-// Saca el src de la primera <img ...> que encuentre en el HTML
 function extractFirstImageFromHtml(
   html: string | null | undefined,
 ): string | null {
