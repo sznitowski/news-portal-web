@@ -16,11 +16,14 @@ type PublicArticle = {
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  bodyHtml: string | null; // 👈 viene el HTML con <img ...>
+  bodyHtml: string | null;
 
-  // opcionales, por si en el futuro agregás columnas específicas
+  // opcionales
   coverImageUrl?: string | null;
   imageUrl?: string | null;
+
+  // si más adelante guardás vistas en la API, usás esto
+  viewCount?: number | null;
 };
 
 type PublicArticlesMeta = {
@@ -31,7 +34,7 @@ type PublicArticlesMeta = {
 };
 
 type Props = {
-  initialArticles: PublicArticle[];
+  initialArticles: PublicArticle[];      // 👈 ARRAY
   initialMeta: PublicArticlesMeta;
 };
 
@@ -54,6 +57,7 @@ export default function ArticleListClient({
     return cat;
   }, [categoryParam]);
 
+  // Orden por fecha desc (lo más nuevo primero)
   const articles = useMemo(
     () =>
       [...initialArticles].sort((a, b) => {
@@ -64,6 +68,7 @@ export default function ArticleListClient({
     [initialArticles],
   );
 
+  // Filtro por categoría + búsqueda por título
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
 
@@ -75,15 +80,29 @@ export default function ArticleListClient({
     }
 
     if (!term) return base;
-
-    return base.filter((a) =>
-      a.title.toLowerCase().includes(term),
-    );
+    return base.filter((a) => a.title.toLowerCase().includes(term));
   }, [articles, search, normalizedCategory]);
 
   const hero = filtered[0];
   const rest = filtered.slice(1);
-  const timeline = filtered.slice(0, 12);
+
+  // últimas 6 dentro del filtro actual (home o categoría)
+  const latest6 = filtered.slice(0, 6);
+
+  // top 5 más vistas — si todavía no tenés viewCount, queda en placeholder
+  const mostViewed5 = useMemo(() => {
+    if (!initialArticles || initialArticles.length === 0) return [];
+
+    // si nunca seteaste viewCount, todos serán undefined → queda vacío
+    const withViews = initialArticles.filter(
+      (a) => typeof a.viewCount === "number",
+    );
+    if (withViews.length === 0) return [];
+
+    return [...withViews]
+      .sort((a, b) => (b.viewCount ?? 0) - (a.viewCount ?? 0))
+      .slice(0, 5);
+  }, [initialArticles]);
 
   return (
     <section className="rounded-[32px] bg-slate-50 px-4 py-6 shadow-[0_18px_40px_rgba(15,23,42,0.18)] ring-1 ring-slate-200 md:px-8 md:py-8">
@@ -93,9 +112,9 @@ export default function ArticleListClient({
           <div className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-50">
             Últimas noticias
           </div>
-          <p className="mt-3 max-w-xl text-xs md:text-sm text-slate-600">
-            Últimas publicaciones del portal, ordenadas por fecha de publicación.
-            Las notas deben estar{" "}
+          <p className="mt-3 max-w-xl text-xs text-slate-600 md:text-sm">
+            Últimas publicaciones del portal, ordenadas por fecha de
+            publicación. Las notas deben estar{" "}
             <span className="font-semibold">publicadas</span> en el panel
             editorial para aparecer acá.
           </p>
@@ -111,7 +130,6 @@ export default function ArticleListClient({
         </div>
       </header>
 
-      {/* Contenido principal: hero + lista + historial */}
       {filtered.length === 0 ? (
         <p className="mt-8 text-sm text-slate-500">
           No hay artículos para mostrar. Publicá alguna nota desde el panel
@@ -132,8 +150,8 @@ export default function ArticleListClient({
             )}
           </div>
 
-          {/* Columna derecha: historial / timeline */}
-          <LatestTimeline articles={timeline} />
+          {/* Columna derecha: últimas 6 + más leídas */}
+          <LatestSidebar latest={latest6} mostViewed={mostViewed5} />
         </div>
       )}
     </section>
@@ -151,9 +169,6 @@ type HeroProps = {
 function HeroArticle({ article }: HeroProps) {
   const when = getDateParts(article.publishedAt ?? article.createdAt);
 
-  // 1) coverImageUrl
-  // 2) imageUrl
-  // 3) primera <img> encontrada en bodyHtml
   const mainImageUrl =
     article.coverImageUrl ||
     article.imageUrl ||
@@ -172,21 +187,15 @@ function HeroArticle({ article }: HeroProps) {
                 alt={article.title}
                 className="h-full w-full object-cover"
               />
-              {/* degradado suave para que el texto del badge se lea */}
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
             </>
           ) : (
             <div className="h-full w-full bg-gradient-to-br from-slate-900 via-slate-800 to-sky-700" />
           )}
 
-          {/* Badge + aclaración abajo a la izquierda */}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-start gap-2 p-4 text-xs text-slate-100 md:p-5">
             <div className="inline-flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]">
-              <svg
-                className="h-3 w-3"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
+              <svg className="h-3 w-3" viewBox="0 0 24 24" aria-hidden="true">
                 <path
                   d="M9 4.5L7.5 6H5A2 2 0 003 8v8a2 2 0 002 2h12a2 2 0 002-2V8a2 2 0 00-2-2h-2.5L14 4.5z"
                   fill="none"
@@ -294,42 +303,84 @@ function CommonArticleRow({ article }: RowProps) {
   );
 }
 
-type TimelineProps = {
-  articles: PublicArticle[];
+type SidebarProps = {
+  latest: PublicArticle[];
+  mostViewed: PublicArticle[];
 };
 
-function LatestTimeline({ articles }: TimelineProps) {
+function LatestSidebar({ latest, mostViewed }: SidebarProps) {
   return (
-    <aside className="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.22)]">
-      <h2 className="text-sm font-semibold text-slate-900">
-        Historial reciente
-      </h2>
-      <p className="mt-1 text-[11px] text-slate-500">
-        Últimos titulares con horario. Ideal para un vistazo rápido.
-      </p>
+    <aside className="space-y-6">
+      {/* Últimas 6 */}
+      <div className="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.22)]">
+        <h2 className="text-sm font-semibold text-slate-900">
+          Últimas 6 noticias
+        </h2>
+        <p className="mt-1 text-[11px] text-slate-500">
+          Listado rápido de las últimas notas publicadas.
+        </p>
 
-      <div className="mt-4 space-y-4">
-        {articles.map((a) => {
-          const when = getDateParts(a.publishedAt ?? a.createdAt);
-
-          return (
-            <div
-              key={a.id}
-              className="relative border-l border-slate-200 pl-4"
-            >
-              <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-sky-500" />
-              <Link
-                href={`/article/${a.slug}`}
-                className="block text-xs font-semibold leading-snug text-slate-900 hover:text-sky-700"
+        <div className="mt-4 space-y-4">
+          {latest.map((a) => {
+            const when = getDateParts(a.publishedAt ?? a.createdAt);
+            return (
+              <div
+                key={a.id}
+                className="relative border-l border-slate-200 pl-4"
               >
-                {a.title}
-              </Link>
-              <div className="mt-0.5 text-[10px] text-slate-500">
-                {when.date} · {when.time}
+                <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-sky-500" />
+                <Link
+                  href={`/article/${a.slug}`}
+                  className="block text-xs font-semibold leading-snug text-slate-900 hover:text-sky-700"
+                >
+                  {a.title}
+                </Link>
+                <div className="mt-0.5 text-[10px] text-slate-500">
+                  {when.date} · {when.time}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Más leídas */}
+      <div className="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.22)]">
+        <h2 className="text-sm font-semibold text-slate-900">Más leídas</h2>
+        <p className="mt-1 text-[11px] text-slate-500">
+          Top 5 por cantidad de vistas (cuando lo tengamos en la API).
+        </p>
+
+        {mostViewed.length === 0 ? (
+          <p className="mt-4 text-[11px] text-slate-500 italic">
+            Todavía no estamos guardando vistas. Más adelante este bloque va a
+            mostrar las notas más leídas del portal.
+          </p>
+        ) : (
+          <ul className="mt-4 space-y-3">
+            {mostViewed.map((a, idx) => {
+              const when = getDateParts(a.publishedAt ?? a.createdAt);
+              return (
+                <li key={a.id} className="flex gap-3">
+                  <span className="mt-[2px] text-xs font-semibold text-slate-400">
+                    {idx + 1}.
+                  </span>
+                  <div className="flex-1">
+                    <Link
+                      href={`/article/${a.slug}`}
+                      className="block text-xs font-semibold leading-snug text-slate-900 hover:text-sky-700"
+                    >
+                      {a.title}
+                    </Link>
+                    <div className="mt-0.5 text-[10px] text-slate-500">
+                      {when.date} · {a.viewCount ?? 0} vistas
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </aside>
   );

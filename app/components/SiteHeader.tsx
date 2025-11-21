@@ -2,7 +2,11 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import {
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import { useEffect, useState } from "react";
 import { buildApiUrl } from "../lib/api";
 
@@ -28,14 +32,19 @@ const NAV_ITEMS: NavItem[] = [
 export default function SiteHeader() {
   const searchParams = useSearchParams();
   const currentCategory = searchParams.get("category");
+  const pathname = usePathname();
+  const router = useRouter();
 
   const [user, setUser] = useState<CurrentUser>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [panelOpen, setPanelOpen] = useState(false);
 
-  // ==============================
-  // Auth / usuario actual
-  // ==============================
+  // Cerrar dropdown de panel cuando cambia la ruta
+  useEffect(() => {
+    setPanelOpen(false);
+  }, [pathname]);
+
+  // Chequeo de sesión
   useEffect(() => {
     async function checkAuth() {
       try {
@@ -76,28 +85,28 @@ export default function SiteHeader() {
         window.localStorage.removeItem("news_user");
         document.cookie =
           "editor_auth=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-        window.location.href = "/";
       }
+      setUser(null);
+      window.location.href = "/";
     } catch (err) {
       console.error("Error al cerrar sesión", err);
     }
   };
 
-  const goPanel = (path: string) => {
-    if (typeof window !== "undefined") {
-      window.location.href = path;
-    }
+  const goTo = (href: string) => {
+    setPanelOpen(false);
+    if (pathname === href) return;
+    router.push(href);
   };
 
-  const isAdmin = !!user && user.role === "ADMIN";
+  // ========================
+  // RENDER
+  // ========================
 
-  // ==============================
-  // Render
-  // ==============================
   return (
     <>
-      {/* Barra superior: botón panel / logo centrado / usuario */}
-      <div
+      {/* Fila superior: botones (no sticky) */}
+      <header
         style={{
           backgroundColor: "#ffffff",
           borderBottom: "1px solid rgba(226,232,240,0.9)",
@@ -107,55 +116,57 @@ export default function SiteHeader() {
           style={{
             maxWidth: 1120,
             margin: "0 auto",
-            padding: "10px 16px 6px",
-            display: "grid",
-            gridTemplateColumns: "auto 1fr auto",
+            padding: "8px 16px",
+            display: "flex",
             alignItems: "center",
-            columnGap: 24,
+            justifyContent: "space-between",
+            gap: 16,
+            fontSize: 12,
           }}
         >
-          {/* IZQUIERDA: Panel editorial o Iniciar sesión */}
-          <div style={{ justifySelf: "start" }}>
-            {checkingAuth ? null : isAdmin ? (
-              <div style={{ position: "relative", display: "inline-block" }}>
+          {/* Izquierda: Panel editorial o Iniciar sesión */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {!checkingAuth && user && user.role === "ADMIN" && (
+              <div style={{ position: "relative" }}>
                 <button
                   type="button"
                   onClick={() => setPanelOpen((o) => !o)}
                   style={{
-                    fontSize: 13,
-                    padding: "6px 18px",
+                    padding: "8px 20px",
                     borderRadius: 999,
-                    border: "1px solid #111827",
-                    backgroundColor: "#111827",
+                    border: "1px solid #020617",
+                    backgroundColor: "#020617",
                     color: "#f9fafb",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.14em",
+                    fontSize: 12,
                     fontWeight: 600,
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
                     cursor: "pointer",
-                    boxShadow: "0 16px 40px rgba(15,23,42,0.35)",
+                    boxShadow: "0 10px 30px rgba(15,23,42,0.35)",
                   }}
                 >
-                  PANEL EDITORIAL
+                  PANEL EDITORIAL{" "}
+                  <span style={{ fontSize: 10 }}>{panelOpen ? "▲" : "▼"}</span>
                 </button>
 
                 {panelOpen && (
                   <div
                     style={{
                       position: "absolute",
-                      marginTop: 8,
+                      top: "110%",
                       left: 0,
                       minWidth: 260,
                       borderRadius: 16,
-                      border: "1px solid rgba(148,163,184,0.5)",
-                      backgroundColor: "#ffffff",
-                      boxShadow: "0 22px 55px rgba(15,23,42,0.35)",
+                      border: "1px solid rgba(15,23,42,0.12)",
+                      backgroundColor: "#020617",
+                      boxShadow: "0 18px 45px rgba(0,0,0,0.55)",
                       padding: 10,
-                      zIndex: 50,
+                      zIndex: 60,
                     }}
                   >
                     <button
                       type="button"
-                      onClick={() => goPanel("/admin/editor")}
+                      onClick={() => goTo("/admin/editor")}
                       style={{
                         width: "100%",
                         textAlign: "left",
@@ -163,22 +174,18 @@ export default function SiteHeader() {
                         borderRadius: 10,
                         border: "none",
                         background: "transparent",
+                        color: "#e5e7eb",
+                        fontSize: 13,
                         cursor: "pointer",
+                        marginBottom: 6,
                       }}
                     >
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 600,
-                          color: "#020617",
-                        }}
-                      >
-                        Edición de notas
-                      </div>
+                      <div style={{ fontWeight: 600 }}>Edición de notas</div>
                       <div
                         style={{
                           fontSize: 11,
-                          color: "#6b7280",
+                          color: "#9ca3af",
+                          marginTop: 2,
                         }}
                       >
                         Crear, editar y publicar artículos.
@@ -187,7 +194,7 @@ export default function SiteHeader() {
 
                     <button
                       type="button"
-                      onClick={() => goPanel("/admin/from-image-ai")}
+                      onClick={() => goTo("/admin/from-image-ai")}
                       style={{
                         width: "100%",
                         textAlign: "left",
@@ -195,22 +202,19 @@ export default function SiteHeader() {
                         borderRadius: 10,
                         border: "none",
                         background: "transparent",
+                        color: "#e5e7eb",
+                        fontSize: 13,
                         cursor: "pointer",
                       }}
                     >
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 600,
-                          color: "#020617",
-                        }}
-                      >
+                      <div style={{ fontWeight: 600 }}>
                         Publicar desde imagen (IA)
                       </div>
                       <div
                         style={{
                           fontSize: 11,
-                          color: "#6b7280",
+                          color: "#9ca3af",
+                          marginTop: 2,
                         }}
                       >
                         Subir captura y dejar que la IA sugiera la nota.
@@ -219,201 +223,203 @@ export default function SiteHeader() {
                   </div>
                 )}
               </div>
-            ) : (
+            )}
+
+            {!checkingAuth && !user && (
               <Link
                 href="/login"
                 style={{
-                  fontSize: 13,
-                  padding: "6px 18px",
+                  padding: "8px 20px",
                   borderRadius: 999,
-                  border: "1px solid #e5e7eb",
-                  textDecoration: "none",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.14em",
-                  fontWeight: 600,
-                  color: "#111827",
+                  border: "1px solid #020617",
                   backgroundColor: "#ffffff",
-                  boxShadow: "0 12px 30px rgba(148,163,184,0.35)",
+                  color: "#020617",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  textDecoration: "none",
+                  boxShadow: "0 8px 24px rgba(15,23,42,0.08)",
                 }}
               >
-                Iniciar sesión
+                INICIAR SESIÓN
               </Link>
             )}
           </div>
 
-          {/* CENTRO: Logo + nombre del sitio, SIEMPRE CENTRADO */}
-          <div style={{ justifySelf: "center" }}>
-            <Link
-              href="/"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 12,
-                textDecoration: "none",
-                color: "#020617",
-              }}
-            >
-              <span
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 14,
-                  background:
-                    "linear-gradient(135deg,#22c55e,#22c55e,#8b5cf6,#0ea5e9)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: 800,
-                  fontSize: 18,
-                  color: "#020617",
-                  boxShadow: "0 16px 40px rgba(15,23,42,0.45)",
-                }}
-              >
-                CL
-              </span>
-              <span>
-                <div
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 700,
-                    letterSpacing: "0.12em",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  CANALIBERTARIO
-                </div>
-                <div
-                  style={{
-                    marginTop: 2,
-                    fontSize: 11,
-                    letterSpacing: "0.26em",
-                    textTransform: "uppercase",
-                    color: "#6b7280",
-                  }}
-                >
-                  Noticias · Economía · Política
-                </div>
-              </span>
-            </Link>
-          </div>
-
-          {/* DERECHA: Usuario / Invitado + salir */}
-          <div style={{ justifySelf: "end" }}>
-            {checkingAuth ? null : !user ? (
-              <span
-                style={{
-                  fontSize: 12,
-                  letterSpacing: "0.2em",
-                  textTransform: "uppercase",
-                  color: "#9ca3af",
-                }}
-              >
-                Invitado
-              </span>
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 12,
-                    letterSpacing: "0.12em",
-                    textTransform: "uppercase",
-                    color: "#4b5563",
-                  }}
-                >
+          {/* Derecha: usuario o invitado */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              fontSize: 11,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              color: "#4b5563",
+            }}
+          >
+            {!checkingAuth && user ? (
+              <>
+                <span style={{ color: "#020617", fontWeight: 600 }}>
                   {user.email ?? user.name ?? "Editor"}
                 </span>
                 <button
                   type="button"
                   onClick={handleLogout}
                   style={{
-                    fontSize: 12,
-                    padding: "6px 16px",
+                    padding: "6px 18px",
                     borderRadius: 999,
                     border: "1px solid #020617",
                     backgroundColor: "#020617",
                     color: "#f9fafb",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.14em",
                     fontWeight: 600,
                     cursor: "pointer",
+                    letterSpacing: "0.18em",
                   }}
                 >
-                  Salir
+                  SALIR
                 </button>
-              </div>
+              </>
+            ) : (
+              !checkingAuth && (
+                <span style={{ color: "#9ca3af", fontWeight: 600 }}>
+                  INVITADO
+                </span>
+              )
             )}
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Barra de secciones (sticky) */}
+      {/* Fila inferior: logo + tabs (sticky) */}
       <div
         style={{
           position: "sticky",
           top: 0,
-          zIndex: 30,
+          zIndex: 40,
           backgroundColor: "#ffffff",
           borderBottom: "1px solid rgba(226,232,240,0.9)",
+          boxShadow: "0 10px 30px rgba(15,23,42,0.06)",
         }}
       >
-        <nav
-          aria-label="Secciones"
+        <div
           style={{
             maxWidth: 1120,
             margin: "0 auto",
-            padding: "6px 16px 4px",
+            padding: "10px 16px 6px",
             display: "flex",
-            gap: 32,
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 8,
           }}
         >
-          {NAV_ITEMS.map((item) => {
-            const isActive =
-              (item.category === null && !currentCategory) ||
-              currentCategory === item.category;
-
-            const href = item.category ? `/?category=${item.category}` : "/";
-
-            return (
-              <Link
-                key={item.label}
-                href={href}
+          {/* Logo + nombre */}
+          <Link
+            href="/"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              textDecoration: "none",
+              color: "#020617",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 12,
+                background:
+                  "linear-gradient(135deg,#38bdf8,#6366f1,#a855f7,#22c55e)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 800,
+                fontSize: 16,
+                color: "#0b1120",
+                boxShadow: "0 10px 25px rgba(15,23,42,0.25)",
+              }}
+            >
+              CL
+            </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <span
                 style={{
-                  position: "relative",
-                  padding: "8px 0 10px",
-                  fontSize: 14,
-                  fontWeight: isActive ? 600 : 500,
-                  color: isActive ? "#111827" : "#6b7280",
-                  textDecoration: "none",
-                  borderBottom: isActive
-                    ? "2px solid transparent"
-                    : "2px solid transparent",
+                  fontSize: 22,
+                  fontWeight: 800,
+                  letterSpacing: "0.16em",
                 }}
               >
-                {item.label}
-                {isActive && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      height: 2,
-                      borderRadius: 999,
-                      background:
-                        "linear-gradient(90deg,#22c55e,#8b5cf6,#0ea5e9)",
-                    }}
-                  />
-                )}
-              </Link>
-            );
-          })}
-        </nav>
+                CANALIBERTARIO
+              </span>
+              <span
+                style={{
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.26em",
+                  color: "#6b7280",
+                }}
+              >
+                NOTICIAS · ECONOMÍA · POLÍTICA
+              </span>
+            </div>
+          </Link>
+
+          {/* Navegación principal */}
+          <nav
+            aria-label="Navegación principal"
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              gap: 28,
+              marginTop: 6,
+            }}
+          >
+            {NAV_ITEMS.map((item) => {
+              const isActive =
+                (item.category === null && !currentCategory) ||
+                currentCategory === item.category;
+
+              const href = item.category
+                ? `/?category=${item.category}`
+                : "/";
+
+              return (
+                <Link
+                  key={item.label}
+                  href={href}
+                  style={{
+                    position: "relative",
+                    paddingBottom: 6,
+                    fontSize: 15,
+                    fontWeight: isActive ? 600 : 500,
+                    color: isActive ? "#020617" : "#6b7280",
+                    textDecoration: "none",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {item.label}
+                  {isActive && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: 3,
+                        borderRadius: 999,
+                        background:
+                          "linear-gradient(90deg,#38bdf8,#6366f1,#a855f7)",
+                      }}
+                    />
+                  )}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
       </div>
     </>
   );
