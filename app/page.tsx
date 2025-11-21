@@ -1,6 +1,7 @@
 // app/page.tsx
 import ArticleListClient from "./components/ArticleListClient";
 import { buildApiUrl } from "./lib/api";
+import EconomiaSection from "./sections/EconomiaSection";
 
 type PublicArticle = {
   id: number;
@@ -14,6 +15,10 @@ type PublicArticle = {
   createdAt: string;
   updatedAt: string;
   bodyHtml: string | null;
+
+  coverImageUrl?: string | null;
+  imageUrl?: string | null;
+  viewCount?: number | null;
 };
 
 type PublicArticlesMeta = {
@@ -69,8 +74,12 @@ export default async function HomePage() {
   const { items, meta } = await fetchPublicArticles();
 
   return (
-    <div className="space-y-6">
+    <main className="mx-auto max-w-6xl px-4 py-8 space-y-8">
+      {/* Noticias / portada */}
       <ArticleListClient initialArticles={items} initialMeta={meta} />
-    </div>
+
+      {/* Panorama económico (se renderiza una sola vez) */}
+      <EconomiaSection />
+    </main>
   );
 }
