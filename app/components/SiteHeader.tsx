@@ -292,15 +292,11 @@ export default function SiteHeader() {
         </div>
       </header>
 
-      {/* Fila inferior: logo + tabs (sticky) */}
+      {/* Fila con logo / nombre (no sticky, fondo muy suave y casi transparente) */}
       <div
         style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 40,
-          backgroundColor: "#ffffff",
-          borderBottom: "1px solid rgba(226,232,240,0.9)",
-          boxShadow: "0 10px 30px rgba(15,23,42,0.06)",
+          background:
+            "linear-gradient(to bottom, rgba(255,255,255,0.96), rgba(255,255,255,0))",
         }}
       >
         <div
@@ -314,7 +310,6 @@ export default function SiteHeader() {
             gap: 8,
           }}
         >
-          {/* Logo + nombre */}
           <Link
             href="/"
             style={{
@@ -366,60 +361,74 @@ export default function SiteHeader() {
               </span>
             </div>
           </Link>
-
-          {/* Navegación principal */}
-          <nav
-            aria-label="Navegación principal"
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              gap: 28,
-              marginTop: 6,
-            }}
-          >
-            {NAV_ITEMS.map((item) => {
-              const isActive =
-                (item.category === null && !currentCategory) ||
-                currentCategory === item.category;
-
-              const href = item.category
-                ? `/?category=${item.category}`
-                : "/";
-
-              return (
-                <Link
-                  key={item.label}
-                  href={href}
-                  style={{
-                    position: "relative",
-                    paddingBottom: 6,
-                    fontSize: 15,
-                    fontWeight: isActive ? 600 : 500,
-                    color: isActive ? "#020617" : "#6b7280",
-                    textDecoration: "none",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {item.label}
-                  {isActive && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        height: 3,
-                        borderRadius: 999,
-                        background:
-                          "linear-gradient(90deg,#38bdf8,#6366f1,#a855f7)",
-                      }}
-                    />
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
         </div>
+      </div>
+
+      {/* Navegación principal (sticky) */}
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 40,
+          backgroundColor: "rgba(255,255,255,0.96)",
+          backdropFilter: "blur(12px)",
+          borderBottom: "1px solid rgba(226,232,240,0.9)",
+          boxShadow: "0 10px 30px rgba(15,23,42,0.06)",
+        }}
+      >
+        <nav
+          aria-label="Navegación principal"
+          style={{
+            maxWidth: 1120,
+            margin: "0 auto",
+            padding: "6px 16px 8px",
+            display: "flex",
+            justifyContent: "center",
+            gap: 28,
+          }}
+        >
+          {NAV_ITEMS.map((item) => {
+            const isActive =
+              (item.category === null && !currentCategory) ||
+              currentCategory === item.category;
+
+            const href = item.category
+              ? `/?category=${item.category}`
+              : "/";
+
+            return (
+              <Link
+                key={item.label}
+                href={href}
+                style={{
+                  position: "relative",
+                  paddingBottom: 6,
+                  fontSize: 15,
+                  fontWeight: isActive ? 600 : 500,
+                  color: isActive ? "#020617" : "#6b7280",
+                  textDecoration: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {item.label}
+                {isActive && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: 3,
+                      borderRadius: 999,
+                      background:
+                        "linear-gradient(90deg,#38bdf8,#6366f1,#a855f7)",
+                    }}
+                  />
+                )}
+              </Link>
+            );
+          })}
+        </nav>
       </div>
     </>
   );
