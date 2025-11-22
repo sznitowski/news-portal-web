@@ -1,4 +1,3 @@
-// app/components/SiteHeader.tsx
 "use client";
 
 import Link from "next/link";
@@ -9,6 +8,7 @@ import {
 } from "next/navigation";
 import { useEffect, useState } from "react";
 import { buildApiUrl } from "../lib/api";
+import EconomyMenu from "./economy/EconomyMenu";
 
 type NavItem = {
   label: string;
@@ -292,7 +292,7 @@ export default function SiteHeader() {
         </div>
       </header>
 
-      {/* Fila con logo / nombre (no sticky, fondo muy suave y casi transparente) */}
+      {/* Fila con logo / nombre */}
       <div
         style={{
           background:
@@ -392,10 +392,14 @@ export default function SiteHeader() {
               (item.category === null && !currentCategory) ||
               currentCategory === item.category;
 
-            const href = item.category
-              ? `/?category=${item.category}`
-              : "/";
+            const href = item.category ? `/?category=${item.category}` : "/";
 
+            // Caso especial: ECONOMÍA con menú desplegable
+            if (item.category === "economia") {
+              return <EconomyMenu key={item.label} isActive={!!isActive} />;
+            }
+
+            // Resto de las secciones como Link normal
             return (
               <Link
                 key={item.label}
@@ -429,6 +433,7 @@ export default function SiteHeader() {
             );
           })}
         </nav>
+
       </div>
     </>
   );
