@@ -2,11 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  usePathname,
-  useRouter,
-  useSearchParams,
-} from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type Props = {
   isActive: boolean;
@@ -18,16 +14,18 @@ type EconomyOption = {
   href: string;
 };
 
+// TODO: si querés usar "view" para cambiar algo en EconomyDataSection,
+// ya queda armado. Por ahora sólo cambia la URL.
 const OPTIONS: EconomyOption[] = [
   {
     key: "summary",
     label: "Resumen de Economía",
-    href: "/economia/resumen",          // <-- CAMBIADO
+    href: "/?category=economia",
   },
   {
     key: "market",
     label: "Dólar y Criptomonedas",
-    href: "/?category=economia&view=market",
+    href: "/?category=economia&view=mercado",
   },
   {
     key: "bcra",
@@ -37,7 +35,7 @@ const OPTIONS: EconomyOption[] = [
   {
     key: "budget",
     label: "Presupuesto / Déficit",
-    href: "/?category=economia&view=budget",
+    href: "/?category=economia&view=presupuesto",
   },
 ];
 
@@ -47,21 +45,20 @@ export default function EconomyMenu({ isActive }: Props) {
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
 
-  // Cerrar dropdown cuando cambia la ruta o los query params
+  // Cerrar dropdown cuando cambia la ruta o los params
   useEffect(() => {
     setOpen(false);
-  }, [pathname, searchParams?.toString()]);
+  }, [pathname, searchParams]);
 
-  // CLICK en el botón principal "Economía"
   const handleMainClick = () => {
-    // Si NO estamos en economía, navegamos a la lista de notas de economía
+    // Si NO estamos en Economía, vamos a la home filtrada por economía
     if (!isActive) {
       router.push("/?category=economia");
       setOpen(false);
       return;
     }
 
-    // Si ya estamos en economía, sólo togglear el menú
+    // Si ya estamos en Economía, toggle del menú
     setOpen((prev) => !prev);
   };
 

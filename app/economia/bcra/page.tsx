@@ -1,11 +1,11 @@
-// app/economia/resumen/page.tsx
+// app/economia/bcra/page.tsx
 import { fetchMarketAll } from "../../lib/market";
 import {
   EconomyHeadlineStrip,
   MarketStrip,
 } from "../../sections/economy";
 
-export default async function EconomiaResumenPage() {
+export default async function EconomiaBcraPage() {
   const market = await fetchMarketAll();
 
   const loading =
@@ -17,14 +17,14 @@ export default async function EconomiaResumenPage() {
 
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-      {/* Tira de dólar arriba (como en la home de economía) */}
+      {/* Tira de dólar arriba (contexto rápido) */}
       <EconomyHeadlineStrip
         dolar={market.dolar}
         crypto={market.crypto}
         loading={loading}
       />
 
-      {/* Panel grande con TODO: dólar + cripto + BCRA + presupuesto */}
+      {/* Panel sólo con indicadores BCRA + riesgo país */}
       <MarketStrip
         dolar={market.dolar}
         crypto={market.crypto}
@@ -32,6 +32,11 @@ export default async function EconomiaResumenPage() {
         budget={market.budget}
         countryRisk={market.countryRisk}
         loading={loading}
+        showHeader={true}
+        showDolar={false}
+        showCrypto={false}
+        showBcra={true}
+        showBudget={false}
       />
     </main>
   );

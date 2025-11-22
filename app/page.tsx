@@ -1,5 +1,6 @@
 // app/page.tsx
 import ArticleListClient from "./components/ArticleListClient";
+import EconomyDataSection from "./sections/economy/EconomyDataSection";
 import { buildApiUrl } from "./lib/api";
 import type {
   DolarResponse,
@@ -42,8 +43,30 @@ type PublicArticlesResponse = {
   meta: PublicArticlesMeta;
 };
 
-async function fetchPublicArticles(): Promise<PublicArticlesResponse> {
-  const url = buildApiUrl("/articles?limit=40&page=1");
+// ========================
+// Helpers
+// ========================
+
+function normalizeParam(
+  value: string | string[] | undefined | null,
+): string | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
+
+// Artículos públicos (opcionalmente filtrados por categoría)
+async function fetchPublicArticles(
+  category: string | null,
+): Promise<PublicArticlesResponse> {
+  const params = new URLSearchParams();
+  params.set("limit", "40");
+  params.set("page", "1");
+  if (category) {
+    params.set("category", category);
+  }
+
+  const url = buildApiUrl(`/articles?${params.toString()}`);
 
   try {
     const res = await fetch(url, {
@@ -138,9 +161,30 @@ async function fetchMarketAll(): Promise<MarketAll> {
 // Página
 // ========================
 
-export default async function HomePage() {
+type HomePageProps = {
+  // En Next 16 searchParams es un Promise
+  searchParams?: Promise<
+    Record<string, string | string[] | undefined>
+  >;
+};
+
+export default async function HomePage({ searchParams }: HomePageProps) {
+  const resolved =
+    (searchParams ? await searchParams : {}) as Record<
+      string,
+      string | string[] | undefined
+    >;
+
+  const rawCategory = resolved.category;
+  const rawView = resolved.view;
+
+  const category = normalizeParam(rawCategory);
+  const view = normalizeParam(rawView); // por ahora no lo usamos, queda reservado
+  const isEconomyCategory = category === "economia";
+  const showEconomyPanel = !category || isEconomyCategory;
+
   const [{ items, meta }, market] = await Promise.all([
-    fetchPublicArticles(),
+    fetchPublicArticles(category),
     fetchMarketAll(),
   ]);
 
@@ -153,8 +197,7 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-      {/* Noticias + tira rápida arriba de todo (ArticleListClient
-          se encarga de mostrar la tira solo en categoría Economía) */}
+      {/* Lista de noticias (filtrada por categoría si viene en la URL) */}
       <ArticleListClient
         initialArticles={items}
         initialMeta={meta}
@@ -162,7 +205,21 @@ export default async function HomePage() {
         crypto={market.crypto}
         loading={loading}
       />
-      {/* El panel grande de BCRA/presupuesto ahora vive en /economia/resumen */}
+
+      {/* Panel de economía:
+          - Se ve en Inicio (sin category)
+          - Se ve en Economía (category=economia)
+          - NO se muestra en Política / Internacional */}
+      {showEconomyPanel && (
+        <EconomyDataSection
+          dolar={market.dolar}
+          crypto={market.crypto}
+          bcra={market.bcra}
+          budget={market.budget}
+          countryRisk={market.countryRisk}
+          loading={loading}
+        />
+      )}
     </main>
   );
 }

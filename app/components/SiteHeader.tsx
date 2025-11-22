@@ -1,3 +1,4 @@
+// app/components/SiteHeader.tsx
 "use client";
 
 import Link from "next/link";
@@ -31,13 +32,28 @@ const NAV_ITEMS: NavItem[] = [
 
 export default function SiteHeader() {
   const searchParams = useSearchParams();
-  const currentCategory = searchParams.get("category");
   const pathname = usePathname();
   const router = useRouter();
+
+  const currentCategory = searchParams.get("category");
 
   const [user, setUser] = useState<CurrentUser>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [panelOpen, setPanelOpen] = useState(false);
+
+  // ======== FLAGS DE SECCIÓN ACTIVA (links de arriba) ========
+  const isHome =
+    pathname === "/" && (!currentCategory || currentCategory === null);
+
+  const isEconomy =
+    currentCategory === "economia" || pathname.startsWith("/economia");
+
+  const isPolitics =
+    currentCategory === "politica" || pathname.startsWith("/politica");
+
+  const isInternational =
+    currentCategory === "internacional" ||
+    pathname.startsWith("/internacional");
 
   // Cerrar dropdown de panel cuando cambia la ruta
   useEffect(() => {
@@ -388,15 +404,28 @@ export default function SiteHeader() {
           }}
         >
           {NAV_ITEMS.map((item) => {
-            const isActive =
-              (item.category === null && !currentCategory) ||
-              currentCategory === item.category;
+            let isActive = false;
+
+            if (item.category === null) {
+              isActive = isHome;
+            } else if (item.category === "economia") {
+              isActive = isEconomy;
+            } else if (item.category === "politica") {
+              isActive = isPolitics;
+            } else if (item.category === "internacional") {
+              isActive = isInternational;
+            }
 
             const href = item.category ? `/?category=${item.category}` : "/";
 
             // Caso especial: ECONOMÍA con menú desplegable
             if (item.category === "economia") {
-              return <EconomyMenu key={item.label} isActive={!!isActive} />;
+              return (
+                <EconomyMenu
+                  key={item.label}
+                  isActive={isEconomy}
+                />
+              );
             }
 
             // Resto de las secciones como Link normal
@@ -433,7 +462,6 @@ export default function SiteHeader() {
             );
           })}
         </nav>
-
       </div>
     </>
   );
