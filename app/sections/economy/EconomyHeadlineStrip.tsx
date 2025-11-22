@@ -1,104 +1,342 @@
-// app/components/EconomyHeadlineStrip.tsx
+// app/sections/economy/EconomyDataSection.tsx
 "use client";
 
-
-import type { DolarResponse, CryptoResponse } from "../../types/market";
+import { useSearchParams } from "next/navigation";
+import type {
+  DolarResponse,
+  CryptoResponse,
+  BcraSummary,
+  BudgetSummary,
+} from "../../types/market";
 
 type Props = {
   dolar: DolarResponse | null;
-  crypto: CryptoResponse | null; // lo aceptamos por si después lo usamos
+  crypto: CryptoResponse | null;
+  bcra: BcraSummary | null;
+  budget: BudgetSummary | null;
+  countryRisk: number | null;
   loading: boolean;
 };
 
-const DOLAR_ITEMS: { key: keyof DolarResponse; label: string }[] = [
-  { key: "oficial", label: "DÓLAR OFICIAL" },
-  { key: "tarjeta", label: "DÓLAR TARJETA" },
-  { key: "blue", label: "DÓLAR BLUE" },
-  { key: "mep", label: "DÓLAR MEP" },
-  { key: "ccl", label: "CONTADO CON LIQUI" },
-];
+function formatPercent(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "-";
+  return (
+    new Intl.NumberFormat("es-AR", {
+      maximumFractionDigits: 1,
+    }).format(value) + " %"
+  );
+}
 
-function formatArs(value: number) {
+function formatNumber(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "-";
   return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
   }).format(value);
 }
 
-export default function EconomyHeadlineStrip({
+function formatMillionsArs(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "-";
+  return (
+    new Intl.NumberFormat("es-AR", {
+      maximumFractionDigits: 0,
+    }).format(value) + " M ARS"
+  );
+}
+
+function calcSpread(base?: number | null, other?: number | null): number | null {
+  if (base == null || other == null || base === 0) return null;
+  return ((other - base) / base) * 100;
+}
+
+export default function EconomyDataSection({
   dolar,
-  crypto: _crypto, // evitamos warning de parámetro sin usar
+  crypto: _crypto,
+  bcra,
+  budget,
+  countryRisk,
   loading,
 }: Props) {
-  // Estado de carga arriba de todo
-  if (loading && !dolar) {
-    return (
-      <section className="rounded-[28px] bg-white/80 px-4 py-4 shadow-[0_16px_40px_rgba(15,23,42,0.18)] ring-1 ring-slate-200 md:px-6">
-        <div className="mb-3 h-3 w-40 rounded-full bg-slate-100" />
-        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-20 rounded-2xl border border-slate-100 bg-slate-50/80"
-            />
-          ))}
-        </div>
-      </section>
-    );
+  const searchParams = useSearchParams();
+  const category = searchParams.get("category");
+
+  // Solo mostrar cuando estás en Economía (o sin filtro de categoría)
+  const isEconomy = !category || category === "economia";
+  if (!isEconomy) return null;
+
+  if (loading && !dolar && !bcra && !budget && countryRisk == null) {
+    return null;
   }
 
-  if (!dolar) return null;
+  const oficial = dolar?.oficial ?? null;
+  const blue = dolar?.blue ?? null;
+  const mep = (dolar as any)?.mep ?? null;
+  const ccl = (dolar as any)?.ccl ?? null;
+
+  const spreadBlue = calcSpread(oficial?.venta ?? null, blue?.venta ?? null);
+  const spreadMep = calcSpread(oficial?.venta ?? null, mep?.venta ?? null);
+  const spreadCcl = calcSpread(oficial?.venta ?? null, ccl?.venta ?? null);
+
+  const reservasUsdM = bcra?.reservas?.valor ?? null;
+  const badlar = bcra?.tasaBadlarPrivados?.valor ?? null;
+  const tm20 = bcra?.tasaTm20Privados?.valor ?? null;
+
+  // Inflación: por ahora lo leemos de forma flexible
+  // Cuando el backend lo tenga tipado, solo ajustamos esto.
+  const inflation: any = (bcra as any)?.inflation ?? null;
+  const inflationMonthly = inflation?.monthly ?? null;
+  const inflationAnnual = inflation?.annual ?? null;
+  const inflationYtd = inflation?.ytd ?? null; // acumulada en el año, si la tenés
+
+  const totalRevenue = budget?.totalRevenue ?? null;
+  const totalSpending = budget?.totalSpending ?? null;
+  const primaryBalance = budget?.primaryBalance ?? null;
+
+  const primaryAsRevenuePct =
+    totalRevenue != null && primaryBalance != null && totalRevenue !== 0
+      ? (primaryBalance / totalRevenue) * 100
+      : null;
 
   return (
-    <section className="rounded-[28px] bg-white/90 px-4 py-4 shadow-[0_16px_40px_rgba(15,23,42,0.20)] ring-1 ring-slate-200 md:px-6">
-      {/* cabecera tipo “Panorama económico” */}
-      <header className="mb-3 flex items-center justify-between gap-4">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-          Panorama económico
-        </h2>
-        <p className="hidden text-[11px] text-slate-400 sm:block">
-          Dólar en pesos argentinos. Referencia diaria.
-        </p>
+    <section className="mx-auto mt-6 max-w-6xl space-y-4 px-4 pb-12">
+      <header className="flex flex-col gap-2 md:flex-row md:items-baseline md:justify-between">
+        <div>
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            Lectura rápida de los datos
+          </h2>
+          <p className="mt-1 text-[12px] text-slate-500">
+            Brechas cambiarias, reservas del BCRA, inflación y resultado
+            primario del presupuesto.
+          </p>
+        </div>
       </header>
 
-      {/* tarjetas de dólar tipo Infobae */}
-      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-        {DOLAR_ITEMS.map(({ key, label }) => {
-          const quote = dolar[key] as any;
-          if (!quote) return null;
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {/* Brecha cambiaria */}
+        <article className="flex flex-col rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_14px_36px_rgba(15,23,42,0.14)]">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.20em] text-slate-500">
+            Brecha cambiaria
+          </h3>
+          <p className="mt-1 text-[12px] text-slate-400">
+            Diferencia contra el dólar oficial (venta).
+          </p>
 
-          // Si en el futuro tenés variación, la podés colgar acá.
-          // Por ahora solo mostramos el texto “Últimas 24 hs”.
-          const changeIcon = "●";
-          const changeText = "Últimas 24 hs";
+          <dl className="mt-3 space-y-2 text-[13px]">
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">Blue vs oficial</dt>
+              <dd
+                className={`font-semibold ${
+                  spreadBlue != null && spreadBlue > 0
+                    ? "text-emerald-600"
+                    : "text-slate-700"
+                }`}
+              >
+                {formatPercent(spreadBlue)}
+              </dd>
+            </div>
 
-          return (
-            <article
-              key={key}
-              className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.16)]"
-            >
-              <p className="text-[11px] font-semibold uppercase tracking-[0.20em] text-slate-500">
-                {label}
-              </p>
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">MEP vs oficial</dt>
+              <dd
+                className={`font-semibold ${
+                  spreadMep != null && spreadMep > 0
+                    ? "text-emerald-600"
+                    : "text-slate-700"
+                }`}
+              >
+                {formatPercent(spreadMep)}
+              </dd>
+            </div>
 
-              <p className="mt-1 text-2xl font-semibold leading-tight text-slate-900">
-                {formatArs(quote.venta)}
-              </p>
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">CCL vs oficial</dt>
+              <dd
+                className={`font-semibold ${
+                  spreadCcl != null && spreadCcl > 0
+                    ? "text-emerald-600"
+                    : "text-slate-700"
+                }`}
+              >
+                {formatPercent(spreadCcl)}
+              </dd>
+            </div>
+          </dl>
 
-              <div className="mt-1 flex items-end justify-between text-[11px]">
-                <span className="text-slate-500">
-                  Compra {formatArs(quote.compra)}
-                </span>
+          <p className="mt-3 text-[11px] text-slate-500">
+            Cuando estas brechas son altas, es más difícil sostener precios y
+            acuerdos en pesos.
+          </p>
+        </article>
 
-                <span className="flex items-center gap-1 text-slate-400">
-                  <span>{changeIcon}</span>
-                  <span>{changeText}</span>
-                </span>
-              </div>
-            </article>
-          );
-        })}
+        {/* Reservas y tasas */}
+        <article className="flex flex-col rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_14px_36px_rgba(15,23,42,0.14)]">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.20em] text-slate-500">
+            Reservas y tasas BCRA
+          </h3>
+          <p className="mt-1 text-[12px] text-slate-400">
+            Stock de reservas y principales tasas de referencia.
+          </p>
+
+          <dl className="mt-3 space-y-2 text-[13px]">
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">Reservas internacionales</dt>
+              <dd className="font-semibold text-slate-800">
+                {formatNumber(reservasUsdM)} M USD
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">BADLAR bancos privados</dt>
+              <dd className="font-semibold text-slate-800">
+                {formatPercent(badlar)}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">TM20 bancos privados</dt>
+              <dd className="font-semibold text-slate-800">
+                {formatPercent(tm20)}
+              </dd>
+            </div>
+
+            <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
+              <dt className="text-slate-600">Riesgo país (EMBI+ ARG)</dt>
+              <dd className="font-semibold text-slate-800">
+                {countryRisk != null ? `${formatNumber(countryRisk)} pts` : "-"}
+              </dd>
+            </div>
+          </dl>
+
+          <p className="mt-3 text-[11px] text-slate-500">
+            Tasas altas encarecen el crédito en pesos; reservas bajas limitan
+            la capacidad de frenar saltos del dólar.
+          </p>
+        </article>
+
+        {/* Presupuesto / resultado primario */}
+        <article className="flex flex-col rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_14px_36px_rgba(15,23,42,0.14)]">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.20em] text-slate-500">
+            Cuentas públicas
+          </h3>
+          <p className="mt-1 text-[12px] text-slate-400">
+            Totales acumulados del presupuesto nacional (millones de pesos).
+          </p>
+
+          <dl className="mt-3 space-y-2 text-[13px]">
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">Recursos percibidos</dt>
+              <dd className="font-semibold text-slate-800">
+                {formatMillionsArs(totalRevenue)}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">Gasto primario devengado</dt>
+              <dd className="font-semibold text-slate-800">
+                {formatMillionsArs(totalSpending)}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">Resultado primario</dt>
+              <dd
+                className={`font-semibold ${
+                  primaryBalance != null && primaryBalance < 0
+                    ? "text-rose-600"
+                    : primaryBalance != null && primaryBalance > 0
+                    ? "text-emerald-600"
+                    : "text-slate-800"
+                }`}
+              >
+                {formatMillionsArs(primaryBalance)}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">
+                Resultado / ingresos (% acumulado)
+              </dt>
+              <dd
+                className={`font-semibold ${
+                  primaryAsRevenuePct != null && primaryAsRevenuePct < 0
+                    ? "text-rose-600"
+                    : primaryAsRevenuePct != null && primaryAsRevenuePct > 0
+                    ? "text-emerald-600"
+                    : "text-slate-800"
+                }`}
+              >
+                {formatPercent(primaryAsRevenuePct)}
+              </dd>
+            </div>
+          </dl>
+
+          <p className="mt-3 text-[11px] text-slate-500">
+            Un déficit primario alto suele implicar más deuda o emisión, que a
+            la larga presionan sobre inflación y dólar.
+          </p>
+
+          {budget?.raw?.total?.ultima_actualizacion_fecha && (
+            <p className="mt-3 text-[11px] text-slate-400">
+              Última actualización:{" "}
+              {budget.raw.total.ultima_actualizacion_fecha}
+            </p>
+          )}
+        </article>
+
+        {/* Inflación y bolsillo */}
+        <article className="flex flex-col rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_14px_36px_rgba(15,23,42,0.14)]">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.20em] text-slate-500">
+            Inflación y bolsillo
+          </h3>
+          <p className="mt-1 text-[12px] text-slate-400">
+            Variación de precios al consumidor, mensual y anual.
+          </p>
+
+          <dl className="mt-3 space-y-2 text-[13px]">
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">Inflación mensual</dt>
+              <dd
+                className={`font-semibold ${
+                  inflationMonthly != null && inflationMonthly > 0
+                    ? "text-rose-600"
+                    : "text-slate-800"
+                }`}
+              >
+                {formatPercent(inflationMonthly)}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">Inflación anual</dt>
+              <dd
+                className={`font-semibold ${
+                  inflationAnnual != null && inflationAnnual > 0
+                    ? "text-rose-600"
+                    : "text-slate-800"
+                }`}
+              >
+                {formatPercent(inflationAnnual)}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">Acumulada en el año</dt>
+              <dd
+                className={`font-semibold ${
+                  inflationYtd != null && inflationYtd > 0
+                    ? "text-rose-600"
+                    : "text-slate-800"
+                }`}
+              >
+                {formatPercent(inflationYtd)}
+              </dd>
+            </div>
+          </dl>
+
+          <p className="mt-3 text-[11px] text-slate-500">
+            Si tu sueldo sube menos que estas tasas, perdés poder de compra:
+            alimentos, alquiler, servicios y cuotas se encarecen mes a mes.
+          </p>
+        </article>
       </div>
     </section>
   );

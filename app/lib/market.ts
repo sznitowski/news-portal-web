@@ -1,61 +1,82 @@
 // app/lib/market.ts
-import { buildApiUrl } from "./api";
 import type {
   DolarResponse,
   CryptoResponse,
   BcraSummary,
   BudgetSummary,
+  MarketSummary,
 } from "../types/market";
+import type { IndecSummary } from "../types/economy";
+import { fetchIndecSummary } from "./economy";
 
-type CountryRiskResponse = {
-  latest?: { value?: number } | null;
-  [key: string]: unknown;
-};
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
 
+async function safeGet<T>(path: string): Promise<T | null> {
+  try {
+    const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch (e) {
+    console.error(`Error GET ${path}`, e);
+    return null;
+  }
+}
+
+// Para cosas simples donde sólo querés dólar + cripto (shape resumido)
+export async function fetchMarketSummary(): Promise<MarketSummary | null> {
+  return safeGet<MarketSummary>("/market/summary");
+}
+
+// ---- Shape completo para las páginas de Economía ----
 export type MarketAll = {
   dolar: DolarResponse | null;
   crypto: CryptoResponse | null;
   bcra: BcraSummary | null;
   budget: BudgetSummary | null;
+  indec: IndecSummary | null;
   countryRisk: number | null;
 };
 
-async function safeJson<T>(path: string): Promise<T | null> {
-  const url = buildApiUrl(path);
-
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-    });
-
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch (err) {
-    console.error("Error al pedir", path, err);
-    return null;
-  }
-}
-
 export async function fetchMarketAll(): Promise<MarketAll> {
-  const [dolar, crypto, bcra, countryRiskRaw, budget] = await Promise.all([
-    safeJson<DolarResponse>("/market/dolar"),
-    safeJson<CryptoResponse>("/market/crypto"),
-    safeJson<BcraSummary>("/market/bcra"),
-    safeJson<CountryRiskResponse>("/market/country-risk"),
-    safeJson<BudgetSummary>("/economy/budget"),
-  ]);
+  try {
+    const [dolar, crypto, bcra, budget, indec, countryRiskRaw] =
+      await Promise.all([
+        safeGet<DolarResponse>("/market/dolar"),
+        safeGet<CryptoResponse>("/market/crypto"),
+        safeGet<BcraSummary>("/market/bcra"),
+        safeGet<BudgetSummary>("/economy/budget"),
+        fetchIndecSummary(), // INDEC (IPC mensual / interanual / acumulado)
+        safeGet<any>("/market/country-risk"),
+      ]);
 
-  const countryRiskValue =
-    typeof countryRiskRaw?.latest?.value === "number"
-      ? countryRiskRaw.latest.value
-      : null;
+    let countryRisk: number | null = null;
+    if (typeof countryRiskRaw === "number") {
+      countryRisk = countryRiskRaw;
+    } else if (
+      countryRiskRaw &&
+      typeof countryRiskRaw === "object" &&
+      typeof countryRiskRaw.value === "number"
+    ) {
+      countryRisk = countryRiskRaw.value;
+    }
 
-  return {
-    dolar,
-    crypto,
-    bcra,
-    budget,
-    countryRisk: countryRiskValue,
-  };
+    return {
+      dolar: dolar ?? null,
+      crypto: crypto ?? null,
+      bcra: bcra ?? null,
+      budget: budget ?? null,
+      indec: indec ?? null,
+      countryRisk,
+    };
+  } catch (e) {
+    console.error("Error cargando mercado completo", e);
+    return {
+      dolar: null,
+      crypto: null,
+      bcra: null,
+      budget: null,
+      indec: null,
+      countryRisk: null,
+    };
+  }
 }

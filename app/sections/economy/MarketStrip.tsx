@@ -8,7 +8,7 @@ import type {
   BcraSummary,
   BudgetSummary,
 } from "../../types/market";
-
+import type { IndecSummary } from "../../types/economy";
 
 type Props = {
   dolar: DolarResponse | null;
@@ -17,6 +17,7 @@ type Props = {
   countryRisk: number | null;
   budget: BudgetSummary | null;
   loading: boolean;
+  indec: IndecSummary | null;
 
   // flags opcionales para controlar qué se muestra
   showHeader?: boolean;
