@@ -1,7 +1,7 @@
 // app/components/EconomyHeadlineStrip.tsx
 "use client";
 
-import type { DolarResponse, CryptoResponse } from "../types/market";
+import type { DolarResponse, CryptoResponse } from "../../types/market";
 
 type Props = {
   dolar: DolarResponse | null;
@@ -43,19 +43,6 @@ export default function EconomyHeadlineStrip({ dolar, loading }: Props) {
   return (
     <section className="rounded-3xl border border-slate-200 bg-white/90 px-4 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.18)]">
       {/* cabecera */}
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <div className="inline-flex items-center gap-2">
-          <span className="rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-50">
-            Panorama económico
-          </span>
-          <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-            Dólar en pesos argentinos.
-          </span>
-        </div>
-        <span className="ml-auto text-[11px] text-slate-400">
-          Variación de referencia diaria.
-        </span>
-      </div>
 
       {/* tarjetas del dólar */}
       <div className="mt-4 flex flex-wrap gap-3">

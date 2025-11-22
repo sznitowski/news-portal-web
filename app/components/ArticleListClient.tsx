@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import EconomyHeadlineStrip from "./EconomyHeadlineStrip";
+import { EconomyHeadlineStrip } from "../sections/economy";
 import type { DolarResponse, CryptoResponse } from "../types/market";
 
 type PublicArticle = {

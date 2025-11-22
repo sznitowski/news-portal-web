@@ -9,6 +9,7 @@ import type {
   BudgetSummary,
 } from "../../types/market";
 
+
 type Props = {
   dolar: DolarResponse | null;
   crypto: CryptoResponse | null;

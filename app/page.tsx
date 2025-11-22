@@ -1,6 +1,6 @@
 // app/page.tsx
 import ArticleListClient from "./components/ArticleListClient";
-import EconomiaSection from "./sections/EconomiaSection";
+import { EconomiaSection } from "./sections/economy";
 import { buildApiUrl } from "./lib/api";
 import type {
   DolarResponse,

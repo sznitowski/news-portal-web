@@ -1,11 +1,11 @@
 // app/sections/EconomiaSection.tsx
-import MarketStrip from "../components/ui/MarketStrip";
+import MarketStrip from "./MarketStrip";
 import type {
   DolarResponse,
   CryptoResponse,
   BcraSummary,
   BudgetSummary,
-} from "../types/market";
+} from "../../types/market";
 
 type Props = {
   dolar: DolarResponse | null;
