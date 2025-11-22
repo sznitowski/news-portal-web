@@ -16,6 +16,13 @@ type Props = {
   countryRisk: number | null;
   budget: BudgetSummary | null;
   loading: boolean;
+
+  // flags opcionales para controlar qué se muestra
+  showHeader?: boolean;
+  showDolar?: boolean;
+  showCrypto?: boolean;
+  showBcra?: boolean;
+  showBudget?: boolean;
 };
 
 function formatArs(value: number) {
@@ -37,18 +44,25 @@ function formatNumber(value: number | null | undefined) {
 function formatMillionsArs(m: number | null | undefined) {
   if (m == null) return "-";
   return `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(
-    m
+    m,
   )} M ARS`;
 }
 
-const MarketStrip: React.FC<Props> = ({
-  dolar,
-  crypto,
-  bcra,
-  countryRisk,
-  budget,
-  loading,
-}) => {
+const MarketStrip: React.FC<Props> = (props) => {
+  const {
+    dolar,
+    crypto,
+    bcra,
+    countryRisk,
+    budget,
+    loading,
+    showHeader = true,
+    showDolar = true,
+    showCrypto = true,
+    showBcra = true,
+    showBudget = true,
+  } = props;
+
   const dolarItems: { key: string; label: string }[] = [
     { key: "oficial", label: "DÓLAR OFICIAL" },
     { key: "tarjeta", label: "DÓLAR TARJETA" },
@@ -71,6 +85,13 @@ const MarketStrip: React.FC<Props> = ({
   const hasRisk = countryRisk != null;
   const hasBudget = !!budget;
 
+  const nothingVisible =
+    (!hasDolar || !showDolar) &&
+    (!hasCrypto || !showCrypto) &&
+    (!hasBcra || !showBcra) &&
+    (!hasRisk || !showBcra) &&
+    (!hasBudget || !showBudget);
+
   if (loading) {
     return (
       <section style={{ marginBottom: 20 }}>
@@ -79,7 +100,7 @@ const MarketStrip: React.FC<Props> = ({
     );
   }
 
-  if (!hasDolar && !hasCrypto && !hasBcra && !hasRisk && !hasBudget) {
+  if (nothingVisible) {
     return null;
   }
 
@@ -116,37 +137,28 @@ const MarketStrip: React.FC<Props> = ({
           boxShadow: "0 10px 15px -5px rgba(0,0,0,0.06)",
         }}
       >
-        {/* cabecera */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            marginBottom: 12,
-            alignItems: "baseline",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                letterSpacing: "0.15em",
-                textTransform: "uppercase",
-                color: "#111827",
-              }}
-            >
-              Panorama económico
+        {/* cabecera (sin el texto "Panorama económico" si showHeader=false) */}
+        {showHeader && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              marginBottom: 12,
+              alignItems: "baseline",
+            }}
+          >
+            <div>
+              <p style={{ marginTop: 0, fontSize: 11, color: "#6b7280" }}>
+                Cotizaciones y tasas de referencia en Argentina.
+              </p>
             </div>
-            <p style={{ marginTop: 4, fontSize: 11, color: "#6b7280" }}>
-              Cotizaciones y tasas de referencia en Argentina.
-            </p>
           </div>
-        </div>
+        )}
 
         <div style={{ display: "grid", rowGap: 18 }}>
           {/* DÓLAR */}
-          {hasDolar && (
+          {hasDolar && showDolar && (
             <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
               <div
                 style={{
@@ -166,7 +178,7 @@ const MarketStrip: React.FC<Props> = ({
 
               <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
                 {dolarItems.map(({ key, label }) => {
-                  const quote = dolar[key] as any;
+                  const quote = (dolar as any)[key];
                   if (!quote) return null;
                   return (
                     <div key={key} style={cardStyle}>
@@ -204,7 +216,7 @@ const MarketStrip: React.FC<Props> = ({
           )}
 
           {/* CRIPTOS */}
-          {hasCrypto && (
+          {hasCrypto && showCrypto && (
             <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
               <div
                 style={{
@@ -238,7 +250,7 @@ const MarketStrip: React.FC<Props> = ({
                     changeColor =
                       rounded > 0 ? "#16a34a" : rounded < 0 ? "#b91c1c" : "#6b7280";
                     changeLabel = `${rounded > 0 ? "+" : ""}${rounded.toFixed(
-                      2
+                      2,
                     )}% últimas 24 hs`;
                   }
 
@@ -286,7 +298,7 @@ const MarketStrip: React.FC<Props> = ({
           )}
 
           {/* BCRA + RIESGO */}
-          {(hasBcra || hasRisk) && (
+          {showBcra && (hasBcra || hasRisk) && (
             <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
               <div
                 style={{
@@ -421,7 +433,7 @@ const MarketStrip: React.FC<Props> = ({
           )}
 
           {/* PRESUPUESTO NACIONAL */}
-          {hasBudget && (
+          {hasBudget && showBudget && (
             <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
               <div
                 style={{
@@ -549,7 +561,6 @@ const MarketStrip: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* última actualización / error */}
               {budget?.raw?.total?.ultima_actualizacion_fecha && (
                 <div
                   style={{

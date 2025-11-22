@@ -1,8 +1,5 @@
-"use client";
-
-import EconomyHeadlineStrip from "../components/EconomyHeadlineStrip";
+// app/sections/EconomiaSection.tsx
 import MarketStrip from "../components/ui/MarketStrip";
-
 import type {
   DolarResponse,
   CryptoResponse,
@@ -27,16 +24,15 @@ export default function EconomiaSection({
   countryRisk,
   loading,
 }: Props) {
-  return (
-    <section className="mx-auto mb-12 mt-4 max-w-6xl space-y-4">
-      {/* Tira rápida arriba: dólar + cripto resumido */}
-      <EconomyHeadlineStrip
-        dolar={dolar}
-        crypto={crypto}
-        loading={loading}
-      />
+  const hasSomething =
+    dolar || crypto || bcra || budget || countryRisk != null;
 
-      {/* Bloque completo de panorama económico */}
+  if (!hasSomething && !loading) {
+    return null;
+  }
+
+  return (
+    <section className="mx-auto mt-12 max-w-6xl px-4 pb-10">
       <MarketStrip
         dolar={dolar}
         crypto={crypto}
@@ -44,6 +40,9 @@ export default function EconomiaSection({
         budget={budget}
         countryRisk={countryRisk}
         loading={loading}
+        // abajo: sin título "Panorama económico" y sin repetir el dólar
+        showHeader={false}
+        showDolar={false}
       />
     </section>
   );

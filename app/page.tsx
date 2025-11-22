@@ -1,13 +1,17 @@
+// app/page.tsx
 import ArticleListClient from "./components/ArticleListClient";
-import { buildApiUrl } from "./lib/api";
 import EconomiaSection from "./sections/EconomiaSection";
-
+import { buildApiUrl } from "./lib/api";
 import type {
   DolarResponse,
   CryptoResponse,
   BcraSummary,
   BudgetSummary,
 } from "./types/market";
+
+// ========================
+// Tipos de artículos
+// ========================
 
 type PublicArticle = {
   id: number;
@@ -39,22 +43,6 @@ type PublicArticlesResponse = {
   meta: PublicArticlesMeta;
 };
 
-type CountryRiskResponse = {
-  latest?: { date?: string; value?: number } | null;
-  [key: string]: any;
-};
-
-type MarketData = {
-  dolar: DolarResponse | null;
-  crypto: CryptoResponse | null;
-  bcra: BcraSummary | null;
-  budget: BudgetSummary | null;
-  countryRisk: number | null;
-};
-
-// =======================
-// Fetch de artículos
-// =======================
 async function fetchPublicArticles(): Promise<PublicArticlesResponse> {
   const url = buildApiUrl("/articles?limit=40&page=1");
 
@@ -92,63 +80,69 @@ async function fetchPublicArticles(): Promise<PublicArticlesResponse> {
   }
 }
 
-// =======================
-// Fetch de datos mercado
-// =======================
-async function fetchMarketData(): Promise<MarketData> {
+// ========================
+// Datos de mercado
+// ========================
+
+type CountryRiskResponse = {
+  latest?: { value?: number } | null;
+  [key: string]: any;
+};
+
+type MarketAll = {
+  dolar: DolarResponse | null;
+  crypto: CryptoResponse | null;
+  bcra: BcraSummary | null;
+  budget: BudgetSummary | null;
+  countryRisk: number | null;
+};
+
+async function safeJson<T>(path: string): Promise<T | null> {
+  const url = buildApiUrl(path);
   try {
-    const [dolarRes, cryptoRes, bcraRes, riskRes, budgetRes] =
-      await Promise.all([
-        fetch(buildApiUrl("/market/dolar"), { cache: "no-store" }),
-        fetch(buildApiUrl("/market/crypto"), { cache: "no-store" }),
-        fetch(buildApiUrl("/market/bcra"), { cache: "no-store" }),
-        fetch(buildApiUrl("/market/country-risk"), { cache: "no-store" }),
-        fetch(buildApiUrl("/economy/budget"), { cache: "no-store" }),
-      ]);
-
-    const dolar = dolarRes.ok
-      ? ((await dolarRes.json()) as DolarResponse)
-      : null;
-
-    const crypto = cryptoRes.ok
-      ? ((await cryptoRes.json()) as CryptoResponse)
-      : null;
-
-    const bcra = bcraRes.ok
-      ? ((await bcraRes.json()) as BcraSummary)
-      : null;
-
-    let countryRisk: number | null = null;
-    if (riskRes.ok) {
-      const json = (await riskRes.json()) as CountryRiskResponse;
-      const v = json.latest?.value;
-      countryRisk = typeof v === "number" ? v : null;
-    }
-
-    const budget = budgetRes.ok
-      ? ((await budgetRes.json()) as BudgetSummary)
-      : null;
-
-    return { dolar, crypto, bcra, budget, countryRisk };
-  } catch (e) {
-    console.error("Error fetchMarketData:", e);
-    return {
-      dolar: null,
-      crypto: null,
-      bcra: null,
-      budget: null,
-      countryRisk: null,
-    };
+    const res = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch (err) {
+    console.error("Error al pedir", path, err);
+    return null;
   }
 }
 
-// =======================
+async function fetchMarketAll(): Promise<MarketAll> {
+  const [dolar, crypto, bcra, countryRiskRaw, budget] = await Promise.all([
+    safeJson<DolarResponse>("/market/dolar"),
+    safeJson<CryptoResponse>("/market/crypto"),
+    safeJson<BcraSummary>("/market/bcra"),
+    safeJson<CountryRiskResponse>("/market/country-risk"),
+    safeJson<BudgetSummary>("/economy/budget"),
+  ]);
+
+  const countryRiskValue =
+    typeof countryRiskRaw?.latest?.value === "number"
+      ? countryRiskRaw.latest.value
+      : null;
+
+  return {
+    dolar,
+    crypto,
+    bcra,
+    budget,
+    countryRisk: countryRiskValue,
+  };
+}
+
+// ========================
 // Página
-// =======================
+// ========================
+
 export default async function HomePage() {
   const [{ items, meta }, market] = await Promise.all([
     fetchPublicArticles(),
-    fetchMarketData(),
+    fetchMarketAll(),
   ]);
 
   const loading =
@@ -160,10 +154,16 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-      {/* Noticias / portada */}
-      <ArticleListClient initialArticles={items} initialMeta={meta} />
+      {/* Noticias + tira rápida arriba de todo, sólo en categoría Economía */}
+      <ArticleListClient
+        initialArticles={items}
+        initialMeta={meta}
+        dolar={market.dolar}
+        crypto={market.crypto}
+        loading={loading}
+      />
 
-      {/* Panorama económico (ÚNICA vez, sin duplicados) */}
+      {/* Panel grande de Panorama económico */}
       <EconomiaSection
         dolar={market.dolar}
         crypto={market.crypto}
