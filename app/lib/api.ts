@@ -1,4 +1,10 @@
+// app/lib/api.ts
 import type { ArticleListItem, ArticleFull } from "../types/article";
+import type {
+  MarketSummary,
+  BcraSummary,
+  BudgetSummary,
+} from "../types/market";
 
 /**
  * Base de la API (backend Nest).
@@ -48,6 +54,10 @@ export function getPublicUrl(pathOrUrl: string): string {
   return `${API_BASE}${cleanPath}`;
 }
 
+/* =======================
+ * Artículos
+ * ======================= */
+
 /**
  * Lista de artículos (paginada + filtro opcional por categoría)
  */
@@ -92,6 +102,50 @@ export async function getArticleBySlug(
   if (!res.ok) {
     throw new Error(
       `failed to fetch /articles/:slug (status ${res.status})`,
+    );
+  }
+
+  return res.json();
+}
+
+/* =======================
+ * Economía / Mercado
+ * ======================= */
+
+export async function getMarketSummary(): Promise<MarketSummary> {
+  const res = await fetch(buildApiUrl("/market/summary"), {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `failed to fetch /market/summary (status ${res.status})`,
+    );
+  }
+
+  return res.json();
+}
+
+export async function getBcraSummary(): Promise<BcraSummary> {
+  const res = await fetch(buildApiUrl("/market/bcra"), {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`failed to fetch /market/bcra (status ${res.status})`);
+  }
+
+  return res.json();
+}
+
+export async function getBudgetSummary(): Promise<BudgetSummary> {
+  const res = await fetch(buildApiUrl("/economy/budget"), {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `failed to fetch /economy/budget (status ${res.status})`,
     );
   }
 

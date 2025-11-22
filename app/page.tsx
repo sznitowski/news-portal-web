@@ -43,6 +43,10 @@ type PublicArticlesResponse = {
   meta: PublicArticlesMeta;
 };
 
+// ========================
+// Fetch de artículos públicos
+// ========================
+
 async function fetchPublicArticles(): Promise<PublicArticlesResponse> {
   const url = buildApiUrl("/articles?limit=40&page=1");
 
@@ -154,7 +158,7 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-      {/* Noticias + tira rápida arriba de todo, sólo en categoría Economía */}
+      {/* Listado principal de notas + tira de dólar en Economía */}
       <ArticleListClient
         initialArticles={items}
         initialMeta={meta}
@@ -163,7 +167,7 @@ export default async function HomePage() {
         loading={loading}
       />
 
-      {/* Panel grande de Panorama económico */}
+      {/* Panel grande de Economía: BCRA + Presupuesto + etc. */}
       <EconomiaSection
         dolar={market.dolar}
         crypto={market.crypto}
