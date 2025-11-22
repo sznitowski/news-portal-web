@@ -1,3 +1,4 @@
+// app/components/economy/EconomyMenu.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -6,7 +7,6 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation";
-
 
 type Props = {
   isActive: boolean;
@@ -22,7 +22,7 @@ const OPTIONS: EconomyOption[] = [
   {
     key: "summary",
     label: "Resumen de Economía",
-    href: "/?category=economia",
+    href: "/economia/resumen",          // <-- CAMBIADO
   },
   {
     key: "market",
@@ -54,7 +54,7 @@ export default function EconomyMenu({ isActive }: Props) {
 
   // CLICK en el botón principal "Economía"
   const handleMainClick = () => {
-    // Si NO estamos en economía, navegamos
+    // Si NO estamos en economía, navegamos a la lista de notas de economía
     if (!isActive) {
       router.push("/?category=economia");
       setOpen(false);

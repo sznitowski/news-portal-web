@@ -1,4 +1,4 @@
-// app/sections/EconomiaSection.tsx
+// app/sections/economy/EconomiaSection.tsx
 import MarketStrip from "./MarketStrip";
 import type {
   DolarResponse,
@@ -14,6 +14,8 @@ type Props = {
   budget: BudgetSummary | null;
   countryRisk: number | null;
   loading: boolean;
+  showHeader?: boolean;
+  showDolar?: boolean;
 };
 
 export default function EconomiaSection({
@@ -23,6 +25,8 @@ export default function EconomiaSection({
   budget,
   countryRisk,
   loading,
+  showHeader = false,
+  showDolar = false,
 }: Props) {
   const hasSomething =
     dolar || crypto || bcra || budget || countryRisk != null;
@@ -40,9 +44,8 @@ export default function EconomiaSection({
         budget={budget}
         countryRisk={countryRisk}
         loading={loading}
-        // abajo: sin título "Panorama económico" y sin repetir el dólar
-        showHeader={false}
-        showDolar={false}
+        showHeader={showHeader}
+        showDolar={showDolar}
       />
     </section>
   );

@@ -1,8 +1,7 @@
 // app/sections/economy/EconomyDataSection.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { buildApiUrl } from "../../lib/api";
+import { useSearchParams } from "next/navigation";
 import type {
   DolarResponse,
   CryptoResponse,
@@ -10,74 +9,257 @@ import type {
   BudgetSummary,
 } from "../../types/market";
 
-import EconomyHeadlineStrip from "./EconomyHeadlineStrip";
-import EconomiaSection from "./EconomiaSection";
+type Props = {
+  dolar: DolarResponse | null;
+  crypto: CryptoResponse | null;
+  bcra: BcraSummary | null;
+  budget: BudgetSummary | null;
+  countryRisk: number | null;
+  loading: boolean;
+};
 
-export default function EconomyDataSection() {
-  const [dolar, setDolar] = useState<DolarResponse | null>(null);
-  const [crypto, setCrypto] = useState<CryptoResponse | null>(null);
-  const [bcra, setBcra] = useState<BcraSummary | null>(null);
-  const [budget, setBudget] = useState<BudgetSummary | null>(null);
-  const [countryRisk, setCountryRisk] = useState<number | null>(null); // por ahora null
-  const [loading, setLoading] = useState<boolean>(true);
+function formatPercent(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "-";
+  return (
+    new Intl.NumberFormat("es-AR", {
+      maximumFractionDigits: 1,
+    }).format(value) + " %"
+  );
+}
 
-  useEffect(() => {
-    let cancelled = false;
+function formatNumber(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "-";
+  return new Intl.NumberFormat("es-AR", {
+    maximumFractionDigits: 0,
+  }).format(value);
+}
 
-    async function load() {
-      try {
-        const [dRes, cRes, bRes, budRes] = await Promise.all([
-          fetch(buildApiUrl("/market/dolar")),
-          fetch(buildApiUrl("/market/crypto")),
-          fetch(buildApiUrl("/market/bcra")),
-          fetch(buildApiUrl("/economy/budget")),
-        ]);
+function formatMillionsArs(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "-";
+  return (
+    new Intl.NumberFormat("es-AR", {
+      maximumFractionDigits: 0,
+    }).format(value) + " M ARS"
+  );
+}
 
-        if (cancelled) return;
+function calcSpread(base?: number | null, other?: number | null): number | null {
+  if (base == null || other == null || base === 0) return null;
+  return ((other - base) / base) * 100;
+}
 
-        setDolar(dRes.ok ? ((await dRes.json()) as DolarResponse) : null);
-        setCrypto(cRes.ok ? ((await cRes.json()) as CryptoResponse) : null);
-        setBcra(bRes.ok ? ((await bRes.json()) as BcraSummary) : null);
-        setBudget(budRes.ok ? ((await budRes.json()) as BudgetSummary) : null);
+export default function EconomyDataSection({
+  dolar,
+  crypto: _crypto,
+  bcra,
+  budget,
+  countryRisk,
+  loading,
+}: Props) {
+  const searchParams = useSearchParams();
+  const category = searchParams.get("category");
 
-        // Cuando tengas endpoint de riesgo país, lo seteás acá
-        setCountryRisk(null);
-      } catch (err) {
-        console.error("Error cargando datos de economía", err);
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
+  // Solo mostrar cuando estás en Economía
+  const isEconomy = !category || category === "economia";
+  if (!isEconomy) return null;
 
-    load();
+  if (loading && !dolar && !bcra && !budget && countryRisk == null) {
+    return null;
+  }
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const oficial = dolar?.oficial ?? null;
+  const blue = dolar?.blue ?? null;
+  const mep = (dolar as any)?.mep ?? null;
+  const ccl = (dolar as any)?.ccl ?? null;
+
+  const spreadBlue = calcSpread(oficial?.venta ?? null, blue?.venta ?? null);
+  const spreadMep = calcSpread(oficial?.venta ?? null, mep?.venta ?? null);
+  const spreadCcl = calcSpread(oficial?.venta ?? null, ccl?.venta ?? null);
+
+  const reservasUsdM = bcra?.reservas?.valor ?? null;
+  const badlar = bcra?.tasaBadlarPrivados?.valor ?? null;
+  const tm20 = bcra?.tasaTm20Privados?.valor ?? null;
+
+  const totalRevenue = budget?.totalRevenue ?? null;
+  const totalSpending = budget?.totalSpending ?? null;
+  const primaryBalance = budget?.primaryBalance ?? null;
+
+  const primaryAsRevenuePct =
+    totalRevenue != null && primaryBalance != null && totalRevenue !== 0
+      ? (primaryBalance / totalRevenue) * 100
+      : null;
 
   return (
-    <>
-      {/* Tira de tarjetas de dólar arriba de todo */}
-      <section className="mx-auto mt-12 max-w-6xl px-4 pb-4">
-        <EconomyHeadlineStrip
-          dolar={dolar}
-          crypto={crypto}
-          loading={loading}
-        />
-      </section>
+    <section className="mx-auto mt-6 max-w-6xl space-y-4 px-4 pb-12">
+      <header className="flex flex-col gap-2 md:flex-row md:items-baseline md:justify-between">
+        <div>
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            Lectura rápida de los datos
+          </h2>
+          <p className="mt-1 text-[12px] text-slate-500">
+            Brechas cambiarias, reservas del BCRA y resultado primario del
+            presupuesto.
+          </p>
+        </div>
+      </header>
 
-      {/* Bloque grande de mercado / BCRA / Presupuesto */}
-      <EconomiaSection
-        dolar={dolar}
-        crypto={crypto}
-        bcra={bcra}
-        budget={budget}
-        countryRisk={countryRisk}
-        loading={loading}
-      />
-    </>
+      <div className="grid gap-4 md:grid-cols-3">
+        {/* Brecha cambiaria */}
+        <article className="flex flex-col rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_14px_36px_rgba(15,23,42,0.14)]">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.20em] text-slate-500">
+            Brecha cambiaria
+          </h3>
+          <p className="mt-1 text-[12px] text-slate-400">
+            Diferencia contra el dólar oficial (venta).
+          </p>
+
+          <dl className="mt-3 space-y-2 text-[13px]">
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">Blue vs oficial</dt>
+              <dd
+                className={`font-semibold ${
+                  spreadBlue != null && spreadBlue > 0
+                    ? "text-emerald-600"
+                    : "text-slate-700"
+                }`}
+              >
+                {formatPercent(spreadBlue)}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">MEP vs oficial</dt>
+              <dd
+                className={`font-semibold ${
+                  spreadMep != null && spreadMep > 0
+                    ? "text-emerald-600"
+                    : "text-slate-700"
+                }`}
+              >
+                {formatPercent(spreadMep)}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">CCL vs oficial</dt>
+              <dd
+                className={`font-semibold ${
+                  spreadCcl != null && spreadCcl > 0
+                    ? "text-emerald-600"
+                    : "text-slate-700"
+                }`}
+              >
+                {formatPercent(spreadCcl)}
+              </dd>
+            </div>
+          </dl>
+        </article>
+
+        {/* Reservas y tasas */}
+        <article className="flex flex-col rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_14px_36px_rgba(15,23,42,0.14)]">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.20em] text-slate-500">
+            Reservas y tasas BCRA
+          </h3>
+          <p className="mt-1 text-[12px] text-slate-400">
+            Stock de reservas y principales tasas de referencia.
+          </p>
+
+          <dl className="mt-3 space-y-2 text-[13px]">
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">Reservas internacionales</dt>
+              <dd className="font-semibold text-slate-800">
+                {formatNumber(reservasUsdM)} M USD
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">BADLAR bancos privados</dt>
+              <dd className="font-semibold text-slate-800">
+                {formatPercent(badlar)}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">TM20 bancos privados</dt>
+              <dd className="font-semibold text-slate-800">
+                {formatPercent(tm20)}
+              </dd>
+            </div>
+
+            <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
+              <dt className="text-slate-600">Riesgo país (EMBI+ ARG)</dt>
+              <dd className="font-semibold text-slate-800">
+                {countryRisk != null ? `${formatNumber(countryRisk)} pts` : "-"}
+              </dd>
+            </div>
+          </dl>
+        </article>
+
+        {/* Presupuesto / resultado primario */}
+        <article className="flex flex-col rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_14px_36px_rgba(15,23,42,0.14)]">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.20em] text-slate-500">
+            Cuentas públicas
+          </h3>
+          <p className="mt-1 text-[12px] text-slate-400">
+            Totales acumulados del presupuesto nacional (millones de pesos).
+          </p>
+
+          <dl className="mt-3 space-y-2 text-[13px]">
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">Recursos percibidos</dt>
+              <dd className="font-semibold text-slate-800">
+                {formatMillionsArs(totalRevenue)}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">Gasto primario devengado</dt>
+              <dd className="font-semibold text-slate-800">
+                {formatMillionsArs(totalSpending)}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">Resultado primario</dt>
+              <dd
+                className={`font-semibold ${
+                  primaryBalance != null && primaryBalance < 0
+                    ? "text-rose-600"
+                    : primaryBalance != null && primaryBalance > 0
+                    ? "text-emerald-600"
+                    : "text-slate-800"
+                }`}
+              >
+                {formatMillionsArs(primaryBalance)}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-600">
+                Resultado / ingresos (% acumulado)
+              </dt>
+              <dd
+                className={`font-semibold ${
+                  primaryAsRevenuePct != null && primaryAsRevenuePct < 0
+                    ? "text-rose-600"
+                    : primaryAsRevenuePct != null && primaryAsRevenuePct > 0
+                    ? "text-emerald-600"
+                    : "text-slate-800"
+                }`}
+              >
+                {formatPercent(primaryAsRevenuePct)}
+              </dd>
+            </div>
+          </dl>
+
+          {budget?.raw?.total?.ultima_actualizacion_fecha && (
+            <p className="mt-3 text-[11px] text-slate-400">
+              Última actualización:{" "}
+              {budget.raw.total.ultima_actualizacion_fecha}
+            </p>
+          )}
+        </article>
+      </div>
+    </section>
   );
 }

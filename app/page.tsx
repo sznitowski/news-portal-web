@@ -1,6 +1,5 @@
 // app/page.tsx
 import ArticleListClient from "./components/ArticleListClient";
-import { EconomiaSection } from "./sections/economy";
 import { buildApiUrl } from "./lib/api";
 import type {
   DolarResponse,
@@ -42,10 +41,6 @@ type PublicArticlesResponse = {
   items: PublicArticle[];
   meta: PublicArticlesMeta;
 };
-
-// ========================
-// Fetch de artículos públicos
-// ========================
 
 async function fetchPublicArticles(): Promise<PublicArticlesResponse> {
   const url = buildApiUrl("/articles?limit=40&page=1");
@@ -158,7 +153,8 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-      {/* Listado principal de notas + tira de dólar en Economía */}
+      {/* Noticias + tira rápida arriba de todo (ArticleListClient
+          se encarga de mostrar la tira solo en categoría Economía) */}
       <ArticleListClient
         initialArticles={items}
         initialMeta={meta}
@@ -166,16 +162,7 @@ export default async function HomePage() {
         crypto={market.crypto}
         loading={loading}
       />
-
-      {/* Panel grande de Economía: BCRA + Presupuesto + etc. */}
-      <EconomiaSection
-        dolar={market.dolar}
-        crypto={market.crypto}
-        bcra={market.bcra}
-        budget={market.budget}
-        countryRisk={market.countryRisk}
-        loading={loading}
-      />
+      {/* El panel grande de BCRA/presupuesto ahora vive en /economia/resumen */}
     </main>
   );
 }
