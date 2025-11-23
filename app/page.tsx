@@ -176,10 +176,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const rawCategory = resolved.category;
   const category = normalizeParam(rawCategory);
 
-  // Normalizamos y definimos cuándo mostrar los paneles de economía
+  // Solo mostrar paneles económicos cuando la categoría es EXACTAMENTE "economia"
   const normalizedCategory = category ? category.toLowerCase() : null;
-  const isEconomyView =
-    !normalizedCategory || normalizedCategory === "economia";
+  const isEconomyView = normalizedCategory === "economia";
 
   const [{ items, meta }, market] = await Promise.all([
     fetchPublicArticles(category),
@@ -195,7 +194,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-      {/* 1) ARRIBA: tira con precio del dólar (solo en inicio/economía) */}
+      {/* 1) ARRIBA: tira con precio del dólar (solo en Economía) */}
       {isEconomyView && (
         <div className="mt-2">
           <MarketStrip
@@ -223,7 +222,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         loading={loading}
       />
 
-      {/* 3) ABAJO: panel de datos (solo en inicio/economía) */}
+      {/* 3) ABAJO: panel de datos (solo en Economía) */}
       {isEconomyView && (
         <EconomyDataSection
           dolar={market.dolar}

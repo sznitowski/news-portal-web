@@ -80,11 +80,13 @@ export default function EconomyDataSection({
   loading,
 }: Props) {
   const searchParams = useSearchParams();
-  const category = searchParams.get("category");
+  const rawCategory = searchParams.get("category");
   const view = searchParams.get("view");
 
-  // Este panel sólo se muestra en Inicio / Economía
-  const isEconomy = !category || category === "economia";
+  const category = rawCategory ? rawCategory.toLowerCase() : null;
+
+  // Este panel sólo se muestra en Economía
+  const isEconomy = category === "economia";
   if (!isEconomy) return null;
 
   if (loading && !dolar && !bcra && !budget && countryRisk == null && !indec) {
