@@ -3,13 +3,18 @@ import ArticleListClient from "./components/ArticleListClient";
 import MarketStrip from "./sections/economy/MarketStrip";
 import EconomyDataSection from "./sections/economy/EconomyDataSection";
 import EconomyViewTabs from "./sections/economy/EconomyViewTabs";
+import EconomyPanelSection from "./sections/economy/EconomyPanelSection";
+
 import { buildApiUrl } from "./lib/api";
+import { fetchEconomyDaily } from "./lib/economy";
+
 import type {
   DolarResponse,
   CryptoResponse,
   BcraSummary,
   BudgetSummary,
 } from "./types/market";
+import type { EconomyDailySnapshot } from "./types/economy";
 
 // ========================
 // Tipos de artículos
@@ -108,11 +113,6 @@ async function fetchPublicArticles(
 // Datos de mercado
 // ========================
 
-type CountryRiskResponse = {
-  latest?: { value?: number } | null;
-  [key: string]: any;
-};
-
 type MarketAll = {
   dolar: DolarResponse | null;
   crypto: CryptoResponse | null;
@@ -136,26 +136,22 @@ async function safeJson<T>(path: string): Promise<T | null> {
   }
 }
 
+// 👉 Acá dejamos de llamar a /market/country-risk.
+// El riesgo país queda siempre en null por ahora.
 async function fetchMarketAll(): Promise<MarketAll> {
-  const [dolar, crypto, bcra, countryRiskRaw, budget] = await Promise.all([
+  const [dolar, crypto, bcra, budget] = await Promise.all([
     safeJson<DolarResponse>("/market/dolar"),
     safeJson<CryptoResponse>("/market/crypto"),
     safeJson<BcraSummary>("/market/bcra"),
-    safeJson<CountryRiskResponse>("/market/country-risk"),
     safeJson<BudgetSummary>("/economy/budget"),
   ]);
-
-  const countryRiskValue =
-    typeof countryRiskRaw?.latest?.value === "number"
-      ? countryRiskRaw.latest.value
-      : null;
 
   return {
     dolar,
     crypto,
     bcra,
     budget,
-    countryRisk: countryRiskValue,
+    countryRisk: null, // sin riesgo país por ahora
   };
 }
 
@@ -175,16 +171,29 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     >;
 
   const rawCategory = resolved.category;
+  const rawView = resolved.view;
+
   const category = normalizeParam(rawCategory);
+  const view = normalizeParam(rawView);
 
   // Normalizamos y definimos cuándo mostrar los paneles de economía
   const normalizedCategory = category ? category.toLowerCase() : null;
+  const normalizedView = view ? view.toLowerCase() : null;
+
   const isEconomyView =
     !normalizedCategory || normalizedCategory === "economia";
 
-  const [{ items, meta }, market] = await Promise.all([
+  // Tab activo dentro de economía
+  const economyView = normalizedView ?? "resumen";
+
+  // Mostrar tablero diario sólo en Economía → “Dólar y Criptomonedas”
+  const showEconomyPanel =
+    normalizedCategory === "economia" && economyView === "dolar-cripto";
+
+  const [{ items, meta }, market, dailySnapshots] = await Promise.all([
     fetchPublicArticles(category),
     fetchMarketAll(),
+    fetchEconomyDaily({ limit: 30 }) as Promise<EconomyDailySnapshot[]>,
   ]);
 
   const loading =
@@ -199,10 +208,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       {/* Submenú pegado al menú principal (solo se muestra en Economía) */}
       <EconomyViewTabs />
 
-      <main className="mx-auto max-w-6xl space-y-8 px-4 pb-8 pt-4">
+      <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
         {/* 1) ARRIBA: tira con precio del dólar (solo en inicio/economía) */}
         {isEconomyView && (
-          <div className="mt-2">
+          <div className="mt-2 space-y-6">
             <MarketStrip
               dolar={market.dolar}
               crypto={market.crypto}
@@ -216,6 +225,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               showBcra={false}
               showBudget={false}
             />
+
+            {showEconomyPanel && (
+              <EconomyPanelSection snapshots={dailySnapshots} />
+            )}
           </div>
         )}
 
