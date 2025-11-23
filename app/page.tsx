@@ -176,25 +176,51 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const category = normalizeParam(rawCategory);
   const view = normalizeParam(rawView);
 
-  // Normalizamos y definimos cuándo mostrar los paneles de economía
   const normalizedCategory = category ? category.toLowerCase() : null;
-  const normalizedView = view ? view.toLowerCase() : null;
 
-  const isEconomyView =
+  // Contexto "economía": home sin categoría o categoría = economia
+  const isEconomyContext =
     !normalizedCategory || normalizedCategory === "economia";
 
-  // Tab activo dentro de economía
-  const economyView = normalizedView ?? "resumen";
+  // Sub-vistas dentro de economía
+  const isEconomyDolarCripto =
+    normalizedCategory === "economia" && view === "dolar-cripto";
 
-  // Mostrar tablero diario sólo en Economía → “Dólar y Criptomonedas”
-  const showEconomyPanel =
-    normalizedCategory === "economia" && economyView === "dolar-cripto";
+  const isEconomyResumen =
+    isEconomyContext && (!view || view === "resumen");
 
-  const [{ items, meta }, market, dailySnapshots] = await Promise.all([
-    fetchPublicArticles(category),
-    fetchMarketAll(),
-    fetchEconomyDaily({ limit: 30 }) as Promise<EconomyDailySnapshot[]>,
-  ]);
+  // ========================
+  // Fetch de datos según vista
+  // ========================
+
+  let market: MarketAll;
+  let items: PublicArticle[] = [];
+  let meta: PublicArticlesMeta = {
+    page: 1,
+    limit: 40,
+    total: 0,
+    totalPages: 1,
+  };
+  let snapshots: EconomyDailySnapshot[] = [];
+
+  if (isEconomyDolarCripto) {
+    // Sólo necesitamos mercado + snapshots, SIN noticias
+    const [marketRes, snapshotsRes] = await Promise.all([
+      fetchMarketAll(),
+      fetchEconomyDaily({ limit: 30 }),
+    ]);
+    market = marketRes;
+    snapshots = snapshotsRes ?? [];
+  } else {
+    // Resto de vistas: mercado + noticias
+    const [articlesRes, marketRes] = await Promise.all([
+      fetchPublicArticles(category),
+      fetchMarketAll(),
+    ]);
+    items = articlesRes.items;
+    meta = articlesRes.meta;
+    market = marketRes;
+  }
 
   const loading =
     !market.dolar &&
@@ -209,9 +235,11 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       <EconomyViewTabs />
 
       <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-        {/* 1) ARRIBA: tira con precio del dólar (solo en inicio/economía) */}
-        {isEconomyView && (
-          <div className="mt-2 space-y-6">
+        {/* 1) ARRIBA: tira con precio del dólar 
+            - Home (sin categoría) y Economía muestran la tira
+            - Otras categorías (política, internacional, etc.) no */}
+        {isEconomyContext && (
+          <div className="mt-2">
             <MarketStrip
               dolar={market.dolar}
               crypto={market.crypto}
@@ -225,24 +253,31 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               showBcra={false}
               showBudget={false}
             />
-
-            {showEconomyPanel && (
-              <EconomyPanelSection snapshots={dailySnapshots} />
-            )}
           </div>
         )}
 
-        {/* 2) EN EL MEDIO: noticias */}
-        <ArticleListClient
-          initialArticles={items}
-          initialMeta={meta}
-          dolar={market.dolar}
-          crypto={market.crypto}
-          loading={loading}
-        />
+        {/* 2-A) Vista Economía → Dólar y Criptomonedas:
+                sólo panel de dólar (sin noticias) */}
+        {isEconomyDolarCripto && (
+          <EconomyPanelSection snapshots={snapshots} 
+          crypto={market.crypto}  />
+          
+        )}
 
-        {/* 3) ABAJO: panel de datos (solo en inicio/economía) */}
-        {isEconomyView && (
+        {/* 2-B) Resto de vistas: listado de artículos */}
+        {!isEconomyDolarCripto && (
+          <ArticleListClient
+            initialArticles={items}
+            initialMeta={meta}
+            dolar={market.dolar}
+            crypto={market.crypto}
+            loading={loading}
+          />
+        )}
+
+        {/* 3) Panel de datos “macro” sólo en Resumen de Economía
+              (home / economía sin view o view=resumen) */}
+        {isEconomyResumen && (
           <EconomyDataSection
             dolar={market.dolar}
             crypto={market.crypto}

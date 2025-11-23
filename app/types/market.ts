@@ -23,8 +23,14 @@ export type DolarResponse = {
 
 // --- Cripto (respuesta cruda CoinGecko) ---
 export type CryptoQuote = {
+  // valores originales que ya tenías
   usd: number;
   usd_24h_change?: number;
+
+  // 🔹 campos adicionales que usa el front en EconomyPanelSection
+  //    (pueden venir nulos o no venir todavía desde el backend)
+  price_ars?: number | null;
+  change_24h_pct?: number | null;
 };
 
 export type CryptoResponse = {
