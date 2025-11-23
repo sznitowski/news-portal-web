@@ -1,5 +1,6 @@
 // app/page.tsx
 import ArticleListClient from "./components/ArticleListClient";
+import MarketStrip from "./sections/economy/MarketStrip";
 import EconomyDataSection from "./sections/economy/EconomyDataSection";
 import { buildApiUrl } from "./lib/api";
 import type {
@@ -162,10 +163,7 @@ async function fetchMarketAll(): Promise<MarketAll> {
 // ========================
 
 type HomePageProps = {
-  // En Next 16 searchParams es un Promise
-  searchParams?: Promise<
-    Record<string, string | string[] | undefined>
-  >;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 export default async function HomePage({ searchParams }: HomePageProps) {
@@ -176,12 +174,12 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     >;
 
   const rawCategory = resolved.category;
-  const rawView = resolved.view;
-
   const category = normalizeParam(rawCategory);
-  const view = normalizeParam(rawView); // por ahora no lo usamos, queda reservado
-  const isEconomyCategory = category === "economia";
-  const showEconomyPanel = !category || isEconomyCategory;
+
+  // Normalizamos y definimos cuándo mostrar los paneles de economía
+  const normalizedCategory = category ? category.toLowerCase() : null;
+  const isEconomyView =
+    !normalizedCategory || normalizedCategory === "economia";
 
   const [{ items, meta }, market] = await Promise.all([
     fetchPublicArticles(category),
@@ -197,7 +195,26 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-      {/* Lista de noticias (filtrada por categoría si viene en la URL) */}
+      {/* 1) ARRIBA: tira con precio del dólar (solo en inicio/economía) */}
+      {isEconomyView && (
+        <div className="mt-2">
+          <MarketStrip
+            dolar={market.dolar}
+            crypto={market.crypto}
+            bcra={market.bcra}
+            budget={market.budget}
+            countryRisk={market.countryRisk}
+            loading={loading}
+            showHeader={false}
+            showDolar={true}
+            showCrypto={false}
+            showBcra={false}
+            showBudget={false}
+          />
+        </div>
+      )}
+
+      {/* 2) EN EL MEDIO: noticias */}
       <ArticleListClient
         initialArticles={items}
         initialMeta={meta}
@@ -206,11 +223,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         loading={loading}
       />
 
-      {/* Panel de economía:
-          - Se ve en Inicio (sin category)
-          - Se ve en Economía (category=economia)
-          - NO se muestra en Política / Internacional */}
-      {showEconomyPanel && (
+      {/* 3) ABAJO: panel de datos (solo en inicio/economía) */}
+      {isEconomyView && (
         <EconomyDataSection
           dolar={market.dolar}
           crypto={market.crypto}

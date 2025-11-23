@@ -17,7 +17,6 @@ type Props = {
   countryRisk: number | null;
   budget: BudgetSummary | null;
   loading: boolean;
-  indec: IndecSummary | null;
 
   // flags opcionales para controlar qué se muestra
   showHeader?: boolean;

@@ -12,9 +12,9 @@ import type {
 type Props = {
   dolar: DolarResponse | null;
   crypto: CryptoResponse | null;
-  bcra: BcraSummary | null;
-  budget: BudgetSummary | null;
-  countryRisk: number | null;
+  bcra?: BcraSummary | null;
+  budget?: BudgetSummary | null;
+  countryRisk?: number | null;
   loading: boolean;
 };
 
@@ -124,11 +124,10 @@ export default function EconomyDataSection({
             <div className="flex items-center justify-between">
               <dt className="text-slate-600">Blue vs oficial</dt>
               <dd
-                className={`font-semibold ${
-                  spreadBlue != null && spreadBlue > 0
+                className={`font-semibold ${spreadBlue != null && spreadBlue > 0
                     ? "text-emerald-600"
                     : "text-slate-700"
-                }`}
+                  }`}
               >
                 {formatPercent(spreadBlue)}
               </dd>
@@ -137,11 +136,10 @@ export default function EconomyDataSection({
             <div className="flex items-center justify-between">
               <dt className="text-slate-600">MEP vs oficial</dt>
               <dd
-                className={`font-semibold ${
-                  spreadMep != null && spreadMep > 0
+                className={`font-semibold ${spreadMep != null && spreadMep > 0
                     ? "text-emerald-600"
                     : "text-slate-700"
-                }`}
+                  }`}
               >
                 {formatPercent(spreadMep)}
               </dd>
@@ -150,11 +148,10 @@ export default function EconomyDataSection({
             <div className="flex items-center justify-between">
               <dt className="text-slate-600">CCL vs oficial</dt>
               <dd
-                className={`font-semibold ${
-                  spreadCcl != null && spreadCcl > 0
+                className={`font-semibold ${spreadCcl != null && spreadCcl > 0
                     ? "text-emerald-600"
                     : "text-slate-700"
-                }`}
+                  }`}
               >
                 {formatPercent(spreadCcl)}
               </dd>
@@ -213,7 +210,7 @@ export default function EconomyDataSection({
         </article>
 
         {/* Presupuesto / resultado primario */}
-        <article className="flex flex-col rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_14px_36px_rgba(15,23,42,0.14)]">
+{/*         <article className="flex flex-col rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_14px_36px_rgba(15,23,42,0.14)]">
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.20em] text-slate-500">
             Cuentas públicas
           </h3>
@@ -239,13 +236,12 @@ export default function EconomyDataSection({
             <div className="flex items-center justify-between">
               <dt className="text-slate-600">Resultado primario</dt>
               <dd
-                className={`font-semibold ${
-                  primaryBalance != null && primaryBalance < 0
+                className={`font-semibold ${primaryBalance != null && primaryBalance < 0
                     ? "text-rose-600"
                     : primaryBalance != null && primaryBalance > 0
-                    ? "text-emerald-600"
-                    : "text-slate-800"
-                }`}
+                      ? "text-emerald-600"
+                      : "text-slate-800"
+                  }`}
               >
                 {formatMillionsArs(primaryBalance)}
               </dd>
@@ -256,13 +252,12 @@ export default function EconomyDataSection({
                 Resultado / ingresos (% acumulado)
               </dt>
               <dd
-                className={`font-semibold ${
-                  primaryAsRevenuePct != null && primaryAsRevenuePct < 0
+                className={`font-semibold ${primaryAsRevenuePct != null && primaryAsRevenuePct < 0
                     ? "text-rose-600"
                     : primaryAsRevenuePct != null && primaryAsRevenuePct > 0
-                    ? "text-emerald-600"
-                    : "text-slate-800"
-                }`}
+                      ? "text-emerald-600"
+                      : "text-slate-800"
+                  }`}
               >
                 {formatPercent(primaryAsRevenuePct)}
               </dd>
@@ -281,9 +276,9 @@ export default function EconomyDataSection({
             </p>
           )}
         </article>
-
+*/}
         {/* Inflación y bolsillo */}
-        <article className="flex flex-col rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_14px_36px_rgba(15,23,42,0.14)]">
+      {/*   <article className="flex flex-col rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_14px_36px_rgba(15,23,42,0.14)]">
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.20em] text-slate-500">
             Inflación y bolsillo
           </h3>
@@ -295,11 +290,10 @@ export default function EconomyDataSection({
             <div className="flex items-center justify-between">
               <dt className="text-slate-600">Inflación mensual</dt>
               <dd
-                className={`font-semibold ${
-                  inflationMonthly != null && inflationMonthly > 0
+                className={`font-semibold ${inflationMonthly != null && inflationMonthly > 0
                     ? "text-rose-600"
                     : "text-slate-800"
-                }`}
+                  }`}
               >
                 {formatPercent(inflationMonthly)}
               </dd>
@@ -308,11 +302,10 @@ export default function EconomyDataSection({
             <div className="flex items-center justify-between">
               <dt className="text-slate-600">Inflación anual</dt>
               <dd
-                className={`font-semibold ${
-                  inflationAnnual != null && inflationAnnual > 0
+                className={`font-semibold ${inflationAnnual != null && inflationAnnual > 0
                     ? "text-rose-600"
                     : "text-slate-800"
-                }`}
+                  }`}
               >
                 {formatPercent(inflationAnnual)}
               </dd>
@@ -321,11 +314,10 @@ export default function EconomyDataSection({
             <div className="flex items-center justify-between">
               <dt className="text-slate-600">Acumulada en el año</dt>
               <dd
-                className={`font-semibold ${
-                  inflationYtd != null && inflationYtd > 0
+                className={`font-semibold ${inflationYtd != null && inflationYtd > 0
                     ? "text-rose-600"
                     : "text-slate-800"
-                }`}
+                  }`}
               >
                 {formatPercent(inflationYtd)}
               </dd>
@@ -336,7 +328,7 @@ export default function EconomyDataSection({
             Si tu sueldo sube menos que estas tasas, perdés poder de compra:
             alimentos, alquiler, servicios y cuotas se encarecen mes a mes.
           </p>
-        </article>
+        </article> */}
       </div>
     </section>
   );

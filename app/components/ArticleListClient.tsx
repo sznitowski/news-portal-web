@@ -4,7 +4,6 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { EconomyHeadlineStrip } from "../sections/economy";
 import type { DolarResponse, CryptoResponse } from "../types/market";
 
 type PublicArticle = {
@@ -20,7 +19,6 @@ type PublicArticle = {
   updatedAt: string;
   bodyHtml: string | null;
 
-  // opcionales
   coverImageUrl?: string | null;
   imageUrl?: string | null;
   viewCount?: number | null;
@@ -36,7 +34,7 @@ type PublicArticlesMeta = {
 type Props = {
   initialArticles: PublicArticle[];
   initialMeta: PublicArticlesMeta;
-  // datos de mercado para la tira de arriba
+  // datos de mercado (por si los querés usar más adelante)
   dolar: DolarResponse | null;
   crypto: CryptoResponse | null;
   loading: boolean;
@@ -110,16 +108,7 @@ export default function ArticleListClient({
 
   return (
     <section className="rounded-[32px] bg-slate-50 px-4 py-6 shadow-[0_18px_40px_rgba(15,23,42,0.18)] ring-1 ring-slate-200 md:px-8 md:py-8">
-      {/* Tira rápida de DÓLAR arriba de todo, sólo en Economía */}
-      {normalizedCategory === "economia" && (
-        <div className="mb-5">
-          <EconomyHeadlineStrip
-            dolar={dolar}
-            crypto={crypto}
-            loading={loading}
-          />
-        </div>
-      )}
+      {/* OJO: ya NO hay EconomyHeadlineStrip acá */}
 
       {/* Encabezado + buscador */}
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
