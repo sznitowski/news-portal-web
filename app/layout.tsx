@@ -1,4 +1,3 @@
-// app/layout.tsx
 import type { Metadata } from "next";
 import "./globals.css";
 import Providers from "./Providers";
@@ -22,7 +21,10 @@ export default function RootLayout({
           <SiteHeader />
 
           {/* CONTENIDO */}
-          <main className="mx-auto max-w-5xl px-4 pb-10 pt-6">{children}</main>
+          {/* OJO: sin pt-6 para que el submenú quede pegado al header */}
+          <main className="mx-auto max-w-5xl px-4 pb-10 pt-0">
+            {children}
+          </main>
 
           {/* FOOTER */}
           <footer className="mt-10 border-t border-slate-200 py-6 text-center text-[11px] text-slate-500">

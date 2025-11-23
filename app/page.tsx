@@ -2,6 +2,7 @@
 import ArticleListClient from "./components/ArticleListClient";
 import MarketStrip from "./sections/economy/MarketStrip";
 import EconomyDataSection from "./sections/economy/EconomyDataSection";
+import EconomyViewTabs from "./sections/economy/EconomyViewTabs";
 import { buildApiUrl } from "./lib/api";
 import type {
   DolarResponse,
@@ -176,9 +177,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const rawCategory = resolved.category;
   const category = normalizeParam(rawCategory);
 
-  // Solo mostrar paneles económicos cuando la categoría es EXACTAMENTE "economia"
+  // Normalizamos y definimos cuándo mostrar los paneles de economía
   const normalizedCategory = category ? category.toLowerCase() : null;
-  const isEconomyView = normalizedCategory === "economia";
+  const isEconomyView =
+    !normalizedCategory || normalizedCategory === "economia";
 
   const [{ items, meta }, market] = await Promise.all([
     fetchPublicArticles(category),
@@ -193,46 +195,51 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     market.countryRisk == null;
 
   return (
-    <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-      {/* 1) ARRIBA: tira con precio del dólar (solo en Economía) */}
-      {isEconomyView && (
-        <div className="mt-2">
-          <MarketStrip
+    <>
+      {/* Submenú pegado al menú principal (solo se muestra en Economía) */}
+      <EconomyViewTabs />
+
+      <main className="mx-auto max-w-6xl space-y-8 px-4 pb-8 pt-4">
+        {/* 1) ARRIBA: tira con precio del dólar (solo en inicio/economía) */}
+        {isEconomyView && (
+          <div className="mt-2">
+            <MarketStrip
+              dolar={market.dolar}
+              crypto={market.crypto}
+              bcra={market.bcra}
+              budget={market.budget}
+              countryRisk={market.countryRisk}
+              loading={loading}
+              showHeader={false}
+              showDolar={true}
+              showCrypto={false}
+              showBcra={false}
+              showBudget={false}
+            />
+          </div>
+        )}
+
+        {/* 2) EN EL MEDIO: noticias */}
+        <ArticleListClient
+          initialArticles={items}
+          initialMeta={meta}
+          dolar={market.dolar}
+          crypto={market.crypto}
+          loading={loading}
+        />
+
+        {/* 3) ABAJO: panel de datos (solo en inicio/economía) */}
+        {isEconomyView && (
+          <EconomyDataSection
             dolar={market.dolar}
             crypto={market.crypto}
             bcra={market.bcra}
             budget={market.budget}
             countryRisk={market.countryRisk}
             loading={loading}
-            showHeader={false}
-            showDolar={true}
-            showCrypto={false}
-            showBcra={false}
-            showBudget={false}
           />
-        </div>
-      )}
-
-      {/* 2) EN EL MEDIO: noticias */}
-      <ArticleListClient
-        initialArticles={items}
-        initialMeta={meta}
-        dolar={market.dolar}
-        crypto={market.crypto}
-        loading={loading}
-      />
-
-      {/* 3) ABAJO: panel de datos (solo en Economía) */}
-      {isEconomyView && (
-        <EconomyDataSection
-          dolar={market.dolar}
-          crypto={market.crypto}
-          bcra={market.bcra}
-          budget={market.budget}
-          countryRisk={market.countryRisk}
-          loading={loading}
-        />
-      )}
-    </main>
+        )}
+      </main>
+    </>
   );
 }

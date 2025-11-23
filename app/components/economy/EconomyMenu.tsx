@@ -1,151 +1,60 @@
 // app/components/economy/EconomyMenu.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type Props = {
   isActive: boolean;
 };
 
-type EconomyOption = {
-  key: string;
-  label: string;
-  href: string;
-};
-
-// TODO: si querés usar "view" para cambiar algo en EconomyDataSection,
-// ya queda armado. Por ahora sólo cambia la URL.
-const OPTIONS: EconomyOption[] = [
-  {
-    key: "summary",
-    label: "Resumen de Economía",
-    href: "/?category=economia",
-  },
-  {
-    key: "market",
-    label: "Dólar y Criptomonedas",
-    href: "/?category=economia&view=mercado",
-  },
-  {
-    key: "bcra",
-    label: "Indicadores BCRA",
-    href: "/?category=economia&view=bcra",
-  },
-  {
-    key: "budget",
-    label: "Presupuesto / Déficit",
-    href: "/?category=economia&view=presupuesto",
-  },
-];
-
 export default function EconomyMenu({ isActive }: Props) {
   const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [open, setOpen] = useState(false);
 
-  // Cerrar dropdown cuando cambia la ruta o los params
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname, searchParams]);
-
-  const handleMainClick = () => {
-    // Si NO estamos en Economía, vamos a la home filtrada por economía
-    if (!isActive) {
-      router.push("/?category=economia");
-      setOpen(false);
-      return;
-    }
-
-    // Si ya estamos en Economía, toggle del menú
-    setOpen((prev) => !prev);
-  };
-
-  const handleOptionClick = (href: string) => {
-    router.push(href);
-    setOpen(false);
+  const handleClick = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("category", "economia");
+    params.delete("view"); // siempre arrancamos en Resumen
+    const qs = params.toString();
+    router.push(qs ? `/?${qs}` : "/");
   };
 
   return (
-    <div style={{ position: "relative" }}>
-      <button
-        type="button"
-        onClick={handleMainClick}
-        style={{
-          position: "relative",
-          paddingBottom: 6,
-          fontSize: 15,
-          fontWeight: isActive ? 600 : 500,
-          color: isActive ? "#020617" : "#6b7280",
-          textDecoration: "none",
-          whiteSpace: "nowrap",
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        <span>Economía</span>
-        <span style={{ fontSize: 10 }}>{open ? "▲" : "▼"}</span>
+    <button
+      type="button"
+      onClick={handleClick}
+      style={{
+        position: "relative",
+        paddingBottom: 6,
+        fontSize: 15,
+        fontWeight: isActive ? 600 : 500,
+        color: isActive ? "#020617" : "#6b7280",
+        textDecoration: "none",
+        whiteSpace: "nowrap",
+        background: "transparent",
+        border: "none",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+      }}
+    >
+      <span>Economía</span>
 
-        {isActive && (
-          <span
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: 3,
-              borderRadius: 999,
-              background:
-                "linear-gradient(90deg,#38bdf8,#6366f1,#a855f7)",
-            }}
-          />
-        )}
-      </button>
-
-      {open && (
-        <div
+      {isActive && (
+        <span
           style={{
             position: "absolute",
-            top: "calc(100% + 8px)",
-            left: "50%",
-            transform: "translateX(-50%)",
-            minWidth: 260,
-            backgroundColor: "#020617",
-            color: "#e5e7eb",
-            borderRadius: 16,
-            padding: 12,
-            boxShadow: "0 18px 45px rgba(0,0,0,0.55)",
-            zIndex: 50,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 3,
+            borderRadius: 999,
+            background:
+              "linear-gradient(90deg,#38bdf8,#6366f1,#a855f7)",
           }}
-        >
-          {OPTIONS.map((opt) => (
-            <button
-              key={opt.key}
-              type="button"
-              onClick={() => handleOptionClick(opt.href)}
-              style={{
-                width: "100%",
-                textAlign: "left",
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "none",
-                background: "transparent",
-                color: "#e5e7eb",
-                fontSize: 13,
-                cursor: "pointer",
-                marginBottom: 4,
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        />
       )}
-    </div>
+    </button>
   );
 }
