@@ -159,62 +159,6 @@ const MarketStrip: React.FC<Props> = (props) => {
 
         <div style={{ display: "grid", rowGap: 18 }}>
           {/* DÓLAR */}
-          {hasDolar && showDolar && (
-            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "baseline",
-                  marginBottom: 8,
-                  gap: 8,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={sectionTitleStyle}>Mercado cambiario</div>
-                <div style={sectionSubtitleStyle}>
-                  Dólar oficial, tarjeta, blue, MEP y CCL.
-                </div>
-              </div>
-
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-                {dolarItems.map(({ key, label }) => {
-                  const quote = (dolar as any)[key];
-                  if (!quote) return null;
-                  return (
-                    <div key={key} style={cardStyle}>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          letterSpacing: "0.08em",
-                          color: "#6b7280",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        {label}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 20,
-                          fontWeight: 700,
-                          marginTop: 4,
-                          color: "#111827",
-                        }}
-                      >
-                        {formatArs(quote.venta)}
-                      </div>
-                      <div
-                        style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}
-                      >
-                        Compra {formatArs(quote.compra)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* CRIPTOS */}
           {hasCrypto && showCrypto && (
@@ -297,6 +241,64 @@ const MarketStrip: React.FC<Props> = (props) => {
               </div>
             </div>
           )}
+          {hasDolar && showDolar && (
+            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "baseline",
+                  marginBottom: 8,
+                  gap: 8,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={sectionTitleStyle}>Mercado cambiario</div>
+                <div style={sectionSubtitleStyle}>
+                  Dólar oficial, tarjeta, blue, MEP y CCL.
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                {dolarItems.map(({ key, label }) => {
+                  const quote = (dolar as any)[key];
+                  if (!quote) return null;
+                  return (
+                    <div key={key} style={cardStyle}>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          letterSpacing: "0.08em",
+                          color: "#6b7280",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {label}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 20,
+                          fontWeight: 700,
+                          marginTop: 4,
+                          color: "#111827",
+                        }}
+                      >
+                        {formatArs(quote.venta)}
+                      </div>
+                      <div
+                        style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}
+                      >
+                        Compra {formatArs(quote.compra)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+
 
           {/* BCRA + RIESGO */}
           {showBcra && (hasBcra || hasRisk) && (
@@ -544,8 +546,8 @@ const MarketStrip: React.FC<Props> = (props) => {
                         (budget?.primaryBalance ?? 0) > 0
                           ? "#16a34a"
                           : (budget?.primaryBalance ?? 0) < 0
-                          ? "#b91c1c"
-                          : "#111827",
+                            ? "#b91c1c"
+                            : "#111827",
                     }}
                   >
                     {formatMillionsArs(budget?.primaryBalance ?? null)}

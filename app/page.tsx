@@ -136,8 +136,7 @@ async function safeJson<T>(path: string): Promise<T | null> {
   }
 }
 
-// 👉 Acá dejamos de llamar a /market/country-risk.
-// El riesgo país queda siempre en null por ahora.
+// riesgo país en null por ahora
 async function fetchMarketAll(): Promise<MarketAll> {
   const [dolar, crypto, bcra, budget] = await Promise.all([
     safeJson<DolarResponse>("/market/dolar"),
@@ -151,7 +150,7 @@ async function fetchMarketAll(): Promise<MarketAll> {
     crypto,
     bcra,
     budget,
-    countryRisk: null, // sin riesgo país por ahora
+    countryRisk: null,
   };
 }
 
@@ -178,16 +177,15 @@ export default async function HomePage({ searchParams }: HomePageProps) {
 
   const normalizedCategory = category ? category.toLowerCase() : null;
 
-  // Contexto "economía": home sin categoría o categoría = economia
-  const isEconomyContext =
-    !normalizedCategory || normalizedCategory === "economia";
+  // Sólo consideramos "economía" cuando la categoría es economía
+  const isEconomyCategory = normalizedCategory === "economia";
 
   // Sub-vistas dentro de economía
   const isEconomyDolarCripto =
-    normalizedCategory === "economia" && view === "dolar-cripto";
+    isEconomyCategory && view === "dolar-cripto";
 
   const isEconomyResumen =
-    isEconomyContext && (!view || view === "resumen");
+    isEconomyCategory && (!view || view === "resumen");
 
   // ========================
   // Fetch de datos según vista
@@ -204,7 +202,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   let snapshots: EconomyDailySnapshot[] = [];
 
   if (isEconomyDolarCripto) {
-    // Sólo necesitamos mercado + snapshots, SIN noticias
+    // Sólo mercado + snapshots, sin noticias
     const [marketRes, snapshotsRes] = await Promise.all([
       fetchMarketAll(),
       fetchEconomyDaily({ limit: 30 }),
@@ -229,16 +227,18 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     !market.budget &&
     market.countryRisk == null;
 
+  // 👉 tira cripto sólo cuando estamos en Economía y view=dolar-cripto
+  const showCryptoStrip = isEconomyCategory && view === "dolar-cripto";
+
   return (
     <>
-      {/* Submenú pegado al menú principal (solo se muestra en Economía) */}
+      {/* EconomyViewTabs se muestra solo en Economía */}
       <EconomyViewTabs />
 
       <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
-        {/* 1) ARRIBA: tira con precio del dólar 
-            - Home (sin categoría) y Economía muestran la tira
-            - Otras categorías (política, internacional, etc.) no */}
-        {isEconomyContext && (
+        {/* 1) Tira de mercado:
+              sólo en categoría ECONOMÍA, nunca en Inicio */}
+        {isEconomyCategory && (
           <div className="mt-2">
             <MarketStrip
               dolar={market.dolar}
@@ -249,19 +249,19 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               loading={loading}
               showHeader={false}
               showDolar={true}
-              showCrypto={false}
+              showCrypto={showCryptoStrip}   
               showBcra={false}
               showBudget={false}
             />
           </div>
         )}
 
-        {/* 2-A) Vista Economía → Dólar y Criptomonedas:
-                sólo panel de dólar (sin noticias) */}
+        {/* 2-A) Economía → Dólar y Criptomonedas: panel especial */}
         {isEconomyDolarCripto && (
-          <EconomyPanelSection snapshots={snapshots} 
-          crypto={market.crypto}  />
-          
+          <EconomyPanelSection
+            snapshots={snapshots}
+            crypto={market.crypto}
+          />
         )}
 
         {/* 2-B) Resto de vistas: listado de artículos */}
@@ -275,8 +275,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           />
         )}
 
-        {/* 3) Panel de datos “macro” sólo en Resumen de Economía
-              (home / economía sin view o view=resumen) */}
+        {/* 3) Panel macro sólo en Economía (resumen) */}
         {isEconomyResumen && (
           <EconomyDataSection
             dolar={market.dolar}
