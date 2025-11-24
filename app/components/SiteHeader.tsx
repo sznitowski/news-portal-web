@@ -121,7 +121,7 @@ export default function SiteHeader() {
 
   return (
     <>
-      {/* Fila superior: botones (no sticky) */}
+      {/* Fila superior: sólo usuario / login */}
       <header
         style={{
           backgroundColor: "#ffffff",
@@ -135,134 +135,11 @@ export default function SiteHeader() {
             padding: "8px 16px",
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: "flex-end",
             gap: 16,
             fontSize: 12,
           }}
         >
-          {/* Izquierda: Panel editorial o Iniciar sesión */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {!checkingAuth && user && user.role === "ADMIN" && (
-              <div style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  onClick={() => setPanelOpen((o) => !o)}
-                  style={{
-                    padding: "8px 20px",
-                    borderRadius: 999,
-                    border: "1px solid #020617",
-                    backgroundColor: "#020617",
-                    color: "#f9fafb",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    letterSpacing: "0.16em",
-                    textTransform: "uppercase",
-                    cursor: "pointer",
-                    boxShadow: "0 10px 30px rgba(15,23,42,0.35)",
-                  }}
-                >
-                  PANEL EDITORIAL{" "}
-                  <span style={{ fontSize: 10 }}>{panelOpen ? "▲" : "▼"}</span>
-                </button>
-
-                {panelOpen && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "110%",
-                      left: 0,
-                      minWidth: 260,
-                      borderRadius: 16,
-                      border: "1px solid rgba(15,23,42,0.12)",
-                      backgroundColor: "#020617",
-                      boxShadow: "0 18px 45px rgba(0,0,0,0.55)",
-                      padding: 10,
-                      zIndex: 60,
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => goTo("/admin/editor")}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "8px 10px",
-                        borderRadius: 10,
-                        border: "none",
-                        background: "transparent",
-                        color: "#e5e7eb",
-                        fontSize: 13,
-                        cursor: "pointer",
-                        marginBottom: 6,
-                      }}
-                    >
-                      <div style={{ fontWeight: 600 }}>Edición de notas</div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "#9ca3af",
-                          marginTop: 2,
-                        }}
-                      >
-                        Crear, editar y publicar artículos.
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => goTo("/admin/from-image-ai")}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "8px 10px",
-                        borderRadius: 10,
-                        border: "none",
-                        background: "transparent",
-                        color: "#e5e7eb",
-                        fontSize: 13,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <div style={{ fontWeight: 600 }}>
-                        Publicar desde imagen (IA)
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "#9ca3af",
-                          marginTop: 2,
-                        }}
-                      >
-                        Subir captura y dejar que la IA sugiera la nota.
-                      </div>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {!checkingAuth && !user && (
-              <Link
-                href="/login"
-                style={{
-                  padding: "8px 20px",
-                  borderRadius: 999,
-                  border: "1px solid #020617",
-                  backgroundColor: "#ffffff",
-                  color: "#020617",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  letterSpacing: "0.16em",
-                  textTransform: "uppercase",
-                  textDecoration: "none",
-                  boxShadow: "0 8px 24px rgba(15,23,42,0.08)",
-                }}
-              >
-                INICIAR SESIÓN
-              </Link>
-            )}
-          </div>
-
           {/* Derecha: usuario o invitado */}
           <div
             style={{
@@ -299,14 +176,169 @@ export default function SiteHeader() {
               </>
             ) : (
               !checkingAuth && (
-                <span style={{ color: "#9ca3af", fontWeight: 600 }}>
-                  INVITADO
-                </span>
+                <>
+                  <span style={{ color: "#9ca3af", fontWeight: 600 }}>
+                    INVITADO
+                  </span>
+                  <Link
+                    href="/login"
+                    style={{
+                      padding: "6px 18px",
+                      borderRadius: 999,
+                      border: "1px solid #020617",
+                      backgroundColor: "#ffffff",
+                      color: "#020617",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      letterSpacing: "0.16em",
+                      textTransform: "uppercase",
+                      textDecoration: "none",
+                      boxShadow: "0 8px 24px rgba(15,23,42,0.08)",
+                    }}
+                  >
+                    INICIAR SESIÓN
+                  </Link>
+                </>
               )
             )}
           </div>
         </div>
       </header>
+
+      {/* Fila para el “Panel editorial” (encima del logo) */}
+      {!checkingAuth && user && user.role === "ADMIN" && (
+        <div
+          style={{
+            backgroundColor: "#ffffff",
+            borderBottom: "1px solid rgba(226,232,240,0.9)",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 1120,
+              margin: "0 auto",
+              padding: "6px 16px 4px",
+              display: "flex",
+              justifyContent: "flex-start",
+              position: "relative",
+            }}
+          >
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => setPanelOpen((o) => !o)}
+                style={{
+                  position: "relative",
+                  padding: "4px 2px 8px",
+                  border: "none",
+                  background: "transparent",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  color: "#020617",
+                }}
+              >
+                PANEL EDITORIAL{" "}
+                <span style={{ fontSize: 10, marginLeft: 4 }}>
+                  {panelOpen ? "▲" : "▼"}
+                </span>
+
+                {/* subrayado tipo menú de secciones */}
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 3,
+                    borderRadius: 999,
+                    background:
+                      "linear-gradient(90deg,#38bdf8,#6366f1,#a855f7)",
+                  }}
+                />
+              </button>
+
+              {panelOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    // ahora se abre hacia ABAJO del botón
+                    top: "calc(100% + 8px)",
+                    left: 0,
+                    minWidth: 280,
+                    borderRadius: 18,
+                    border: "1px solid rgba(15,23,42,0.08)",
+                    backgroundColor: "#020617",
+                    color: "#e5e7eb",
+                    boxShadow: "0 22px 60px rgba(0,0,0,0.55)",
+                    padding: 14,
+                    zIndex: 80,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => goTo("/admin/editor")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: "transparent",
+                      color: "#e5e7eb",
+                      fontSize: 13,
+                      cursor: "pointer",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                      Edición de notas
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#9ca3af",
+                      }}
+                    >
+                      Crear, editar y publicar artículos.
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => goTo("/admin/from-image-ai")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: "transparent",
+                      color: "#e5e7eb",
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                      Publicar desde imagen (IA)
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#9ca3af",
+                      }}
+                    >
+                      Subir captura y dejar que la IA sugiera la nota.
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fila con logo / nombre */}
       <div
@@ -319,7 +351,7 @@ export default function SiteHeader() {
           style={{
             maxWidth: 1120,
             margin: "0 auto",
-            padding: "10px 16px 6px",
+            padding: "14px 16px 10px",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",

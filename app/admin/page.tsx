@@ -5,7 +5,7 @@ import Link from "next/link";
 
 export default function AdminDashboardPage() {
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10">
+    <main className="mx-auto max-w-5xl px-4 pt-16 pb-12 md:pt-20">
       <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white/80 text-slate-900 shadow-[0_25px_60px_rgba(15,23,42,0.16)]">
         {/* Glow suave, colores acordes a la portada */}
         <div className="pointer-events-none absolute inset-0 opacity-80 bg-[radial-gradient(circle_at_top,_rgba(129,140,248,0.15),transparent_55%),radial-gradient(circle_at_bottom,_rgba(56,189,248,0.12),transparent_60%)]" />

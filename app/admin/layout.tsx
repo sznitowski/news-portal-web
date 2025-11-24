@@ -8,8 +8,8 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    // -mt-4 “sube” un poco el bloque para que quede más pegado al header negro
-    <div className="-mt-4 space-y-4">
+    // Más espacio en blanco entre header y título del panel
+    <div className="space-y-4 pt-8">
       {/* Sub-navbar sólo para /admin/... */}
       <Navbar />
 
