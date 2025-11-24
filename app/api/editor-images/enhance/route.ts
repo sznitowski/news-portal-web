@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       try {
         options = JSON.parse(optionsJson);
       } catch (e) {
-        console.error("[enhance] optionsJson inválido:", e);
+        console.error("[enhance] optionsJson inválido en el front:", e);
       }
     }
 
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     const uploadBody = new FormData();
     uploadBody.set("file", file);
 
-    // si más adelante querés que el backend use estos datos, se los podés reenviar
+    // reenviamos las opciones para que el backend pinte los textos
     if (options) {
       uploadBody.set("optionsJson", JSON.stringify(options));
     }
@@ -94,44 +94,70 @@ export async function POST(req: NextRequest) {
     }
 
     const uploadJson = (await uploadRes.json()) as {
-      url?: string;
-      imageUrl?: string;
-      path?: string;
+      success?: boolean;
+      filename?: string;
+      rawUrl?: string | null;
+      coverUrl?: string | null;
+      url?: string | null;
+      type?: "raw" | "cover" | string;
+      message?: string;
     };
 
-    const rawImageUrl = uploadJson.url ?? uploadJson.imageUrl ?? uploadJson.path;
-    if (!rawImageUrl) {
+    // Preferimos la cover; si algo falló, usamos el URL genérico o el raw
+    const finalBackendUrl =
+      uploadJson.coverUrl || uploadJson.url || uploadJson.rawUrl;
+
+    if (!finalBackendUrl) {
+      console.error("[enhance] Backend no devolvió ninguna URL usable:", uploadJson);
       return NextResponse.json(
-        { message: "El backend no devolvió URL de imagen" },
-        { status: 502 },
+        {
+          message:
+            "La imagen se subió, pero el backend no devolvió una URL válida.",
+        },
+        { status: 500 },
       );
     }
 
-    const publicUrl = getPublicUrl(rawImageUrl);
+    const enhancedImageUrl = getPublicUrl(finalBackendUrl);
 
-    const responsePayload: Record<string, any> = {
-      enhancedImageUrl: publicUrl,
-      rawImageUrl,
-      message:
-        "Imagen procesada correctamente. Usala como portada en tus notas.",
-    };
+    // Armamos overlay de respuesta para que el front sepa qué se usó
+    const overlay =
+      options && typeof options === "object"
+        ? {
+            title:
+              options.title ??
+              options.overlay?.title ??
+              null,
+            subtitle:
+              options.subtitle ??
+              options.overlay?.subtitle ??
+              null,
+            footer:
+              options.footer ??
+              options.overlay?.footer ??
+              null,
+          }
+        : undefined;
 
-    // devolvemos también lo que se mandó de textos para que el front lo muestre
-    if (options) {
-      responsePayload.overlay = {
-        title: options.title ?? null,
-        subtitle: options.subtitle ?? null,
-        footer: options.footer ?? null,
-      };
-    }
+    const message =
+      uploadJson.message ??
+      (uploadJson.type === "cover"
+        ? "Imagen procesada y lista para usar como portada."
+        : "Imagen subida correctamente.");
 
-    return NextResponse.json(responsePayload);
+    return NextResponse.json(
+      {
+        enhancedImageUrl,
+        message,
+        overlay,
+      },
+      { status: 200 },
+    );
   } catch (err) {
     console.error("[enhance] Error inesperado:", err);
     return NextResponse.json(
       {
-        message: "Error inesperado al procesar la imagen con IA",
-        error: String(err),
+        message: "Error inesperado procesando la imagen.",
       },
       { status: 500 },
     );

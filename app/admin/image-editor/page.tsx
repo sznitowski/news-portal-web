@@ -72,7 +72,10 @@ export default function AdminImageEditorPage() {
 
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
-  const [footer, setFooter] = useState("");
+  const [footer, setFooter] = useState(
+  "@canallibertario · X · Facebook · Instagram"
+);
+
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -498,9 +501,10 @@ export default function AdminImageEditorPage() {
             <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
               {pagedImages.map((img) => {
                 const imgType = resolveImageType(img);
+                const key = `${imgType}:${img.filename}`;
                 return (
                   <div
-                    key={img.filename}
+                    key={key}
                     className="flex flex-col rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-[11px]"
                   >
                     <div className="mb-2 aspect-video overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
