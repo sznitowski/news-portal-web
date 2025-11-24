@@ -235,7 +235,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       {/* EconomyViewTabs se muestra solo en Economía */}
       <EconomyViewTabs />
 
-      <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
+      <main className="mx-auto max-w-7xl space-y-8 px-4 py-8">
         {/* 1) Tira de mercado:
               sólo en categoría ECONOMÍA, nunca en Inicio */}
         {isEconomyCategory && (
@@ -249,7 +249,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
               loading={loading}
               showHeader={false}
               showDolar={true}
-              showCrypto={showCryptoStrip}   
+              showCrypto={showCryptoStrip}
               showBcra={false}
               showBudget={false}
             />

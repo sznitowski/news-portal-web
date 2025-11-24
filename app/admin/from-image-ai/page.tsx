@@ -14,10 +14,10 @@ type FormState = {
 };
 
 const inputClass =
-  "w-full rounded-xl border border-slate-700/80 bg-slate-900/80 px-3 py-2.5 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-400/70 focus:border-purple-400/60";
+  "w-full rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-3 py-2.5 text-sm text-zinc-50 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-400/70 focus:border-purple-400/60";
 
 const labelClass =
-  "mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400";
+  "mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400";
 
 // helper para armar headers con el JWT guardado en localStorage
 function getAuthHeaders(): Record<string, string> {
@@ -110,12 +110,11 @@ export default function EditorFromImagePage() {
       fd.append("image", imageFile);
       fd.append("formJson", JSON.stringify(form));
 
-      // ⬇️ nuevo endpoint del front
       const res = await fetch("/api/editor-articles/from-image-ai", {
         method: "POST",
         body: fd,
         headers: {
-          ...getAuthHeaders(), // mandamos Authorization al route del front
+          ...getAuthHeaders(),
         },
       });
 
@@ -130,7 +129,6 @@ export default function EditorFromImagePage() {
         const next: FormState = {
           ...prev,
           ...suggested,
-          // si el usuario ya eligió ideología a mano, se respeta
           ideology: prev.ideology,
         };
 
@@ -177,12 +175,11 @@ export default function EditorFromImagePage() {
             : null,
       };
 
-      // ⬇️ nuevo endpoint del front
       const res = await fetch("/api/editor-articles", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...getAuthHeaders(), // también acá mandamos Authorization
+          ...getAuthHeaders(),
         },
         body: JSON.stringify(payload),
       });
@@ -204,7 +201,6 @@ export default function EditorFromImagePage() {
         summary: "",
         bodyHtml: "",
         imageUrl: "",
-        // ideology: "", // descomentá si querés limpiar también esto
       }));
       setImageFile(null);
     } catch (err: any) {
@@ -216,19 +212,18 @@ export default function EditorFromImagePage() {
   };
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10">
-      <div className="relative overflow-hidden rounded-3xl border border-slate-800/80 bg-slate-950/80 text-slate-50 shadow-[0_40px_90px_rgba(0,0,0,0.75)]">
-        <div className="pointer-events-none absolute inset-0 opacity-70 bg-[radial-gradient(circle_at_top,_rgba(139,92,246,0.26),transparent_55%),radial-gradient(circle_at_bottom,_rgba(16,185,129,0.22),transparent_60%)]" />
-
-        <div className="relative z-10 p-6 md:p-8 lg:p-10 space-y-8">
+    <main className="mx-auto max-w-6xl px-4 py-10">
+      <div className="relative overflow-hidden rounded-3xl border border-zinc-800/90 bg-zinc-950/95 text-zinc-50 shadow-[0_40px_90px_rgba(0,0,0,0.8)]">
+        {/* Sin gradiente, mismo fondo gris/negro que el editor */}
+        <div className="relative z-10 space-y-8 p-6 md:p-8 lg:p-10">
           <header className="space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-purple-400/50 bg-purple-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-purple-200">
               Cargar desde imagen · IA
             </div>
-            <h1 className="text-2xl md:text-3xl font-semibold leading-tight">
+            <h1 className="text-2xl font-semibold leading-tight md:text-3xl">
               Cargar artículo desde imagen (IA)
             </h1>
-            <p className="max-w-2xl text-sm text-slate-300">
+            <p className="max-w-2xl text-sm text-zinc-300">
               Subí una captura de una publicación (Twitter, Facebook, portal de
               noticias, etc.) o una imagen de portada. La IA sugiere título,
               resumen, cuerpo e inserta la imagen en la nota. Después podés
@@ -237,12 +232,12 @@ export default function EditorFromImagePage() {
           </header>
 
           {/* Bloque captura */}
-          <section className="rounded-2xl border border-dashed border-slate-700/80 bg-slate-900/70 p-4 md:p-5 space-y-4">
+          <section className="space-y-4 rounded-2xl border border-dashed border-zinc-700/80 bg-zinc-900/80 p-4 md:p-5">
             <div>
-              <h2 className="text-sm font-semibold text-slate-50">
+              <h2 className="text-sm font-semibold text-zinc-50">
                 Procesar captura de pantalla
               </h2>
-              <p className="mt-1 text-xs text-slate-300">
+              <p className="mt-1 text-xs text-zinc-300">
                 Subí una captura de una publicación oficial. Al hacer clic en{" "}
                 <strong>“Procesar captura con IA”</strong>, se sube la imagen al
                 backend, se genera texto sugerido y se inserta la imagen en el
@@ -251,7 +246,7 @@ export default function EditorFromImagePage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-700/80 bg-slate-800/80 px-4 py-2 text-xs font-medium text-slate-50 hover:border-purple-300/70 hover:bg-slate-800">
+              <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-zinc-700/80 bg-zinc-800/80 px-4 py-2 text-xs font-medium text-zinc-50 hover:border-purple-300/70 hover:bg-zinc-800">
                 Seleccionar imagen desde el dispositivo
                 <input
                   type="file"
@@ -265,7 +260,7 @@ export default function EditorFromImagePage() {
                 type="button"
                 onClick={handleProcessImage}
                 disabled={imageLoading || !imageFile}
-                className="inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-semibold shadow-[0_18px_35px_rgba(139,92,246,0.45)] transition disabled:shadow-none disabled:bg-slate-600 disabled:cursor-default bg-purple-500 text-slate-950 hover:bg-purple-400"
+                className="inline-flex items-center justify-center rounded-full bg-purple-500 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_18px_35px_rgba(139,92,246,0.45)] transition hover:bg-purple-400 disabled:cursor-default disabled:bg-zinc-600 disabled:shadow-none"
               >
                 {imageLoading
                   ? "Procesando captura..."
@@ -277,13 +272,13 @@ export default function EditorFromImagePage() {
               onPaste={handlePasteImage}
               tabIndex={0}
               onClick={(e) => (e.currentTarget as HTMLDivElement).focus()}
-              className="mt-2 rounded-xl border-2 border-dashed border-slate-600 bg-slate-900/80 p-4 text-center text-xs text-slate-300 outline-none"
+              className="mt-2 rounded-xl border-2 border-dashed border-zinc-600 bg-zinc-900/80 p-4 text-center text-xs text-zinc-300 outline-none"
             >
               <p className="mb-1">
                 O hacé clic acá y luego presioná <code>Ctrl+V</code> para pegar
                 una captura desde el portapapeles.
               </p>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-zinc-400">
                 Usá la herramienta de recorte (por ejemplo{" "}
                 <strong>Win+Shift+S</strong> en Windows) para copiar una imagen
                 y después pegala en este cuadro.
@@ -292,13 +287,13 @@ export default function EditorFromImagePage() {
 
             {form.imageUrl && (
               <div className="pt-2">
-                <p className="mb-2 text-xs text-slate-200">
+                <p className="mb-2 text-xs text-zinc-200">
                   Vista previa de la imagen subida:
                 </p>
                 <img
                   src={form.imageUrl}
                   alt="Preview captura"
-                  className="max-h-72 w-full rounded-xl border border-slate-700 object-cover"
+                  className="max-h-72 w-full rounded-xl border border-zinc-700 object-cover"
                 />
               </div>
             )}
@@ -307,7 +302,7 @@ export default function EditorFromImagePage() {
           {/* Formulario principal */}
           <form
             onSubmit={handleSubmit}
-            className="grid gap-5 rounded-2xl border border-slate-700/80 bg-slate-900/70 p-4 md:p-6 shadow-[0_22px_55px_rgba(0,0,0,0.65)]"
+            className="grid gap-5 rounded-2xl border border-zinc-700/80 bg-zinc-900/80 p-4 md:p-6 shadow-[0_22px_55px_rgba(0,0,0,0.65)]"
           >
             {/* Título */}
             <div>
@@ -355,7 +350,7 @@ export default function EditorFromImagePage() {
                 onChange={handleChange}
                 className={`${inputClass} resize-y font-mono text-[13px]`}
               />
-              <small className="mt-1 block text-[11px] text-slate-400">
+              <small className="mt-1 block text-[11px] text-zinc-400">
                 Ejemplo:{" "}
                 {"<p>Texto principal procesado por IA desde una captura.</p>"}
               </small>
@@ -416,31 +411,31 @@ export default function EditorFromImagePage() {
                 onChange={handleChange}
                 className={`${inputClass} font-mono text-[13px]`}
               />
-              <small className="mt-1 block text-[11px] text-slate-400">
+              <small className="mt-1 block text-[11px] text-zinc-400">
                 Formato: 2025-11-15T12:00:00Z (después lo cambiamos por un
                 datepicker).
               </small>
 
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-300">
                 <span>Atajos rápidos:</span>
                 <button
                   type="button"
                   onClick={() => setDelay(0)}
-                  className="rounded-full border border-slate-600 bg-slate-800/80 px-3 py-1 hover:border-purple-300/70"
+                  className="rounded-full border border-zinc-600 bg-zinc-800/80 px-3 py-1 hover:border-purple-300/70"
                 >
                   Ahora
                 </button>
                 <button
                   type="button"
                   onClick={() => setDelay(15)}
-                  className="rounded-full border border-slate-600 bg-slate-800/80 px-3 py-1 hover:border-purple-300/70"
+                  className="rounded-full border border-zinc-600 bg-zinc-800/80 px-3 py-1 hover:border-purple-300/70"
                 >
                   +15 min
                 </button>
                 <button
                   type="button"
                   onClick={() => setDelay(60)}
-                  className="rounded-full border border-slate-600 bg-slate-800/80 px-3 py-1 hover:border-purple-300/70"
+                  className="rounded-full border border-zinc-600 bg-zinc-800/80 px-3 py-1 hover:border-purple-300/70"
                 >
                   +1 hora
                 </button>
@@ -464,7 +459,7 @@ export default function EditorFromImagePage() {
             <button
               type="submit"
               disabled={loading}
-              className="mt-1 inline-flex items-center justify-center rounded-full bg-purple-500 px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-[0_18px_35px_rgba(139,92,246,0.5)] transition hover:bg-purple-400 disabled:cursor-default disabled:bg-slate-600 disabled:shadow-none"
+              className="mt-1 inline-flex items-center justify-center rounded-full bg-purple-500 px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-[0_18px_35px_rgba(139,92,246,0.5)] transition hover:bg-purple-400 disabled:cursor-default disabled:bg-zinc-600 disabled:shadow-none"
             >
               {loading ? "Guardando..." : "Crear artículo"}
             </button>

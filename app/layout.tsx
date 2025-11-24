@@ -1,3 +1,4 @@
+// app/layout.tsx
 import type { Metadata } from "next";
 import "./globals.css";
 import Providers from "./Providers";
@@ -21,14 +22,14 @@ export default function RootLayout({
           <SiteHeader />
 
           {/* CONTENIDO */}
-          {/* OJO: sin pt-6 para que el submenú quede pegado al header */}
-          <main className="mx-auto max-w-5xl px-4 pb-10 pt-0">
+          {/* Subimos el ancho máximo a 7xl */}
+          <main className="mx-auto max-w-7xl px-4 pb-10 pt-0">
             {children}
           </main>
 
           {/* FOOTER */}
           <footer className="mt-10 border-t border-slate-200 py-6 text-center text-[11px] text-slate-500">
-            <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-2 px-4 sm:flex-row">
+            <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-4 sm:flex-row">
               <div>v0.1 / uso interno / demo editorial</div>
               <div>Hecho en Next.js + NestJS + MySQL</div>
             </div>

@@ -133,28 +133,42 @@ export default function EditorialArticlesTable() {
     }
   }
 
-  return (
-    <section style={{ marginTop: 32 }}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 16,
-        }}
-      >
-        <h2 style={{ fontSize: 20, fontWeight: 600 }}>
-          Notas del panel editorial
-        </h2>
+  const total = articles.length;
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 14 }}>Estado:</span>
+  return (
+    <section className="mt-10 w-full">
+      {/* Header filtros / título */}
+      <header className="mb-4 flex flex-col gap-3 md:mb-5 md:flex-row md:items-center md:justify-between">
+        <div className="space-y-1">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-400/80">
+            Notas del panel editorial
+          </div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-slate-50">
+              Gestión de notas
+            </h2>
+            {total > 0 && (
+              <span className="rounded-full bg-slate-900/60 px-3 py-0.5 text-[11px] font-medium text-slate-300">
+                {total} registros
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-400">
+            Usá el filtro de estado para revisar borradores, publicadas o
+            archivadas. Los cambios impactan directo en la portada.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-900/70 px-3 py-2 text-xs text-slate-200">
+          <span className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+            Estado
+          </span>
           <select
             value={statusFilter}
             onChange={(e) =>
               setStatusFilter(e.target.value as "all" | EditorialStatus)
             }
-            style={{ padding: "4px 8px", fontSize: 14 }}
+            className="rounded-lg border border-slate-700 bg-slate-950/60 px-2.5 py-1 text-xs text-slate-100 outline-none transition focus:border-sky-400"
           >
             <option value="all">Todas</option>
             <option value="draft">Borradores</option>
@@ -165,14 +179,7 @@ export default function EditorialArticlesTable() {
           <button
             type="button"
             onClick={() => fetchArticles({ status: statusFilter })}
-            style={{
-              padding: "4px 10px",
-              fontSize: 14,
-              borderRadius: 4,
-              border: "1px solid #666",
-              background: "transparent",
-              cursor: "pointer",
-            }}
+            className="ml-1 rounded-lg border border-sky-500/70 bg-sky-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-300 transition hover:bg-sky-500/20"
           >
             Recargar
           </button>
@@ -180,149 +187,136 @@ export default function EditorialArticlesTable() {
       </header>
 
       {loading && (
-        <p style={{ fontSize: 14, marginBottom: 8 }}>Cargando artículos…</p>
+        <p className="mb-2 text-sm text-slate-300">Cargando artículos…</p>
       )}
       {error && (
-        <p style={{ fontSize: 14, color: "#f66", marginBottom: 8 }}>
-          {error}
-        </p>
+        <p className="mb-2 text-sm text-rose-400">⚠ {error}</p>
       )}
 
       {articles.length === 0 && !loading ? (
-        <p style={{ fontSize: 14 }}>No hay artículos para mostrar.</p>
+        <p className="text-sm text-slate-300">
+          No hay artículos para mostrar.
+        </p>
       ) : (
-        <div
-          style={{
-            overflowX: "auto",
-            borderRadius: 8,
-            border: "1px solid #333",
-          }}
-        >
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: 14,
-            }}
-          >
-            <thead>
-              <tr style={{ background: "#111" }}>
-                <th style={thStyle}>ID</th>
-                <th style={thStyle}>Título</th>
-                <th style={thStyle}>Categoría</th>
-                <th style={thStyle}>Ideología</th>
-                <th style={thStyle}>Origen</th>
-                <th style={thStyle}>Estado</th>
-                <th style={thStyle}>Publicada</th>
-                <th style={thStyle}>Creada</th>
-                <th style={thStyle}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {articles.map((a) => (
-                <tr key={a.id}>
-                  <td style={tdStyle}>{a.id}</td>
-                  <td style={tdStyle}>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 2,
-                      }}
-                    >
-                      <span style={{ fontWeight: 500 }}>{a.title}</span>
-                      <span
-                        style={{
-                          fontSize: 12,
-                          color: "#aaa",
-                          // antes: maxWidth: 500, whiteSpace: "nowrap"
-                          maxWidth: 260,
-                          whiteSpace: "normal",
-                          overflow: "hidden",
-                        }}
-                      >
-                        {a.summary ?? "(sin resumen)"}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: 11,
-                          color: "#777",
-                        }}
-                      >
-                        /{a.slug}
-                      </span>
-                    </div>
-                  </td>
-                  <td style={tdStyle}>{a.category}</td>
-                  <td style={tdStyle}>{a.ideology}</td>
-                  <td style={tdStyle}>{a.sourceType}</td>
-                  <td style={tdStyle}>{STATUS_LABEL[a.status]}</td>
-                  <td style={tdStyle}>{formatDate(a.publishedAt)}</td>
-                  <td style={tdStyle}>{formatDate(a.createdAt)}</td>
-                  <td style={tdStyle}>
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        flexWrap: "wrap",
-                        justifyContent: "flex-start",
-                      }}
-                    >
-                      {a.status !== "published" && (
-                        <button
-                          type="button"
-                          onClick={() => handleAction(a.id, "publish")}
-                          style={{
-                            padding: "4px 8px",
-                            fontSize: 12,
-                            borderRadius: 4,
-                            border: "1px solid #2ecc71",
-                            background: "#111",
-                            color: "#2ecc71",
-                            cursor: "pointer",
-                          }}
-                        >
-                          Publicar
-                        </button>
-                      )}
-                      {a.status === "published" && (
-                        <button
-                          type="button"
-                          onClick={() => handleAction(a.id, "unpublish")}
-                          style={{
-                            padding: "4px 8px",
-                            fontSize: 12,
-                            borderRadius: 4,
-                            border: "1px solid #e67e22",
-                            background: "#111",
-                            color: "#e67e22",
-                            cursor: "pointer",
-                          }}
-                        >
-                          Ocultar
-                        </button>
-                      )}
-                    </div>
-                  </td>
+        <div className="w-full overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/80 shadow-[0_22px_70px_rgba(15,23,42,0.85)]">
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse text-sm text-slate-100">
+              <thead>
+                <tr className="bg-slate-950/90">
+                  <th className="border-b border-slate-800 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    ID
+                  </th>
+                  <th className="border-b border-slate-800 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Título
+                  </th>
+                  <th className="border-b border-slate-800 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Categoría
+                  </th>
+                  <th className="border-b border-slate-800 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Ideología
+                  </th>
+                  <th className="border-b border-slate-800 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Origen
+                  </th>
+                  <th className="border-b border-slate-800 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Estado
+                  </th>
+                  <th className="border-b border-slate-800 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Publicada
+                  </th>
+                  <th className="border-b border-slate-800 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Creada
+                  </th>
+                  <th className="border-b border-slate-800 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Acciones
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {articles.map((a, idx) => (
+                  <tr
+                    key={a.id}
+                    className={
+                      idx % 2 === 0
+                        ? "bg-slate-950/40"
+                        : "bg-slate-950/20"
+                    }
+                  >
+                    <td className="border-b border-slate-900 px-3 py-2.5 align-top text-xs text-slate-400">
+                      {a.id}
+                    </td>
+                    <td className="border-b border-slate-900 px-3 py-2.5 align-top">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-medium text-slate-50">
+                          {a.title}
+                        </span>
+                        <span className="max-w-xs text-xs text-slate-400">
+                          {a.summary ?? "(sin resumen)"}
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          /{a.slug}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="border-b border-slate-900 px-3 py-2.5 align-top text-xs">
+                      <span className="inline-flex rounded-full bg-slate-900/70 px-2.5 py-0.5 text-[11px] font-medium text-slate-200">
+                        {a.category}
+                      </span>
+                    </td>
+                    <td className="border-b border-slate-900 px-3 py-2.5 align-top text-xs text-slate-200">
+                      {a.ideology}
+                    </td>
+                    <td className="border-b border-slate-900 px-3 py-2.5 align-top text-xs text-slate-200">
+                      {a.sourceType}
+                    </td>
+                    <td className="border-b border-slate-900 px-3 py-2.5 align-top text-xs">
+                      <span
+                        className={
+                          a.status === "published"
+                            ? "inline-flex rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300"
+                            : a.status === "draft"
+                            ? "inline-flex rounded-full bg-slate-700/40 px-2.5 py-0.5 text-[11px] font-semibold text-slate-200"
+                            : "inline-flex rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-300"
+                        }
+                      >
+                        {STATUS_LABEL[a.status]}
+                      </span>
+                    </td>
+                    <td className="border-b border-slate-900 px-3 py-2.5 align-top text-xs text-slate-300">
+                      {formatDate(a.publishedAt)}
+                    </td>
+                    <td className="border-b border-slate-900 px-3 py-2.5 align-top text-xs text-slate-300">
+                      {formatDate(a.createdAt)}
+                    </td>
+                    <td className="border-b border-slate-900 px-3 py-2.5 align-top">
+                      <div className="flex flex-wrap gap-2">
+                        {a.status !== "published" && (
+                          <button
+                            type="button"
+                            onClick={() => handleAction(a.id, "publish")}
+                            className="rounded-full border border-emerald-500/80 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-300 transition hover:bg-emerald-500/20"
+                          >
+                            Publicar
+                          </button>
+                        )}
+                        {a.status === "published" && (
+                          <button
+                            type="button"
+                            onClick={() => handleAction(a.id, "unpublish")}
+                            className="rounded-full border border-amber-400/80 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-200 transition hover:bg-amber-500/20"
+                          >
+                            Ocultar
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </section>
   );
 }
-
-const thStyle: React.CSSProperties = {
-  padding: "8px 10px",
-  textAlign: "left",
-  borderBottom: "1px solid #333",
-  fontWeight: 600,
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: "8px 10px",
-  borderBottom: "1px solid #222",
-  verticalAlign: "top",
-};
