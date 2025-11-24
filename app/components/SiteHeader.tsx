@@ -264,7 +264,7 @@ export default function SiteHeader() {
                 <div
                   style={{
                     position: "absolute",
-                    // ahora se abre hacia ABAJO del botón
+                    // se abre hacia ABAJO del botón
                     top: "calc(100% + 8px)",
                     left: 0,
                     minWidth: 280,
@@ -277,6 +277,7 @@ export default function SiteHeader() {
                     zIndex: 80,
                   }}
                 >
+                  {/* Edición de notas */}
                   <button
                     type="button"
                     onClick={() => goTo("/admin/editor")}
@@ -306,6 +307,7 @@ export default function SiteHeader() {
                     </div>
                   </button>
 
+                  {/* Publicar desde imagen IA */}
                   <button
                     type="button"
                     onClick={() => goTo("/admin/from-image-ai")}
@@ -319,6 +321,7 @@ export default function SiteHeader() {
                       color: "#e5e7eb",
                       fontSize: 13,
                       cursor: "pointer",
+                      marginBottom: 8,
                     }}
                   >
                     <div style={{ fontWeight: 600, marginBottom: 2 }}>
@@ -331,6 +334,35 @@ export default function SiteHeader() {
                       }}
                     >
                       Subir captura y dejar que la IA sugiera la nota.
+                    </div>
+                  </button>
+
+                  {/* NUEVO: Editor de imágenes (IA) */}
+                  <button
+                    type="button"
+                    onClick={() => goTo("/admin/image-editor")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: "transparent",
+                      color: "#e5e7eb",
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                      Editor de imágenes (IA)
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#9ca3af",
+                      }}
+                    >
+                      Ajustar una imagen para usarla como portada.
                     </div>
                   </button>
                 </div>
