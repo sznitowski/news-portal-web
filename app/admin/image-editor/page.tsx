@@ -1,7 +1,7 @@
 // app/admin/image-editor/page.tsx
 "use client";
 
-import { useState, ChangeEvent } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
 
 type EnhanceResponse = {
   enhancedImageUrl: string;
@@ -12,6 +12,58 @@ type EnhanceResponse = {
     footer?: string | null;
   };
 };
+
+type ImageKind = "raw" | "cover";
+
+type ImageItem = {
+  filename: string;
+  url: string;
+  createdAt?: string;
+  // opcional, viene del backend /api/editor-images/list
+  kind?: "raw" | "cover" | "other";
+};
+
+// Detecta tipo según la URL/path real (fallback)
+function getImageTypeFromUrl(url: string): ImageKind {
+  let path = url.toLowerCase();
+
+  try {
+    const u = new URL(url);
+    path = u.pathname.toLowerCase();
+  } catch {
+    // si no es URL absoluta, usamos el string tal cual
+  }
+
+  // COVERS: /cover/ o /covers/
+  if (
+    path.includes("/covers/") ||
+    path.includes("/cover/") ||
+    /[-_/]covers?[-_/]/.test(path)
+  ) {
+    return "cover";
+  }
+
+  // RAW explícito: /raw/ o /raws/
+  if (
+    path.includes("/raws/") ||
+    path.includes("/raw/") ||
+    /[-_/]raws?[-_/]/.test(path)
+  ) {
+    return "raw";
+  }
+
+  // Fallback: todo lo que no sea cover lo tratamos como RAW
+  return "raw";
+}
+
+// Usa primero img.kind (si viene del backend), si no, calcula por URL
+function resolveImageType(img: ImageItem): ImageKind {
+  if (img.kind === "raw") return "raw";
+  if (img.kind === "cover") return "cover";
+  return getImageTypeFromUrl(img.url);
+}
+
+const PAGE_SIZE = 10;
 
 export default function AdminImageEditorPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -25,6 +77,16 @@ export default function AdminImageEditorPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // -------- Biblioteca de imágenes --------
+  const [images, setImages] = useState<ImageItem[]>([]);
+  const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+
+  // filtros de la biblioteca
+  const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "raw" | "cover">("all");
+  const [page, setPage] = useState(1);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -89,6 +151,8 @@ export default function AdminImageEditorPage() {
           data.message ??
             "Imagen procesada correctamente. Usala como portada en tus notas.",
         );
+        // Después de subir una imagen nueva, refrescamos la biblioteca
+        void loadImages();
       } else {
         setErrorMsg("La respuesta no contiene una URL de imagen procesada.");
       }
@@ -99,6 +163,87 @@ export default function AdminImageEditorPage() {
       setLoading(false);
     }
   };
+
+  // -------- Cargar lista de imágenes desde el backend --------
+  const loadImages = async () => {
+    setListLoading(true);
+    setListError(null);
+    try {
+      const headers: HeadersInit = {
+        Accept: "application/json",
+      };
+
+      // Le pasamos el mismo JWT al route handler, que lo reenvía al backend
+      if (typeof window !== "undefined") {
+        const token = window.localStorage.getItem("news_access_token");
+        if (token) {
+          headers["authorization"] = `Bearer ${token}`;
+        }
+      }
+
+      const res = await fetch("/api/editor-images/list", {
+        method: "GET",
+        headers,
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(
+          text || `Error HTTP ${res.status} al obtener la lista de imágenes`,
+        );
+      }
+
+      const data = (await res.json()) as {
+        items: ImageItem[];
+      };
+
+      setImages(data.items ?? []);
+    } catch (err: any) {
+      console.error("[image-editor] Error al cargar imágenes:", err);
+      setListError(
+        err.message ?? "Error al obtener la lista de imágenes del backend.",
+      );
+    } finally {
+      setListLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadImages();
+  }, []);
+
+  // cuando cambian filtros o cantidad de imágenes, volvemos a la página 1
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, typeFilter, images.length]);
+
+  // derivar imágenes filtradas + paginadas
+  const filteredImages = images.filter((img) => {
+    const nameMatch =
+      !searchTerm ||
+      img.filename.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const imgType = resolveImageType(img);
+    const typeMatch =
+      typeFilter === "all"
+        ? true
+        : typeFilter === "raw"
+        ? imgType === "raw"
+        : imgType === "cover";
+
+    return nameMatch && typeMatch;
+  });
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredImages.length / PAGE_SIZE),
+  );
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const pagedImages = filteredImages.slice(
+    startIndex,
+    startIndex + PAGE_SIZE,
+  );
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10 md:py-12">
@@ -283,6 +428,178 @@ export default function AdminImageEditorPage() {
           </div>
         </section>
       </div>
+
+      {/* Biblioteca de imágenes */}
+      <section className="mt-8 rounded-3xl border border-slate-900/80 bg-slate-950/95 p-6 text-slate-50">
+        <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold">Biblioteca de imágenes</h2>
+            <p className="text-xs text-slate-400">
+              Acá ves todas las imágenes que subiste desde el editor. Podés
+              copiar la URL o abrirlas en una pestaña nueva.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por nombre..."
+              className="w-40 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400"
+            />
+
+            <select
+              value={typeFilter}
+              onChange={(e) =>
+                setTypeFilter(e.target.value as "all" | "raw" | "cover")
+              }
+              className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] text-slate-100 outline-none focus:border-sky-400"
+            >
+              <option value="all">Todas</option>
+              <option value="raw">RAW</option>
+              <option value="cover">Covers</option>
+            </select>
+
+            <button
+              type="button"
+              onClick={() => void loadImages()}
+              disabled={listLoading}
+              className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:border-sky-400 hover:bg-slate-800 disabled:cursor-default disabled:opacity-60"
+            >
+              {listLoading ? "Actualizando..." : "Refrescar lista"}
+            </button>
+          </div>
+        </div>
+
+        {listError && (
+          <div className="mt-2 rounded-xl border border-red-400/60 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+            {JSON.stringify(listError)}
+          </div>
+        )}
+
+        {!listError && !listLoading && images.length === 0 && (
+          <p className="mt-2 text-[11px] text-slate-400">
+            Todavía no hay imágenes guardadas o no se pudo obtener la lista.
+          </p>
+        )}
+
+        {!listError &&
+          !listLoading &&
+          images.length > 0 &&
+          filteredImages.length === 0 && (
+            <p className="mt-2 text-[11px] text-slate-400">
+              No se encontraron imágenes con esos filtros.
+            </p>
+          )}
+
+        {!listError && filteredImages.length > 0 && (
+          <>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+              {pagedImages.map((img) => {
+                const imgType = resolveImageType(img);
+                return (
+                  <div
+                    key={img.filename}
+                    className="flex flex-col rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-[11px]"
+                  >
+                    <div className="mb-2 aspect-video overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+                      <img
+                        src={img.url}
+                        alt={img.filename}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="truncate text-slate-100">
+                        {img.filename}
+                      </span>
+                      <span
+                        className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${
+                          imgType === "raw"
+                            ? "border border-amber-400/70 bg-amber-500/10 text-amber-200"
+                            : "border border-sky-400/70 bg-sky-500/10 text-sky-200"
+                        }`}
+                      >
+                        {imgType === "raw" ? "RAW" : "COVER"}
+                      </span>
+                    </div>
+
+                    <div className="mb-2 truncate text-[10px] text-slate-400">
+                      {img.url}
+                    </div>
+
+                    <div className="mt-auto flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => window.open(img.url, "_blank")}
+                        className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
+                      >
+                        Abrir
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(img.url);
+                            alert("URL copiada al portapapeles");
+                          } catch {
+                            alert("No se pudo copiar la URL");
+                          }
+                        }}
+                        className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
+                      >
+                        Copiar URL
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Paginación */}
+            <div className="mt-4 flex flex-col items-center justify-between gap-2 text-[11px] text-slate-300 sm:flex-row">
+              <div>
+                Mostrando{" "}
+                <span className="font-semibold">
+                  {startIndex + 1}-{startIndex + pagedImages.length}
+                </span>{" "}
+                de{" "}
+                <span className="font-semibold">
+                  {filteredImages.length}
+                </span>{" "}
+                imágenes
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPage((prev) => Math.max(1, prev - 1))
+                  }
+                  disabled={currentPage === 1}
+                  className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:border-sky-400 hover:bg-slate-800 disabled:cursor-default disabled:opacity-50"
+                >
+                  Anterior
+                </button>
+                <span className="min-w-[90px] text-center">
+                  Página {currentPage} de {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPage((prev) => Math.min(totalPages, prev + 1))
+                  }
+                  disabled={currentPage === totalPages}
+                  className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:border-sky-400 hover:bg-slate-800 disabled:cursor-default disabled:opacity-50"
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
     </main>
   );
 }
