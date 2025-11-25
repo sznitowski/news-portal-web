@@ -11,6 +11,7 @@ type FormState = {
   ideology: string;
   publishedAt: string;
   imageUrl?: string;
+  status: string; // draft | published
 };
 
 const inputClass =
@@ -35,6 +36,7 @@ export default function EditorFromImagePage() {
     ideology: "",
     publishedAt: new Date().toISOString().slice(0, 19) + "Z",
     imageUrl: "",
+    status: "draft",
   });
 
   const [loading, setLoading] = useState(false);
@@ -131,6 +133,7 @@ export default function EditorFromImagePage() {
           ...prev,
           ...suggested,
           ideology: prev.ideology,
+          status: prev.status, // mantener el estado elegido (draft/published)
         };
 
         const imgUrl: string | undefined =
@@ -139,9 +142,8 @@ export default function EditorFromImagePage() {
         let finalBody: string = next.bodyHtml ?? prev.bodyHtml;
 
         if (imgUrl) {
-          const imgTag = `<p><img src="${imgUrl}" alt="${
-            next.title || "Imagen de la captura"
-          }" /></p>`;
+          const imgTag = `<p><img src="${imgUrl}" alt="${next.title || "Imagen de la captura"
+            }" /></p>`;
 
           if (!finalBody || !finalBody.includes(imgTag)) {
             finalBody = imgTag + "\n\n" + (finalBody || "");
@@ -222,8 +224,22 @@ export default function EditorFromImagePage() {
     }
   };
 
+  // Quitar la primera imagen del cuerpo (la captura original)
+  const handleRemoveOriginalImageFromBody = () => {
+    if (!form.bodyHtml) return;
+
+    let cleaned = form.bodyHtml.replace(
+      /<p[^>]*>\s*<img[^>]*>\s*<\/p>/i,
+      "",
+    );
+
+    cleaned = cleaned.replace(/<img[^>]*>\s*/i, "");
+
+    setForm((prev) => ({ ...prev, bodyHtml: cleaned }));
+  };
+
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10">
+    <main className="mx-auto w-full py-10">
       <div className="relative overflow-hidden rounded-3xl border border-zinc-800/90 bg-zinc-950/95 text-zinc-50 shadow-[0_40px_90px_rgba(0,0,0,0.8)]">
         <div className="relative z-10 grid gap-8 p-6 md:p-8 lg:p-10 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
           {/* Columna izquierda: captura + formulario */}
@@ -388,13 +404,21 @@ export default function EditorFromImagePage() {
                   onChange={handleChange}
                   className={`${inputClass} resize-y font-mono text-[13px]`}
                 />
-                <small className="mt-1 block text-[11px] text-zinc-400">
-                  Ejemplo:{" "}
-                  {"<p>Texto principal procesado por IA desde una captura.</p>"}
-                </small>
+                <div className="mt-1 flex flex-col gap-2 text-[11px] text-zinc-400 md:flex-row md:items-center md:justify-between">
+                  <span>
+                    Ejemplo: {"<p>Texto principal procesado por IA desde una captura.</p>"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRemoveOriginalImageFromBody}
+                    className="self-start rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-[10px] font-semibold text-zinc-100 hover:border-red-400 hover:bg-red-500/10 hover:text-red-200 md:self-auto"
+                  >
+                    Quitar imagen original
+                  </button>
+                </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <div>
                   <label htmlFor="category" className={labelClass}>
                     Categoría *
@@ -431,6 +455,25 @@ export default function EditorFromImagePage() {
                     <option value="RIGHT">RIGHT</option>
                     <option value="LEFT">LEFT</option>
                   </select>
+                </div>
+
+                <div>
+                  <label htmlFor="status" className={labelClass}>
+                    Estado
+                  </label>
+                  <select
+                    id="status"
+                    name="status"
+                    value={form.status}
+                    onChange={handleChange}
+                    className={inputClass}
+                  >
+                    <option value="draft">draft</option>
+                    <option value="published">published</option>
+                  </select>
+                  <small className="mt-1 block text-[11px] text-zinc-400">
+                    Por defecto se guarda como borrador.
+                  </small>
                 </div>
               </div>
 
@@ -545,9 +588,9 @@ export default function EditorFromImagePage() {
 
               {showEditor ? (
                 <div className="relative overflow-hidden rounded-[28px] border border-zinc-700 bg-black/80">
-                  <div className="mx-auto w-full max-w-[420px]">
+                  {/* más ancho, pero misma estructura */}
+                  <div className="mx-auto w-full max-w-[560px] md:max-w-[640px]">
                     <div className="aspect-[9/16] overflow-hidden bg-black">
-                      {/* 👇 Ojo: ruta RELATIVA, apunta a /admin/image-editor-embed */}
                       <iframe
                         src="image-editor-embed"
                         className="h-full w-full border-0"
