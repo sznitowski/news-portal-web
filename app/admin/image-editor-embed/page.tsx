@@ -95,7 +95,9 @@ export default function ImageEditorEmbedPage() {
 
   const handleEnhance = async () => {
     if (!file) {
-      setErrorMsg("Primero seleccioná una imagen base.");
+      setErrorMsg(
+        "Primero seleccioná una imagen base (subí una o elegí un RAW de la biblioteca).",
+      );
       return;
     }
 
@@ -194,6 +196,42 @@ export default function ImageEditorEmbedPage() {
     }
   };
 
+  // NUEVO: usar imagen existente como base
+  const selectExistingAsBase = async (img: ImageItem) => {
+    try {
+      setErrorMsg(null);
+      setSuccessMsg(null);
+      setResultUrl(null);
+
+      const res = await fetch(img.url);
+      if (!res.ok) {
+        throw new Error("No se pudo descargar la imagen seleccionada.");
+      }
+
+      const blob = await res.blob();
+      const mime = blob.type || "image/jpeg";
+      let ext = "jpg";
+      if (mime === "image/png") ext = "png";
+      else if (mime === "image/webp") ext = "webp";
+
+      const name = img.filename || `image-from-library.${ext}`;
+      const f = new File([blob], name, { type: mime });
+
+      setFile(f);
+      setPreviewUrl(img.url);
+
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    } catch (err: any) {
+      console.error("[image-editor-embed] selectExistingAsBase error:", err);
+      setErrorMsg(
+        err.message ??
+          "No se pudo usar esa imagen como base para la portada.",
+      );
+    }
+  };
+
   useEffect(() => {
     void loadImages();
   }, []);
@@ -240,8 +278,9 @@ export default function ImageEditorEmbedPage() {
               Preparar imagen de portada con IA
             </h1>
             <p className="max-w-2xl text-sm text-slate-300">
-              Subí una imagen para usarla como portada y definí el título, la
-              bajada y la info del canal que quieras superponer con IA.
+              Subí una imagen para usarla como portada o elegí una RAW ya
+              subida en la biblioteca. Después definí el título, la bajada y la
+              info del canal que quieras superponer con IA.
             </p>
           </header>
 
@@ -252,8 +291,8 @@ export default function ImageEditorEmbedPage() {
               </div>
 
               <p className="text-xs text-slate-300">
-                Elegí una imagen desde tu dispositivo. La idea es que sea la
-                base para la portada de la nota.
+                Elegí una imagen desde tu dispositivo o usá una RAW existente
+                de la biblioteca de abajo como base para la portada.
               </p>
 
               <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-700/80 bg-slate-800/80 px-4 py-2 text-xs font-medium text-slate-50 hover:border-sky-400/80 hover:bg-slate-800">
@@ -335,8 +374,9 @@ export default function ImageEditorEmbedPage() {
                   </div>
                 ) : (
                   <p>
-                    Todavía no cargaste ninguna imagen. Seleccioná una para ver
-                    cómo se vería como portada.
+                    Todavía no cargaste ninguna imagen. Subí una o elegí una
+                    RAW desde la biblioteca para ver cómo se vería como
+                    portada.
                   </p>
                 )}
               </div>
@@ -410,7 +450,8 @@ export default function ImageEditorEmbedPage() {
             <h2 className="text-sm font-semibold">Biblioteca de imágenes</h2>
             <p className="text-xs text-slate-400">
               Acá ves todas las imágenes que subiste desde el editor. Podés
-              copiar la URL o abrirlas en una pestaña nueva.
+              usarlas como base (RAW) para nuevas portadas, copiar la URL o
+              abrirlas en otra pestaña.
             </p>
           </div>
 
@@ -504,28 +545,39 @@ export default function ImageEditorEmbedPage() {
                       {img.url}
                     </div>
 
-                    <div className="mt-auto flex gap-2">
+                    <div className="mt-auto flex flex-col gap-1">
+                      {/* NUEVO: usar esta imagen como base */}
                       <button
                         type="button"
-                        onClick={() => window.open(img.url, "_blank")}
-                        className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
+                        onClick={() => void selectExistingAsBase(img)}
+                        className="w-full rounded-full border border-sky-400/80 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold text-sky-200 hover:bg-sky-500/20"
                       >
-                        Abrir
+                        Usar como base
                       </button>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(img.url);
-                            alert("URL copiada al portapapeles");
-                          } catch {
-                            alert("No se pudo copiar la URL");
-                          }
-                        }}
-                        className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
-                      >
-                        Copiar URL
-                      </button>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => window.open(img.url, "_blank")}
+                          className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
+                        >
+                          Abrir
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(img.url);
+                              alert("URL copiada al portapapeles");
+                            } catch {
+                              alert("No se pudo copiar la URL");
+                            }
+                          }}
+                          className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
+                        >
+                          Copiar URL
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

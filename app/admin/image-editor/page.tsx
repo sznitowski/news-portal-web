@@ -73,9 +73,8 @@ export default function AdminImageEditorPage() {
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
   const [footer, setFooter] = useState(
-  "@canallibertario · X · Facebook · Instagram"
-);
-
+    "@canallibertario · X · Facebook · Instagram"
+  );
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -104,7 +103,9 @@ export default function AdminImageEditorPage() {
 
   const handleEnhance = async () => {
     if (!file) {
-      setErrorMsg("Primero seleccioná una imagen base.");
+      setErrorMsg(
+        "Primero seleccioná una imagen base (subí una o elegí un RAW de la biblioteca)."
+      );
       return;
     }
 
@@ -131,7 +132,7 @@ export default function AdminImageEditorPage() {
           title: title.trim() || null,
           subtitle: subtitle.trim() || null,
           footer: footer.trim() || null,
-        }),
+        })
       );
 
       const res = await fetch("/api/editor-images/enhance", {
@@ -142,7 +143,7 @@ export default function AdminImageEditorPage() {
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(
-          text || `Error HTTP ${res.status} al procesar la imagen`,
+          text || `Error HTTP ${res.status} al procesar la imagen`
         );
       }
 
@@ -152,7 +153,7 @@ export default function AdminImageEditorPage() {
         setResultUrl(data.enhancedImageUrl);
         setSuccessMsg(
           data.message ??
-            "Imagen procesada correctamente. Usala como portada en tus notas.",
+            "Imagen procesada correctamente. Usala como portada en tus notas."
         );
         // Después de subir una imagen nueva, refrescamos la biblioteca
         void loadImages();
@@ -192,7 +193,7 @@ export default function AdminImageEditorPage() {
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(
-          text || `Error HTTP ${res.status} al obtener la lista de imágenes`,
+          text || `Error HTTP ${res.status} al obtener la lista de imágenes`
         );
       }
 
@@ -204,10 +205,48 @@ export default function AdminImageEditorPage() {
     } catch (err: any) {
       console.error("[image-editor] Error al cargar imágenes:", err);
       setListError(
-        err.message ?? "Error al obtener la lista de imágenes del backend.",
+        err.message ?? "Error al obtener la lista de imágenes del backend."
       );
     } finally {
       setListLoading(false);
+    }
+  };
+
+  // NUEVO: usar una imagen existente de la biblioteca como base (RAW o cover)
+  const selectExistingAsBase = async (img: ImageItem) => {
+    try {
+      setErrorMsg(null);
+      setSuccessMsg(null);
+      setResultUrl(null);
+
+      // Descargamos el archivo para poder mandarlo como `image` al backend
+      const res = await fetch(img.url);
+      if (!res.ok) {
+        throw new Error("No se pudo descargar la imagen seleccionada.");
+      }
+      const blob = await res.blob();
+
+      // Inferimos extensión mínima
+      const mime = blob.type || "image/jpeg";
+      let ext = "jpg";
+      if (mime === "image/png") ext = "png";
+      else if (mime === "image/webp") ext = "webp";
+
+      const name = img.filename || `image-from-library.${ext}`;
+      const f = new File([blob], name, { type: mime });
+
+      setFile(f);
+      setPreviewUrl(img.url);
+
+      // Opcional: subir un poco para ver el preview
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    } catch (err: any) {
+      console.error("[image-editor] selectExistingAsBase error:", err);
+      setErrorMsg(
+        err.message ?? "No se pudo usar esa imagen como base para la portada."
+      );
     }
   };
 
@@ -239,13 +278,13 @@ export default function AdminImageEditorPage() {
 
   const totalPages = Math.max(
     1,
-    Math.ceil(filteredImages.length / PAGE_SIZE),
+    Math.ceil(filteredImages.length / PAGE_SIZE)
   );
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * PAGE_SIZE;
   const pagedImages = filteredImages.slice(
     startIndex,
-    startIndex + PAGE_SIZE,
+    startIndex + PAGE_SIZE
   );
 
   return (
@@ -264,7 +303,8 @@ export default function AdminImageEditorPage() {
               Preparar imagen de portada con IA
             </h1>
             <p className="max-w-2xl text-sm text-slate-300">
-              Subí una imagen para usarla como portada y definí el título, la
+              Subí una imagen para usarla como portada o elegí una RAW ya
+              subida en la biblioteca de abajo. Después definí el título, la
               bajada y la info del canal que quieras superponer con IA.
             </p>
           </header>
@@ -277,8 +317,8 @@ export default function AdminImageEditorPage() {
               </div>
 
               <p className="text-xs text-slate-300">
-                Elegí una imagen desde tu dispositivo. La idea es que sea la
-                base para la portada de la nota.
+                Podés subir una imagen nueva desde tu dispositivo o usar
+                alguna RAW de la biblioteca de abajo como base para la portada.
               </p>
 
               <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-700/80 bg-slate-800/80 px-4 py-2 text-xs font-medium text-slate-50 hover:border-sky-400/80 hover:bg-slate-800">
@@ -362,8 +402,8 @@ export default function AdminImageEditorPage() {
                   </div>
                 ) : (
                   <p>
-                    Todavía no cargaste ninguna imagen. Seleccioná una para ver
-                    cómo se vería como portada.
+                    Todavía no cargaste ninguna imagen. Subí una o elegí una RAW
+                    desde la biblioteca para usarla como base.
                   </p>
                 )}
               </div>
@@ -439,7 +479,8 @@ export default function AdminImageEditorPage() {
             <h2 className="text-sm font-semibold">Biblioteca de imágenes</h2>
             <p className="text-xs text-slate-400">
               Acá ves todas las imágenes que subiste desde el editor. Podés
-              copiar la URL o abrirlas en una pestaña nueva.
+              usarlas como base (RAW) para nuevas portadas, copiar la URL o
+              abrirlas en otra pestaña.
             </p>
           </div>
 
@@ -534,28 +575,39 @@ export default function AdminImageEditorPage() {
                       {img.url}
                     </div>
 
-                    <div className="mt-auto flex gap-2">
+                    <div className="mt-auto flex flex-col gap-1">
+                      {/* NUEVO: usar esta imagen como base */}
                       <button
                         type="button"
-                        onClick={() => window.open(img.url, "_blank")}
-                        className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
+                        onClick={() => void selectExistingAsBase(img)}
+                        className="w-full rounded-full border border-sky-400/80 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold text-sky-200 hover:bg-sky-500/20"
                       >
-                        Abrir
+                        Usar como base
                       </button>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(img.url);
-                            alert("URL copiada al portapapeles");
-                          } catch {
-                            alert("No se pudo copiar la URL");
-                          }
-                        }}
-                        className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
-                      >
-                        Copiar URL
-                      </button>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => window.open(img.url, "_blank")}
+                          className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
+                        >
+                          Abrir
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(img.url);
+                              alert("URL copiada al portapapeles");
+                            } catch {
+                              alert("No se pudo copiar la URL");
+                            }
+                          }}
+                          className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
+                        >
+                          Copiar URL
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
