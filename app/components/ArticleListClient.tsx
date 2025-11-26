@@ -217,7 +217,7 @@ function HeroArticle({ article }: HeroProps) {
                   strokeWidth="1.5"
                 />
               </svg>
-              <span>Imagen de la nota</span>
+           {/*    <span>Imagen de la nota</span> */}
             </div>
 
             {!mainImageUrl && (

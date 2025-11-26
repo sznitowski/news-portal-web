@@ -35,109 +35,6 @@ type EnhanceResponse = {
   };
 };
 
-// ==== tipos para buscar RAW en la biblioteca ====
-
-type ImageKind = "raw" | "cover";
-type ImageItem = {
-  filename: string;
-  url: string;
-  createdAt?: string;
-  kind?: "raw" | "cover" | "other";
-};
-
-// Detecta tipo según la URL/path real (igual que en el editor)
-function getImageTypeFromUrl(url: string): ImageKind {
-  let path = url.toLowerCase();
-
-  try {
-    const u = new URL(url);
-    path = u.pathname.toLowerCase();
-  } catch {
-    // ignore
-  }
-
-  if (
-    path.includes("/covers/") ||
-    path.includes("/cover/") ||
-    /[-_/]covers?[-_/]/.test(path)
-  ) {
-    return "cover";
-  }
-
-  if (
-    path.includes("/raws/") ||
-    path.includes("/raw/") ||
-    /[-_/]raws?[-_/]/.test(path)
-  ) {
-    return "raw";
-  }
-
-  return "raw";
-}
-
-function resolveImageType(img: ImageItem): ImageKind {
-  if (img.kind === "raw") return "raw";
-  if (img.kind === "cover") return "cover";
-  return getImageTypeFromUrl(img.url);
-}
-
-// palabra clave desde el título (Trump, Milei, Caputo, etc.)
-function extractKeywordFromTitle(title?: string): string | null {
-  if (!title) return null;
-
-  const stopwords = new Set([
-    "el",
-    "la",
-    "los",
-    "las",
-    "un",
-    "una",
-    "unos",
-    "unas",
-    "de",
-    "del",
-    "al",
-    "en",
-    "y",
-    "o",
-    "u",
-    "que",
-    "para",
-    "por",
-    "con",
-    "sin",
-    "sobre",
-    "contra",
-    "hacia",
-    "entre",
-    "fiscal",
-    "gobierno",
-    "economía",
-    "economico",
-    "económico",
-    "superávit",
-    "superavit",
-  ]);
-
-  const words = title
-    .split(/[\s,.;:¡!¿?\(\)"']+/)
-    .map((w) => w.trim())
-    .filter(Boolean);
-
-  // preferimos nombres propios (inicial mayúscula)
-  const candidates = words.filter((w) => {
-    if (!/^[A-ZÁÉÍÓÚÑ]/.test(w)) return false;
-    const low = w.toLowerCase();
-    if (stopwords.has(low)) return false;
-    return low.length > 3;
-  });
-
-  if (candidates.length === 0) return null;
-
-  const last = candidates[candidates.length - 1];
-  return last.toLowerCase();
-}
-
 const inputClass =
   "w-full rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-3 py-2.5 text-sm text-zinc-50 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-400/70 focus:border-purple-400/60";
 
@@ -149,85 +46,6 @@ function getAuthHeaders(): Record<string, string> {
   const token = window.localStorage.getItem("news_access_token");
   if (!token) return {};
   return { Authorization: `Bearer ${token}` };
-}
-
-// Busca una RAW en la biblioteca que matchee con la keyword
-async function findRawImageFileForKeyword(
-  keyword: string,
-): Promise<File | null> {
-  if (!keyword) return null;
-
-  try {
-    const headers: HeadersInit = {
-      Accept: "application/json",
-      ...getAuthHeaders(),
-    };
-
-    const res = await fetch("/api/editor-images/list", {
-      method: "GET",
-      headers,
-    });
-
-    if (!res.ok) {
-      console.warn(
-        "[from-image-ai] No se pudo obtener la lista de imágenes",
-        res.status,
-      );
-      return null;
-    }
-
-    const data = (await res.json()) as { items: ImageItem[] };
-    const items = data.items ?? [];
-
-    const kw = keyword.toLowerCase();
-
-    const rawMatches = items
-      .filter((img) => resolveImageType(img) === "raw")
-      .filter((img) => {
-        const name = img.filename?.toLowerCase() ?? "";
-        const url = img.url?.toLowerCase() ?? "";
-        return name.includes(kw) || url.includes(kw);
-      });
-
-    if (rawMatches.length === 0) {
-      return null;
-    }
-
-    // Elegimos la más "reciente" si hay createdAt, si no la primera
-    const best = rawMatches
-      .slice()
-      .sort((a, b) => {
-        if (!a.createdAt || !b.createdAt) return 0;
-        return (
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-      })[0];
-
-    const imgRes = await fetch(best.url);
-    if (!imgRes.ok) {
-      console.warn(
-        "[from-image-ai] No se pudo descargar la imagen RAW seleccionada",
-      );
-      return null;
-    }
-
-    const blob = await imgRes.blob();
-    const mime = blob.type || "image/jpeg";
-    let ext = "jpg";
-    if (mime === "image/png") ext = "png";
-    else if (mime === "image/webp") ext = "webp";
-
-    const name = best.filename || `raw-from-library.${ext}`;
-    const file = new File([blob], name, { type: mime });
-
-    return file;
-  } catch (err) {
-    console.error(
-      "[from-image-ai] Error buscando RAW en la biblioteca:",
-      err,
-    );
-    return null;
-  }
 }
 
 export default function EditorFromImagePage() {
@@ -349,68 +167,105 @@ export default function EditorFromImagePage() {
       let autoImage: string | undefined =
         suggested.imageUrl || form.imageUrl || undefined;
 
-      // 2) Intentar elegir una RAW automática según el título
-      let baseFileForCover: File | null = imageFile;
+      // 2) Intentar generar automáticamente la portada con texto
       try {
-        const keyword = extractKeywordFromTitle(autoTitle);
-        if (keyword) {
-          const rawFile = await findRawImageFileForKeyword(keyword);
-          if (rawFile) {
-            baseFileForCover = rawFile;
+        let autoImageFromRaw: string | undefined;
+
+        // primero intentamos con una RAW existente (auto-from-raw)
+        try {
+          const autoRes = await fetch(
+            "/api/editor-images/auto-from-raw",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                title: autoTitle ?? "",
+                subtitle: autoSummary ?? "",
+                footer:
+                  "@canallibertario · X · Facebook · Instagram",
+                // si algún día querés forzar keyword, podés agregarla acá:
+                // keyword: "trump",
+              }),
+            },
+          );
+
+          if (autoRes.ok) {
+            const autoData = (await autoRes.json()) as {
+              enhancedImageUrl?: string;
+            };
+            if (autoData.enhancedImageUrl) {
+              autoImageFromRaw = autoData.enhancedImageUrl;
+            }
+          } else {
+            console.warn(
+              "[from-image-ai] auto-from-raw devolvió error",
+              autoRes.status,
+            );
           }
-        }
-      } catch (err) {
-        console.error(
-          "[from-image-ai] Error al intentar elegir RAW automática:",
-          err,
-        );
-      }
-
-      // 3) Intentar generar automáticamente la portada con texto
-      try {
-        const coverFd = new FormData();
-        coverFd.append("image", baseFileForCover ?? imageFile);
-
-        if (typeof window !== "undefined") {
-          const token = window.localStorage.getItem("news_access_token");
-          if (token) {
-            coverFd.append("accessToken", token);
-          }
-        }
-
-        coverFd.append(
-          "optionsJson",
-          JSON.stringify({
-            title: autoTitle ?? null,
-            subtitle: autoSummary ?? null,
-            footer: "@canallibertario · X · Facebook · Instagram",
-          }),
-        );
-
-        const coverRes = await fetch("/api/editor-images/enhance", {
-          method: "POST",
-          body: coverFd,
-        });
-
-        if (coverRes.ok) {
-          const coverData = (await coverRes.json()) as EnhanceResponse;
-          if (coverData.enhancedImageUrl) {
-            autoImage = coverData.enhancedImageUrl;
-          }
-        } else {
-          console.warn(
-            "[from-image-ai] No se pudo generar la portada automática",
-            coverRes.status,
+        } catch (err) {
+          console.error(
+            "[from-image-ai] Error llamando a /api/editor-images/auto-from-raw:",
+            err,
           );
         }
+
+        if (autoImageFromRaw) {
+          // si encontramos RAW relacionada, usamos esa portada
+          autoImage = autoImageFromRaw;
+        } else {
+          // fallback: usamos la captura como base (enhance actual)
+          const coverFd = new FormData();
+          coverFd.append("image", imageFile);
+
+          if (typeof window !== "undefined") {
+            const token =
+              window.localStorage.getItem("news_access_token");
+            if (token) {
+              coverFd.append("accessToken", token);
+            }
+          }
+
+          coverFd.append(
+            "optionsJson",
+            JSON.stringify({
+              title: autoTitle ?? null,
+              subtitle: autoSummary ?? null,
+              footer:
+                "@canallibertario · X · Facebook · Instagram",
+            }),
+          );
+
+          const coverRes = await fetch(
+            "/api/editor-images/enhance",
+            {
+              method: "POST",
+              body: coverFd,
+            },
+          );
+
+          if (coverRes.ok) {
+            const coverData =
+              (await coverRes.json()) as EnhanceResponse;
+            if (coverData.enhancedImageUrl) {
+              autoImage = coverData.enhancedImageUrl;
+            }
+          } else {
+            console.warn(
+              "[from-image-ai] No se pudo generar la portada automática",
+              coverRes.status,
+            );
+          }
+        }
       } catch (err) {
         console.error(
-          "[from-image-ai] Error al llamar a /api/editor-images/enhance:",
+          "[from-image-ai] Error al generar portada automática:",
           err,
         );
       }
 
-      // 4) Actualizar el formulario con lo generado (incluida la portada)
+      // 3) Actualizar el formulario con lo generado (incluida la portada)
       setForm((prev) => {
         const next: FormState = {
           ...prev,
@@ -426,7 +281,7 @@ export default function EditorFromImagePage() {
         return next;
       });
 
-      // 5) Sincronizar con el editor de la derecha
+      // 4) Sincronizar con el editor de la derecha
       setEditorSyncData({
         title: autoTitle,
         subtitle: autoSummary,
@@ -611,7 +466,9 @@ export default function EditorFromImagePage() {
               <div
                 onPaste={handlePasteImage}
                 tabIndex={0}
-                onClick={(e) => (e.currentTarget as HTMLDivElement).focus()}
+                onClick={(e) =>
+                  (e.currentTarget as HTMLDivElement).focus()
+                }
                 className="mt-2 rounded-xl border-2 border-dashed border-zinc-600 bg-zinc-900/80 p-4 text-center text-xs text-zinc-300 outline-none"
               >
                 <p className="mb-1">
@@ -718,7 +575,8 @@ export default function EditorFromImagePage() {
                 />
                 <div className="mt-1 flex flex-col gap-2 text-[11px] text-zinc-400 md:flex-row md:items-center md:justify-between">
                   <span>
-                    Ejemplo: {"<p>Texto principal procesado por IA desde una captura.</p>"}
+                    Ejemplo:{" "}
+                    {"<p>Texto principal procesado por IA desde una captura.</p>"}
                   </span>
                   <button
                     type="button"
