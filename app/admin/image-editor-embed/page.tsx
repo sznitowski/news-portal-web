@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, ChangeEvent } from "react";
+import { useSearchParams } from "next/navigation";
 
 type EnhanceResponse = {
   enhancedImageUrl: string;
@@ -22,6 +23,7 @@ type ImageItem = {
   kind?: "raw" | "cover" | "other";
 };
 
+// Detecta tipo según la URL/path real
 function getImageTypeFromUrl(url: string): ImageKind {
   let path = url.toLowerCase();
 
@@ -60,6 +62,8 @@ function resolveImageType(img: ImageItem): ImageKind {
 const PAGE_SIZE = 10;
 
 export default function ImageEditorEmbedPage() {
+  const searchParams = useSearchParams();
+
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
@@ -81,6 +85,9 @@ export default function ImageEditorEmbedPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "raw" | "cover">("all");
   const [page, setPage] = useState(1);
+
+  // para no re-inicializar infinitas veces desde query params
+  const [initializedFromQuery, setInitializedFromQuery] = useState(false);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -195,6 +202,56 @@ export default function ImageEditorEmbedPage() {
       setListLoading(false);
     }
   };
+
+  // NUEVO: inicializar desde query params (imageUrl + textos)
+  useEffect(() => {
+    if (initializedFromQuery) return;
+
+    const imageUrl = searchParams.get("imageUrl");
+    const overlayTitle =
+      searchParams.get("overlayTitle") ?? searchParams.get("title") ?? "";
+    const overlaySubtitle =
+      searchParams.get("overlaySubtitle") ?? searchParams.get("subtitle") ?? "";
+    const overlayFooter =
+      searchParams.get("overlayFooter") ?? searchParams.get("footer") ?? "";
+
+    if (overlayTitle) setTitle(overlayTitle);
+    if (overlaySubtitle) setSubtitle(overlaySubtitle);
+    if (overlayFooter) setFooter(overlayFooter);
+
+    if (imageUrl) {
+      (async () => {
+        try {
+          const res = await fetch(imageUrl);
+          if (!res.ok) {
+            throw new Error("No se pudo descargar la imagen inicial.");
+          }
+
+          const blob = await res.blob();
+          const mime = blob.type || "image/jpeg";
+          let ext = "jpg";
+          if (mime === "image/png") ext = "png";
+          else if (mime === "image/webp") ext = "webp";
+
+          const f = new File([blob], `image-from-article.${ext}`, {
+            type: mime,
+          });
+
+          setFile(f);
+          setPreviewUrl(imageUrl);
+        } catch (err) {
+          console.error(
+            "[image-editor-embed] No se pudo inicializar desde imageUrl:",
+            err,
+          );
+        } finally {
+          setInitializedFromQuery(true);
+        }
+      })();
+    } else {
+      setInitializedFromQuery(true);
+    }
+  }, [initializedFromQuery, searchParams]);
 
   // NUEVO: usar imagen existente como base
   const selectExistingAsBase = async (img: ImageItem) => {
@@ -546,7 +603,7 @@ export default function ImageEditorEmbedPage() {
                     </div>
 
                     <div className="mt-auto flex flex-col gap-1">
-                      {/* NUEVO: usar esta imagen como base */}
+                      {/* usar esta imagen como base */}
                       <button
                         type="button"
                         onClick={() => void selectExistingAsBase(img)}

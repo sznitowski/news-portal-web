@@ -36,7 +36,10 @@ function escapeHtmlAttr(value: string): string {
 
 // Si el valor existente tiene texto, se respeta;
 // si está vacío, se usa el de la IA.
-function preferExisting(existing?: unknown, ai?: unknown): string | undefined {
+function preferExisting(
+  existing?: unknown,
+  ai?: unknown,
+): string | undefined {
   const ex =
     typeof existing === "string"
       ? existing.trim()
@@ -83,7 +86,9 @@ function mergeIdeology(userIde?: string, aiIde?: string): string {
 
 // misma key que usás para /internal/articles
 const INTERNAL_KEY =
-  process.env.INTERNAL_INGEST_KEY ?? process.env.INGEST_KEY ?? "supersecreto123";
+  process.env.INTERNAL_INGEST_KEY ??
+  process.env.INGEST_KEY ??
+  "supersecreto123";
 
 export async function POST(req: NextRequest) {
   try {
@@ -106,15 +111,15 @@ export async function POST(req: NextRequest) {
     if (!(file instanceof File)) {
       return NextResponse.json(
         { message: "No se recibió ninguna imagen" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     // 1) Subir imagen al backend (/internal/uploads/image)
-    const uploadBody = new FormData();
-
-    // el backend espera el campo "file", no "image"
+    const uploadBody = new FormData(); // el backend espera el campo "file", no "image"
     uploadBody.set("file", file);
+    // 🔹 marcamos que esto viene del flujo de captura
+    uploadBody.set("kind", "screenshot");
 
     const uploadHeaders: Record<string, string> = {};
     if (authHeader) {
@@ -126,11 +131,14 @@ export async function POST(req: NextRequest) {
       uploadHeaders["x-ingest-key"] = INTERNAL_KEY;
     }
 
-    const uploadRes = await fetch(buildApiUrl("/internal/uploads/image"), {
-      method: "POST",
-      headers: uploadHeaders,
-      body: uploadBody,
-    });
+    const uploadRes = await fetch(
+      buildApiUrl("/internal/uploads/image"),
+      {
+        method: "POST",
+        headers: uploadHeaders,
+        body: uploadBody,
+      },
+    );
 
     if (!uploadRes.ok) {
       const text = await uploadRes.text().catch(() => "");
@@ -138,7 +146,7 @@ export async function POST(req: NextRequest) {
         "Error al subir imagen:",
         uploadRes.status,
         uploadRes.statusText,
-        text
+        text,
       );
       return NextResponse.json(
         {
@@ -146,7 +154,7 @@ export async function POST(req: NextRequest) {
           statusCode: uploadRes.status,
           backend: text,
         },
-        { status: 502 }
+        { status: 502 },
       );
     }
 
@@ -157,11 +165,13 @@ export async function POST(req: NextRequest) {
     };
 
     // Puede venir como /uploads/... o como http://.../uploads/...
-    const rawImageUrl = uploadJson.url ?? uploadJson.imageUrl ?? uploadJson.path;
+    const rawImageUrl =
+      uploadJson.url ?? uploadJson.imageUrl ?? uploadJson.path;
+
     if (!rawImageUrl) {
       return NextResponse.json(
         { message: "El backend no devolvió URL de imagen" },
-        { status: 502 }
+        { status: 502 },
       );
     }
 
@@ -191,14 +201,17 @@ export async function POST(req: NextRequest) {
       "[from-image-ai] rawImageUrl:",
       rawImageUrl,
       "aiPayload:",
-      JSON.stringify(aiPayload)
+      JSON.stringify(aiPayload),
     );
 
-    const aiRes = await fetch(buildApiUrl("/internal/articles/from-image-ai"), {
-      method: "POST",
-      headers: aiHeaders,
-      body: JSON.stringify(aiPayload),
-    });
+    const aiRes = await fetch(
+      buildApiUrl("/internal/articles/from-image-ai"),
+      {
+        method: "POST",
+        headers: aiHeaders,
+        body: JSON.stringify(aiPayload),
+      },
+    );
 
     if (!aiRes.ok) {
       const text = await aiRes.text().catch(() => "");
@@ -206,7 +219,7 @@ export async function POST(req: NextRequest) {
         "Error al llamar a /internal/articles/from-image-ai:",
         aiRes.status,
         aiRes.statusText,
-        text
+        text,
       );
       return NextResponse.json(
         {
@@ -214,7 +227,7 @@ export async function POST(req: NextRequest) {
           statusCode: aiRes.status,
           backend: text,
         },
-        { status: 502 }
+        { status: 502 },
       );
     }
 
@@ -231,12 +244,11 @@ export async function POST(req: NextRequest) {
 
     if (shouldInjectImage) {
       const altText =
-        finalTitle ?? "Captura de pantalla de la publicación original";
-
+        finalTitle ??
+        "Captura de pantalla de la publicación original";
       const imgTag = `<p><img src="${publicImageUrl}" alt="${escapeHtmlAttr(
-        altText
+        altText,
       )}" /></p>\n`;
-
       finalBodyHtml = imgTag + (baseBodyHtml ?? "");
     }
 
@@ -246,7 +258,10 @@ export async function POST(req: NextRequest) {
       bodyHtml: finalBodyHtml ?? "",
       category: mergeCategory(form.category, ai.category),
       ideology: mergeIdeology(form.ideology, ai.ideology),
-      sourceIdeology: preferExisting(form.sourceIdeology, ai.sourceIdeology),
+      sourceIdeology: preferExisting(
+        form.sourceIdeology,
+        ai.sourceIdeology,
+      ),
       imageUrl: publicImageUrl,
     };
 
@@ -254,11 +269,13 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error(
       "Error inesperado en /api/editor-articles/from-image-ai:",
-      err
+      err,
     );
     return NextResponse.json(
-      { message: "Error inesperado al procesar la captura con IA" },
-      { status: 500 }
+      {
+        message: "Error inesperado al procesar la captura con IA",
+      },
+      { status: 500 },
     );
   }
 }

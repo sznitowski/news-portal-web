@@ -1,7 +1,12 @@
 // app/admin/from-image-ai/page.tsx
 "use client";
 
-import { FormEvent, useState, ClipboardEvent } from "react";
+import {
+  FormEvent,
+  useState,
+  ClipboardEvent,
+  ChangeEvent,
+} from "react";
 
 type FormState = {
   title: string;
@@ -14,6 +19,125 @@ type FormState = {
   status: string; // draft | published
 };
 
+type EditorSyncData = {
+  imageUrl?: string;
+  title?: string;
+  subtitle?: string;
+};
+
+type EnhanceResponse = {
+  enhancedImageUrl: string;
+  message?: string;
+  overlay?: {
+    title?: string | null;
+    subtitle?: string | null;
+    footer?: string | null;
+  };
+};
+
+// ==== tipos para buscar RAW en la biblioteca ====
+
+type ImageKind = "raw" | "cover";
+type ImageItem = {
+  filename: string;
+  url: string;
+  createdAt?: string;
+  kind?: "raw" | "cover" | "other";
+};
+
+// Detecta tipo según la URL/path real (igual que en el editor)
+function getImageTypeFromUrl(url: string): ImageKind {
+  let path = url.toLowerCase();
+
+  try {
+    const u = new URL(url);
+    path = u.pathname.toLowerCase();
+  } catch {
+    // ignore
+  }
+
+  if (
+    path.includes("/covers/") ||
+    path.includes("/cover/") ||
+    /[-_/]covers?[-_/]/.test(path)
+  ) {
+    return "cover";
+  }
+
+  if (
+    path.includes("/raws/") ||
+    path.includes("/raw/") ||
+    /[-_/]raws?[-_/]/.test(path)
+  ) {
+    return "raw";
+  }
+
+  return "raw";
+}
+
+function resolveImageType(img: ImageItem): ImageKind {
+  if (img.kind === "raw") return "raw";
+  if (img.kind === "cover") return "cover";
+  return getImageTypeFromUrl(img.url);
+}
+
+// palabra clave desde el título (Trump, Milei, Caputo, etc.)
+function extractKeywordFromTitle(title?: string): string | null {
+  if (!title) return null;
+
+  const stopwords = new Set([
+    "el",
+    "la",
+    "los",
+    "las",
+    "un",
+    "una",
+    "unos",
+    "unas",
+    "de",
+    "del",
+    "al",
+    "en",
+    "y",
+    "o",
+    "u",
+    "que",
+    "para",
+    "por",
+    "con",
+    "sin",
+    "sobre",
+    "contra",
+    "hacia",
+    "entre",
+    "fiscal",
+    "gobierno",
+    "economía",
+    "economico",
+    "económico",
+    "superávit",
+    "superavit",
+  ]);
+
+  const words = title
+    .split(/[\s,.;:¡!¿?\(\)"']+/)
+    .map((w) => w.trim())
+    .filter(Boolean);
+
+  // preferimos nombres propios (inicial mayúscula)
+  const candidates = words.filter((w) => {
+    if (!/^[A-ZÁÉÍÓÚÑ]/.test(w)) return false;
+    const low = w.toLowerCase();
+    if (stopwords.has(low)) return false;
+    return low.length > 3;
+  });
+
+  if (candidates.length === 0) return null;
+
+  const last = candidates[candidates.length - 1];
+  return last.toLowerCase();
+}
+
 const inputClass =
   "w-full rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-3 py-2.5 text-sm text-zinc-50 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-400/70 focus:border-purple-400/60";
 
@@ -25,6 +149,85 @@ function getAuthHeaders(): Record<string, string> {
   const token = window.localStorage.getItem("news_access_token");
   if (!token) return {};
   return { Authorization: `Bearer ${token}` };
+}
+
+// Busca una RAW en la biblioteca que matchee con la keyword
+async function findRawImageFileForKeyword(
+  keyword: string,
+): Promise<File | null> {
+  if (!keyword) return null;
+
+  try {
+    const headers: HeadersInit = {
+      Accept: "application/json",
+      ...getAuthHeaders(),
+    };
+
+    const res = await fetch("/api/editor-images/list", {
+      method: "GET",
+      headers,
+    });
+
+    if (!res.ok) {
+      console.warn(
+        "[from-image-ai] No se pudo obtener la lista de imágenes",
+        res.status,
+      );
+      return null;
+    }
+
+    const data = (await res.json()) as { items: ImageItem[] };
+    const items = data.items ?? [];
+
+    const kw = keyword.toLowerCase();
+
+    const rawMatches = items
+      .filter((img) => resolveImageType(img) === "raw")
+      .filter((img) => {
+        const name = img.filename?.toLowerCase() ?? "";
+        const url = img.url?.toLowerCase() ?? "";
+        return name.includes(kw) || url.includes(kw);
+      });
+
+    if (rawMatches.length === 0) {
+      return null;
+    }
+
+    // Elegimos la más "reciente" si hay createdAt, si no la primera
+    const best = rawMatches
+      .slice()
+      .sort((a, b) => {
+        if (!a.createdAt || !b.createdAt) return 0;
+        return (
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      })[0];
+
+    const imgRes = await fetch(best.url);
+    if (!imgRes.ok) {
+      console.warn(
+        "[from-image-ai] No se pudo descargar la imagen RAW seleccionada",
+      );
+      return null;
+    }
+
+    const blob = await imgRes.blob();
+    const mime = blob.type || "image/jpeg";
+    let ext = "jpg";
+    if (mime === "image/png") ext = "png";
+    else if (mime === "image/webp") ext = "webp";
+
+    const name = best.filename || `raw-from-library.${ext}`;
+    const file = new File([blob], name, { type: mime });
+
+    return file;
+  } catch (err) {
+    console.error(
+      "[from-image-ai] Error buscando RAW en la biblioteca:",
+      err,
+    );
+    return null;
+  }
 }
 
 export default function EditorFromImagePage() {
@@ -48,13 +251,20 @@ export default function EditorFromImagePage() {
 
   const [showEditor, setShowEditor] = useState(true);
 
+  // datos que le mandamos al editor de portadas
+  const [editorSyncData, setEditorSyncData] = useState<EditorSyncData>({});
+  const [editorReloadTick, setEditorReloadTick] = useState(0);
+
   const handleChange = (
-    e: React.ChangeEvent<
+    e: ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
     >,
   ) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   const handleScreenshotFile = (file: File) => {
@@ -65,7 +275,7 @@ export default function EditorFromImagePage() {
     );
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
     if (file) {
       handleScreenshotFile(file);
@@ -94,7 +304,10 @@ export default function EditorFromImagePage() {
       const d = new Date();
       d.setMinutes(d.getMinutes() + minutes);
       const iso = d.toISOString();
-      return { ...prev, publishedAt: iso };
+      return {
+        ...prev,
+        publishedAt: iso,
+      };
     });
   };
 
@@ -109,6 +322,7 @@ export default function EditorFromImagePage() {
     setImageLoading(true);
 
     try {
+      // 1) Generar nota desde la captura
       const fd = new FormData();
       fd.append("image", imageFile);
       fd.append("formJson", JSON.stringify(form));
@@ -128,36 +342,108 @@ export default function EditorFromImagePage() {
 
       const suggested = await res.json();
 
+      let autoTitle: string | undefined =
+        suggested.title || form.title || undefined;
+      let autoSummary: string | undefined =
+        suggested.summary || form.summary || undefined;
+      let autoImage: string | undefined =
+        suggested.imageUrl || form.imageUrl || undefined;
+
+      // 2) Intentar elegir una RAW automática según el título
+      let baseFileForCover: File | null = imageFile;
+      try {
+        const keyword = extractKeywordFromTitle(autoTitle);
+        if (keyword) {
+          const rawFile = await findRawImageFileForKeyword(keyword);
+          if (rawFile) {
+            baseFileForCover = rawFile;
+          }
+        }
+      } catch (err) {
+        console.error(
+          "[from-image-ai] Error al intentar elegir RAW automática:",
+          err,
+        );
+      }
+
+      // 3) Intentar generar automáticamente la portada con texto
+      try {
+        const coverFd = new FormData();
+        coverFd.append("image", baseFileForCover ?? imageFile);
+
+        if (typeof window !== "undefined") {
+          const token = window.localStorage.getItem("news_access_token");
+          if (token) {
+            coverFd.append("accessToken", token);
+          }
+        }
+
+        coverFd.append(
+          "optionsJson",
+          JSON.stringify({
+            title: autoTitle ?? null,
+            subtitle: autoSummary ?? null,
+            footer: "@canallibertario · X · Facebook · Instagram",
+          }),
+        );
+
+        const coverRes = await fetch("/api/editor-images/enhance", {
+          method: "POST",
+          body: coverFd,
+        });
+
+        if (coverRes.ok) {
+          const coverData = (await coverRes.json()) as EnhanceResponse;
+          if (coverData.enhancedImageUrl) {
+            autoImage = coverData.enhancedImageUrl;
+          }
+        } else {
+          console.warn(
+            "[from-image-ai] No se pudo generar la portada automática",
+            coverRes.status,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[from-image-ai] Error al llamar a /api/editor-images/enhance:",
+          err,
+        );
+      }
+
+      // 4) Actualizar el formulario con lo generado (incluida la portada)
       setForm((prev) => {
         const next: FormState = {
           ...prev,
           ...suggested,
           ideology: prev.ideology,
-          status: prev.status, // mantener el estado elegido (draft/published)
+          status: prev.status,
         };
 
-        const imgUrl: string | undefined =
-          suggested.imageUrl ?? next.imageUrl ?? undefined;
-
-        let finalBody: string = next.bodyHtml ?? prev.bodyHtml;
-
-        if (imgUrl) {
-          const imgTag = `<p><img src="${imgUrl}" alt="${next.title || "Imagen de la captura"
-            }" /></p>`;
-
-          if (!finalBody || !finalBody.includes(imgTag)) {
-            finalBody = imgTag + "\n\n" + (finalBody || "");
-          }
+        if (autoImage) {
+          next.imageUrl = autoImage;
         }
 
-        next.bodyHtml = finalBody;
         return next;
       });
 
-      setSuccessMsg("Campos rellenados a partir de la captura con IA.");
+      // 5) Sincronizar con el editor de la derecha
+      setEditorSyncData({
+        title: autoTitle,
+        subtitle: autoSummary,
+        imageUrl: autoImage,
+      });
+      setEditorReloadTick((t) => t + 1);
+
+      setSuccessMsg(
+        autoImage
+          ? "Campos rellenados y portada generada automáticamente con IA."
+          : "Campos rellenados a partir de la captura con IA.",
+      );
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message ?? "Error al procesar la captura con la IA.");
+      setErrorMsg(
+        err?.message ?? "Error al procesar la captura con la IA.",
+      );
     } finally {
       setImageLoading(false);
     }
@@ -165,6 +451,7 @@ export default function EditorFromImagePage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
     setLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -208,7 +495,7 @@ export default function EditorFromImagePage() {
       setImageFile(null);
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message ?? "Error inesperado al crear la nota");
+      setErrorMsg(err?.message ?? "Error inesperado al crear la nota");
     } finally {
       setLoading(false);
     }
@@ -218,7 +505,11 @@ export default function EditorFromImagePage() {
     try {
       const text = await navigator.clipboard.readText();
       if (!text) return;
-      setForm((prev) => ({ ...prev, imageUrl: text.trim() }));
+
+      setForm((prev) => ({
+        ...prev,
+        imageUrl: text.trim(),
+      }));
     } catch {
       alert("No se pudo leer el portapapeles");
     }
@@ -235,13 +526,33 @@ export default function EditorFromImagePage() {
 
     cleaned = cleaned.replace(/<img[^>]*>\s*/i, "");
 
-    setForm((prev) => ({ ...prev, bodyHtml: cleaned }));
+    setForm((prev) => ({
+      ...prev,
+      bodyHtml: cleaned,
+    }));
   };
+
+  // =========================
+  // URL del iframe del editor
+  // =========================
+  const editorParams = new URLSearchParams();
+  editorParams.set("tick", String(editorReloadTick));
+  if (editorSyncData.title) {
+    editorParams.set("title", editorSyncData.title);
+  }
+  if (editorSyncData.subtitle) {
+    editorParams.set("subtitle", editorSyncData.subtitle);
+  }
+  if (editorSyncData.imageUrl) {
+    editorParams.set("imageUrl", editorSyncData.imageUrl);
+  }
+
+  const editorIframeSrc = `/admin/image-editor-embed?${editorParams.toString()}`;
 
   return (
     <main className="mx-auto w-full py-10">
       <div className="relative overflow-hidden rounded-3xl border border-zinc-800/90 bg-zinc-950/95 text-zinc-50 shadow-[0_40px_90px_rgba(0,0,0,0.8)]">
-        <div className="relative z-10 grid gap-8 p-6 md:p-8 lg:p-10 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div className="relative z-10 grid gap-8 p-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] md:p-8 lg:p-10">
           {/* Columna izquierda: captura + formulario */}
           <div className="space-y-6">
             <header className="space-y-3">
@@ -252,11 +563,11 @@ export default function EditorFromImagePage() {
                 Cargar artículo desde imagen (IA)
               </h1>
               <p className="max-w-2xl text-sm text-zinc-300">
-                Subí una captura de una publicación (Twitter, Facebook, portal
-                de medios, etc.) o una imagen de portada. La IA sugiere título,
-                resumen, cuerpo e inserta la imagen en la nota. Después podés
-                ajustar todo antes de publicar y reemplazar la imagen por una
-                portada procesada.
+                Subí una captura de una publicación (Twitter, Facebook,
+                portal de medios, etc.) o una imagen de portada. La IA
+                sugiere título, resumen, cuerpo e inserta la imagen en la
+                nota. Después podés ajustar todo antes de publicar y
+                reemplazar la imagen por una portada procesada.
               </p>
             </header>
 
@@ -267,10 +578,10 @@ export default function EditorFromImagePage() {
                   Procesar captura de pantalla
                 </h2>
                 <p className="mt-1 text-xs text-zinc-300">
-                  Subí una captura de una publicación oficial. Al hacer clic en{" "}
-                  <strong>“Procesar captura con IA”</strong>, se sube la imagen
-                  al backend, se genera texto sugerido y se inserta la imagen en
-                  el cuerpo de la nota.
+                  Subí una captura de una publicación oficial. Al hacer
+                  clic en <strong>“Procesar captura con IA”</strong>, se
+                  sube la imagen al backend, se genera texto sugerido y se
+                  inserta la imagen en el cuerpo de la nota.
                 </p>
               </div>
 
@@ -386,8 +697,9 @@ export default function EditorFromImagePage() {
                   </button>
                 </div>
                 <small className="mt-1 block text-[11px] text-zinc-400">
-                  Copiá la URL de la portada generada en el editor de imágenes y
-                  pegala acá (o usá el botón si ya está en el portapapeles).
+                  Copiá la URL de la portada generada en el editor de
+                  imágenes y pegala acá (o usá el botón si ya está en el
+                  portapapeles).
                 </small>
               </div>
 
@@ -494,7 +806,6 @@ export default function EditorFromImagePage() {
                   Formato: 2025-11-15T12:00:00Z (después lo cambiamos por un
                   datepicker).
                 </small>
-
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-300">
                   <span>Atajos rápidos:</span>
                   <button
@@ -551,8 +862,8 @@ export default function EditorFromImagePage() {
                   Editor de portadas (IA)
                 </h2>
                 <p className="text-[11px] text-zinc-400">
-                  Usá este editor de imágenes para generar portadas (covers) a
-                  partir de la captura o cualquier otra foto.
+                  Usá este editor de imágenes para generar portadas (covers)
+                  a partir de la captura o cualquier otra foto.
                 </p>
               </div>
               <button
@@ -566,11 +877,11 @@ export default function EditorFromImagePage() {
 
             <p className="text-[11px] text-zinc-400">
               1. Procesá la captura y generá la nota con IA. <br />
-              2. Abrí el editor, cargá la misma imagen y generá la portada.{" "}
-              <br />
-              3. Desde el editor copiá la URL y usá el botón{" "}
-              <strong>“Usar URL del portapapeles”</strong> para fijarla como
-              imagen principal.
+              2. El sistema intenta elegir automáticamente una RAW
+              relacionada (Trump, Milei, Caputo, etc.) y generar la portada
+              con texto. <br />
+              3. Si no te gusta, podés retocar la portada en el editor y
+              reemplazar la URL manualmente.
             </p>
 
             <div className="mt-3 rounded-2xl bg-zinc-950/90 p-3">
@@ -588,11 +899,11 @@ export default function EditorFromImagePage() {
 
               {showEditor ? (
                 <div className="relative overflow-hidden rounded-[28px] border border-zinc-700 bg-black/80">
-                  {/* más ancho, pero misma estructura */}
                   <div className="mx-auto w-full max-w-[560px] md:max-w-[640px]">
                     <div className="aspect-[9/16] overflow-hidden bg-black">
                       <iframe
-                        src="image-editor-embed"
+                        key={editorReloadTick}
+                        src={editorIframeSrc}
                         className="h-full w-full border-0"
                         title="Editor de portadas"
                       />
