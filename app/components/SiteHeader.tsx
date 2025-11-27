@@ -264,7 +264,6 @@ export default function SiteHeader() {
                 <div
                   style={{
                     position: "absolute",
-                    // se abre hacia ABAJO del botón
                     top: "calc(100% + 8px)",
                     left: 0,
                     minWidth: 280,
@@ -373,6 +372,7 @@ export default function SiteHeader() {
       )}
 
       {/* Fila con logo / nombre */}
+      {/* Fila con logo / nombre */}
       <div
         style={{
           background:
@@ -381,68 +381,105 @@ export default function SiteHeader() {
       >
         <div
           style={{
-            maxWidth: 1120,
-            margin: "0 auto",
+            width: "100%",
             padding: "14px 16px 10px",
             display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 8,
+            justifyContent: "center",
           }}
         >
           <Link
             href="/"
             style={{
               display: "flex",
+              flexDirection: "column", // fila para logo+título, claim abajo
               alignItems: "center",
-              gap: 10,
               textDecoration: "none",
               color: "#020617",
               whiteSpace: "nowrap",
+              gap: 4,
             }}
           >
-            <span
+            {/* fila: CL + CANALIBERTARIO */}
+            <div
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 12,
-                background:
-                  "linear-gradient(135deg,#38bdf8,#6366f1,#a855f7,#22c55e)",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 800,
-                fontSize: 16,
-                color: "#0b1120",
-                boxShadow: "0 10px 25px rgba(15,23,42,0.25)",
+                display: "flex",
+                alignItems: "center", // CL a la misma altura que el título
+                gap: 12,
               }}
             >
-              CL
-            </span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {/* Isotipo CL */}
               <span
                 style={{
-                  fontSize: 22,
-                  fontWeight: 800,
-                  letterSpacing: "0.16em",
+                  width: 36,
+                  height: 36,
+                  borderRadius: 999,
+                  background:
+                    "radial-gradient(circle at 30% 20%, #ffffff, #f3f4f6 45%, #e5e7eb 70%, #d4d4d8 100%)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 10px 25px rgba(15,23,42,0.25)",
+                  border: "1px solid rgba(148,163,184,0.7)",
                 }}
               >
-                CANALIBERTARIO
+                <span
+                  style={{
+                    fontFamily: "'Times New Roman', Georgia, serif",
+                    fontWeight: 700,
+                    fontSize: 18,
+                    letterSpacing: "0.06em",
+                    display: "inline-flex",
+                    alignItems: "baseline",
+                    gap: 1,
+                  }}
+                >
+                  <span style={{ color: "#8b1b2e" }}>C</span>
+                  <span style={{ color: "#4c2c82" }}>L</span>
+                </span>
               </span>
+
+              {/* Logotipo CANALIBERTARIO */}
               <span
                 style={{
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.26em",
-                  color: "#6b7280",
+                  fontFamily: "'Times New Roman', Georgia, serif",
+                  fontSize: 26,
+                  fontWeight: 700,
+                  letterSpacing: "0.22em",
+                  lineHeight: 1,
                 }}
               >
-                NOTICIAS · ECONOMÍA · POLÍTICA
+                <span style={{ color: "#8b1b2e" }}>CANA</span>
+                <span
+                  style={{
+                    background:
+                      "linear-gradient(90deg,#452272,#5b3a9b,#7c56c0)",
+                    WebkitBackgroundClip: "text",
+                    color: "transparent",
+                  }}
+                >
+                  LIBERTARIO
+                </span>
               </span>
             </div>
+
+            {/* Claim debajo, sin mover el logo */}
+            <span
+              style={{
+                fontSize: 10,
+                textTransform: "uppercase",
+                letterSpacing: "0.26em",
+                color: "#6b7280",
+                textAlign: "center",
+              }}
+            >
+              NOTICIAS Y ANÁLISIS ECONÓMICOS Y POLÍTICOS DESDE UNA MIRADA LIBERTARIA
+            </span>
           </Link>
         </div>
       </div>
+
+
+
 
       {/* Navegación principal (sticky) */}
       <div

@@ -3,10 +3,15 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Providers from "./Providers";
 import AppShell from "./AppShell";
+import { siteBrand } from "./components/branding/siteBrand";
 
 export const metadata: Metadata = {
-  title: "CanaLibertario",
-  description: "Noticias · Economía · Política",
+  title: {
+    default: siteBrand.name,
+    template: `%s · ${siteBrand.shortName}`,
+  },
+  description: siteBrand.claim,
+  applicationName: siteBrand.name,
 };
 
 export default function RootLayout({

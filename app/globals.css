@@ -128,3 +128,34 @@ body {
   min-height: 360px;
   border: none;
 }
+
+/* Animacion Logo */
+/* L de CANALIBERTARIO con degradé diagonal bordo/violeta animado */
+.brand-l-letter {
+  display: inline-block;
+  background-image: linear-gradient(
+    135deg,
+    #7f1d1d 0%,
+    #7f1d1d 45%,
+    #4c1d95 55%,
+    #4c1d95 100%
+  );
+  background-size: 200% 200%;
+  background-position: 0% 0%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: brand-l-sweep 4s linear infinite;
+}
+
+@keyframes brand-l-sweep {
+  0% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 100% 100%;
+  }
+  100% {
+    background-position: 0% 0%;
+  }
+}
