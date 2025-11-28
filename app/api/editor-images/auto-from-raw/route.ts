@@ -7,9 +7,10 @@ const INTERNAL_KEY =
   process.env.INGEST_KEY ??
   "supersecreto123";
 
-// saca una keyword simple del título (primera palabra "larga")
+// Saca una keyword simple del título (primera palabra "larga")
 function deriveKeyword(title?: string | null): string | undefined {
   if (!title) return undefined;
+
   const words = title
     .toLowerCase()
     .split(/[^a-záéíóúñü0-9]+/i)
@@ -18,12 +19,13 @@ function deriveKeyword(title?: string | null): string | undefined {
   return words[0] || undefined;
 }
 
-// armamos headers de auth (similar a enhance)
+// Armamos headers de auth (similar a enhance)
 function buildAuthHeaders(req: NextRequest) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
 
+  // Si el panel guardó un token en cookie, lo pasamos al backend
   const tokenFromCookie = req.cookies.get("editor_auth")?.value;
   if (tokenFromCookie) {
     headers["authorization"] = `Bearer ${tokenFromCookie}`;
@@ -57,9 +59,10 @@ export async function POST(req: NextRequest) {
 
     const title = body.title ?? "";
     const subtitle = body.subtitle ?? "";
-    // 👉 ahora default igual que en el editor
+    // 👉 default igual que en el editor de imágenes
     const footer = body.footer ?? "www.canalibertario.com";
 
+    // Si no viene keyword explícita, derivamos una del título
     const keyword = (body.keyword ?? deriveKeyword(title)) || undefined;
 
     const headers = buildAuthHeaders(req);
@@ -75,7 +78,7 @@ export async function POST(req: NextRequest) {
             title,
             subtitle,
             footer,
-            // pasamos también la etiqueta por si el backend quiere usarla
+            // Pasamos también la etiqueta por si el backend la quiere usar
             alertTag: body.alertTag ?? null,
           },
         }),
@@ -108,6 +111,7 @@ export async function POST(req: NextRequest) {
       message?: string;
     };
 
+    // Siempre preferimos la URL de cover que devuelve el backend
     const backendUrl = json.coverUrl ?? json.url;
     if (!backendUrl) {
       return NextResponse.json(
@@ -127,6 +131,11 @@ export async function POST(req: NextRequest) {
         message:
           json.message ??
           "Portada generada automáticamente desde una imagen RAW.",
+        overlay: {
+          title,
+          subtitle,
+          footer,
+        },
       },
       { status: 200 },
     );

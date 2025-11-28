@@ -48,6 +48,16 @@ function getAuthHeaders(): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
 
+// 🔹 Helper: detectar si una URL corresponde a una captura (screenshot)
+function isScreenshotUrl(url?: string | null): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return (
+    lower.includes("screenshot") ||
+    lower.includes("/screenshots/")
+  );
+}
+
 export default function EditorFromImagePage() {
   const [form, setForm] = useState<FormState>({
     title: "",
@@ -265,6 +275,14 @@ export default function EditorFromImagePage() {
         );
       }
 
+      // 🔹 Definimos qué imagen se sincroniza con el editor:
+      //    - Si es screenshot => NO la mandamos al editor
+      //    - Si es cover/RAW => sí
+      const editorImageForSync =
+        autoImage && !isScreenshotUrl(autoImage)
+          ? autoImage
+          : undefined;
+
       // 3) Actualizar el formulario con lo generado (incluida la portada)
       setForm((prev) => {
         const next: FormState = {
@@ -285,7 +303,7 @@ export default function EditorFromImagePage() {
       setEditorSyncData({
         title: autoTitle,
         subtitle: autoSummary,
-        imageUrl: autoImage,
+        imageUrl: editorImageForSync,
       });
       setEditorReloadTick((t) => t + 1);
 
@@ -403,6 +421,8 @@ export default function EditorFromImagePage() {
   }
 
   const editorIframeSrc = `/admin/image-editor-embed?${editorParams.toString()}`;
+
+  const editorPageUrl = `/admin/image-editor?${editorParams.toString()}`;
 
   return (
     <main className="mx-auto w-full py-10">
@@ -746,7 +766,7 @@ export default function EditorFromImagePage() {
               <div className="mb-2 flex items-center justify-between text-[11px] text-zinc-400">
                 <span>Vista del editor</span>
                 <a
-                  href="/admin/image-editor"
+                  href={editorPageUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="text-[11px] font-semibold text-purple-300 hover:text-purple-200"
