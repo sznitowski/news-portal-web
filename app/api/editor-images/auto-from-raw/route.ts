@@ -1,3 +1,4 @@
+// app/api/editor-images/auto-from-raw/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { buildApiUrl, getPublicUrl } from "../../../lib/api";
 
@@ -43,6 +44,7 @@ export async function POST(req: NextRequest) {
           subtitle?: string;
           footer?: string;
           keyword?: string;
+          alertTag?: string | null;
         }
       | null;
 
@@ -55,10 +57,9 @@ export async function POST(req: NextRequest) {
 
     const title = body.title ?? "";
     const subtitle = body.subtitle ?? "";
-    const footer =
-      body.footer ?? "@canallibertario · X · Facebook · Instagram";
+    // 👉 ahora default igual que en el editor
+    const footer = body.footer ?? "www.canalibertario.com";
 
-    // si el front no manda keyword explícita, la derivamos del título
     const keyword = (body.keyword ?? deriveKeyword(title)) || undefined;
 
     const headers = buildAuthHeaders(req);
@@ -74,6 +75,8 @@ export async function POST(req: NextRequest) {
             title,
             subtitle,
             footer,
+            // pasamos también la etiqueta por si el backend quiere usarla
+            alertTag: body.alertTag ?? null,
           },
         }),
       },

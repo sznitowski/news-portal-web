@@ -1,4 +1,3 @@
-// app/image-editor-embed/page.tsx
 "use client";
 
 import { useState, useEffect, ChangeEvent } from "react";
@@ -61,6 +60,10 @@ function resolveImageType(img: ImageItem): ImageKind {
 
 const PAGE_SIZE = 10;
 
+// etiquetas disponibles para la portada
+const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
+type AlertTag = (typeof ALERT_TAGS)[number];
+
 export default function ImageEditorEmbedPage() {
   const searchParams = useSearchParams();
 
@@ -70,9 +73,8 @@ export default function ImageEditorEmbedPage() {
 
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
-  const [footer, setFooter] = useState(
-    "@canallibertario · X · Facebook · Instagram",
-  );
+  const [footer, setFooter] = useState("www.canalibertario.com");
+  const [alertTag, setAlertTag] = useState<AlertTag>("");
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -103,7 +105,7 @@ export default function ImageEditorEmbedPage() {
   const handleEnhance = async () => {
     if (!file) {
       setErrorMsg(
-        "Primero seleccioná una imagen base (subí una o elegí un RAW de la biblioteca).",
+        "Primero seleccioná una imagen base (subí una o elegí un RAW de la biblioteca)."
       );
       return;
     }
@@ -123,13 +125,30 @@ export default function ImageEditorEmbedPage() {
         }
       }
 
+      const safeFooter = footer.trim() || "www.canalibertario.com";
+
+      // Config de marca para que el backend dibuje logo + texto como en el header
+      const brandConfig = {
+        brandName: "CANALIBERTARIO",
+        claim:
+          "NOTICIAS Y ANÁLISIS ECONÓMICOS Y POLÍTICOS DESDE UNA MIRADA LIBERTARIA",
+        useHeaderWordmark: true,
+        siteUrl: safeFooter,
+        socialHandle: "@canallibertario",
+        socialIcons: ["x", "facebook", "instagram"], // iconos, no texto
+      };
+
       fd.append(
         "optionsJson",
         JSON.stringify({
           title: title.trim() || null,
           subtitle: subtitle.trim() || null,
-          footer: footer.trim() || null,
-        }),
+          footer: safeFooter, // compatibilidad
+          brand: brandConfig,
+          // NUEVO: etiqueta y bandera para iconos
+          alertTag: alertTag || null, // p.ej. "URGENTE"
+          useSocialIcons: true,
+        })
       );
 
       const res = await fetch("/api/editor-images/enhance", {
@@ -140,7 +159,7 @@ export default function ImageEditorEmbedPage() {
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(
-          text || `Error HTTP ${res.status} al procesar la imagen`,
+          text || `Error HTTP ${res.status} al procesar la imagen`
         );
       }
 
@@ -150,7 +169,7 @@ export default function ImageEditorEmbedPage() {
         setResultUrl(data.enhancedImageUrl);
         setSuccessMsg(
           data.message ??
-            "Imagen procesada correctamente. Se generó una portada (cover) lista para usar.",
+            "Imagen procesada correctamente. Se generó una portada (cover) lista para usar."
         );
         void loadImages();
       } else {
@@ -187,7 +206,7 @@ export default function ImageEditorEmbedPage() {
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(
-          text || `Error HTTP ${res.status} al obtener la lista de imágenes`,
+          text || `Error HTTP ${res.status} al obtener la lista de imágenes`
         );
       }
 
@@ -196,14 +215,14 @@ export default function ImageEditorEmbedPage() {
     } catch (err: any) {
       console.error("[image-editor-embed] Error al cargar imágenes:", err);
       setListError(
-        err.message ?? "Error al obtener la lista de imágenes del backend.",
+        err.message ?? "Error al obtener la lista de imágenes del backend."
       );
     } finally {
       setListLoading(false);
     }
   };
 
-  // NUEVO: inicializar desde query params (imageUrl + textos)
+  // inicializar desde query params (imageUrl + textos)
   useEffect(() => {
     if (initializedFromQuery) return;
 
@@ -213,7 +232,9 @@ export default function ImageEditorEmbedPage() {
     const overlaySubtitle =
       searchParams.get("overlaySubtitle") ?? searchParams.get("subtitle") ?? "";
     const overlayFooter =
-      searchParams.get("overlayFooter") ?? searchParams.get("footer") ?? "";
+      searchParams.get("overlayFooter") ??
+      searchParams.get("footer") ??
+      "";
 
     if (overlayTitle) setTitle(overlayTitle);
     if (overlaySubtitle) setSubtitle(overlaySubtitle);
@@ -242,7 +263,7 @@ export default function ImageEditorEmbedPage() {
         } catch (err) {
           console.error(
             "[image-editor-embed] No se pudo inicializar desde imageUrl:",
-            err,
+            err
           );
         } finally {
           setInitializedFromQuery(true);
@@ -253,7 +274,7 @@ export default function ImageEditorEmbedPage() {
     }
   }, [initializedFromQuery, searchParams]);
 
-  // NUEVO: usar imagen existente como base
+  // usar imagen existente como base
   const selectExistingAsBase = async (img: ImageItem) => {
     try {
       setErrorMsg(null);
@@ -284,7 +305,7 @@ export default function ImageEditorEmbedPage() {
       console.error("[image-editor-embed] selectExistingAsBase error:", err);
       setErrorMsg(
         err.message ??
-          "No se pudo usar esa imagen como base para la portada.",
+          "No se pudo usar esa imagen como base para la portada."
       );
     }
   };
@@ -318,7 +339,7 @@ export default function ImageEditorEmbedPage() {
   const startIndex = (currentPage - 1) * PAGE_SIZE;
   const pagedImages = filteredImages.slice(
     startIndex,
-    startIndex + PAGE_SIZE,
+    startIndex + PAGE_SIZE
   );
 
   return (
@@ -336,8 +357,9 @@ export default function ImageEditorEmbedPage() {
             </h1>
             <p className="max-w-2xl text-sm text-slate-300">
               Subí una imagen para usarla como portada o elegí una RAW ya
-              subida en la biblioteca. Después definí el título, la bajada y la
-              info del canal que quieras superponer con IA.
+              subida en la biblioteca. Después definí el título, la bajada, la
+              etiqueta (URGENTE, etc.) y la firma de CANALIBERTARIO (logo +
+              sitio + redes con iconos).
             </p>
           </header>
 
@@ -399,14 +421,31 @@ export default function ImageEditorEmbedPage() {
 
                 <div className="space-y-1">
                   <label className="text-[11px] text-slate-300">
-                    Pie / info del canal
+                    Etiqueta (opcional)
+                  </label>
+                  <select
+                    value={alertTag}
+                    onChange={(e) => setAlertTag(e.target.value as AlertTag)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                  >
+                    <option value="">Sin etiqueta</option>
+                    <option value="URGENTE">URGENTE</option>
+                    <option value="ALERTA">ALERTA</option>
+                    <option value="ÚLTIMA HORA">ÚLTIMA HORA</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-300">
+                    Sitio del canal (se mostrará junto a iconos de X / Facebook
+                    / Instagram)
                   </label>
                   <input
                     type="text"
                     value={footer}
                     onChange={(e) => setFooter(e.target.value)}
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                    placeholder="@canallibertario · X · Facebook · Instagram"
+                    placeholder="www.canalibertario.com"
                   />
                 </div>
               </div>
@@ -456,8 +495,17 @@ export default function ImageEditorEmbedPage() {
                     {subtitle || <span className="text-slate-500">—</span>}
                   </div>
                   <div>
-                    <span className="font-semibold text-slate-100">Pie:</span>{" "}
-                    {footer || <span className="text-slate-500">—</span>}
+                    <span className="font-semibold text-slate-100">
+                      Etiqueta:
+                    </span>{" "}
+                    {alertTag || <span className="text-slate-500">(sin)</span>}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-100">
+                      Firma CANALIBERTARIO:
+                    </span>{" "}
+                    {(footer || "www.canalibertario.com") +
+                      " + iconos de X / Facebook / Instagram"}
                   </div>
                 </div>
               </div>
@@ -568,11 +616,11 @@ export default function ImageEditorEmbedPage() {
         {!listError && filteredImages.length > 0 && (
           <>
             <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-              {pagedImages.map((img) => {
+              {pagedImages.map((img, index) => {
                 const imgType = resolveImageType(img);
                 return (
                   <div
-                    key={img.filename}
+                    key={img.url || `${img.filename}-${index}`}
                     className="flex flex-col rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-[11px]"
                   >
                     <div className="mb-2 aspect-video overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
@@ -603,7 +651,6 @@ export default function ImageEditorEmbedPage() {
                     </div>
 
                     <div className="mt-auto flex flex-col gap-1">
-                      {/* usar esta imagen como base */}
                       <button
                         type="button"
                         onClick={() => void selectExistingAsBase(img)}

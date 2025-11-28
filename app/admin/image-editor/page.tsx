@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, ChangeEvent } from "react";
+import { useSearchParams } from "next/navigation";
 
 type EnhanceResponse = {
   enhancedImageUrl: string;
@@ -19,11 +20,10 @@ type ImageItem = {
   filename: string;
   url: string;
   createdAt?: string;
-  // opcional, viene del backend /api/editor-images/list
   kind?: "raw" | "cover" | "other";
 };
 
-// Detecta tipo según la URL/path real (fallback)
+// Detecta tipo según la URL/path real
 function getImageTypeFromUrl(url: string): ImageKind {
   let path = url.toLowerCase();
 
@@ -31,10 +31,9 @@ function getImageTypeFromUrl(url: string): ImageKind {
     const u = new URL(url);
     path = u.pathname.toLowerCase();
   } catch {
-    // si no es URL absoluta, usamos el string tal cual
+    // ignore
   }
 
-  // COVERS: /cover/ o /covers/
   if (
     path.includes("/covers/") ||
     path.includes("/cover/") ||
@@ -43,7 +42,6 @@ function getImageTypeFromUrl(url: string): ImageKind {
     return "cover";
   }
 
-  // RAW explícito: /raw/ o /raws/
   if (
     path.includes("/raws/") ||
     path.includes("/raw/") ||
@@ -52,11 +50,9 @@ function getImageTypeFromUrl(url: string): ImageKind {
     return "raw";
   }
 
-  // Fallback: todo lo que no sea cover lo tratamos como RAW
   return "raw";
 }
 
-// Usa primero img.kind (si viene del backend), si no, calcula por URL
 function resolveImageType(img: ImageItem): ImageKind {
   if (img.kind === "raw") return "raw";
   if (img.kind === "cover") return "cover";
@@ -65,30 +61,36 @@ function resolveImageType(img: ImageItem): ImageKind {
 
 const PAGE_SIZE = 10;
 
-export default function AdminImageEditorPage() {
+// etiquetas disponibles para la portada
+const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
+type AlertTag = (typeof ALERT_TAGS)[number];
+
+export default function ImageEditorEmbedPage() {
+  const searchParams = useSearchParams();
+
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
-  const [footer, setFooter] = useState(
-    "@canallibertario · X · Facebook · Instagram"
-  );
+  const [footer, setFooter] = useState("www.canalibertario.com");
+  const [alertTag, setAlertTag] = useState<AlertTag>("");
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // -------- Biblioteca de imágenes --------
   const [images, setImages] = useState<ImageItem[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
 
-  // filtros de la biblioteca
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "raw" | "cover">("all");
   const [page, setPage] = useState(1);
+
+  // para no re-inicializar infinitas veces desde query params
+  const [initializedFromQuery, setInitializedFromQuery] = useState(false);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -117,7 +119,6 @@ export default function AdminImageEditorPage() {
       const fd = new FormData();
       fd.append("image", file);
 
-      // Token de acceso que ya usás en el resto del front
       if (typeof window !== "undefined") {
         const token = window.localStorage.getItem("news_access_token");
         if (token) {
@@ -125,13 +126,29 @@ export default function AdminImageEditorPage() {
         }
       }
 
-      // Opciones para la IA / overlay
+      const safeFooter = footer.trim() || "www.canalibertario.com";
+
+      // Config de marca para que el backend dibuje logo + texto como en el header
+      const brandConfig = {
+        brandName: "CANALIBERTARIO",
+        claim:
+          "NOTICIAS Y ANÁLISIS ECONÓMICOS Y POLÍTICOS DESDE UNA MIRADA LIBERTARIA",
+        useHeaderWordmark: true,
+        siteUrl: safeFooter,
+        socialHandle: "@canallibertario",
+        socialIcons: ["x", "facebook", "instagram"], // iconos, no texto
+      };
+
       fd.append(
         "optionsJson",
         JSON.stringify({
           title: title.trim() || null,
           subtitle: subtitle.trim() || null,
-          footer: footer.trim() || null,
+          footer: safeFooter, // compatibilidad
+          brand: brandConfig,
+          // NUEVO: etiqueta y bandera para iconos
+          alertTag: alertTag || null, // p.ej. "URGENTE"
+          useSocialIcons: true,
         })
       );
 
@@ -153,9 +170,8 @@ export default function AdminImageEditorPage() {
         setResultUrl(data.enhancedImageUrl);
         setSuccessMsg(
           data.message ??
-            "Imagen procesada correctamente. Usala como portada en tus notas."
+            "Imagen procesada correctamente. Se generó una portada (cover) lista para usar."
         );
-        // Después de subir una imagen nueva, refrescamos la biblioteca
         void loadImages();
       } else {
         setErrorMsg("La respuesta no contiene una URL de imagen procesada.");
@@ -168,7 +184,6 @@ export default function AdminImageEditorPage() {
     }
   };
 
-  // -------- Cargar lista de imágenes desde el backend --------
   const loadImages = async () => {
     setListLoading(true);
     setListError(null);
@@ -177,7 +192,6 @@ export default function AdminImageEditorPage() {
         Accept: "application/json",
       };
 
-      // Le pasamos el mismo JWT al route handler, que lo reenvía al backend
       if (typeof window !== "undefined") {
         const token = window.localStorage.getItem("news_access_token");
         if (token) {
@@ -197,13 +211,10 @@ export default function AdminImageEditorPage() {
         );
       }
 
-      const data = (await res.json()) as {
-        items: ImageItem[];
-      };
-
+      const data = (await res.json()) as { items: ImageItem[] };
       setImages(data.items ?? []);
     } catch (err: any) {
-      console.error("[image-editor] Error al cargar imágenes:", err);
+      console.error("[image-editor-embed] Error al cargar imágenes:", err);
       setListError(
         err.message ?? "Error al obtener la lista de imágenes del backend."
       );
@@ -212,21 +223,71 @@ export default function AdminImageEditorPage() {
     }
   };
 
-  // NUEVO: usar una imagen existente de la biblioteca como base (RAW o cover)
+  // inicializar desde query params (imageUrl + textos)
+  useEffect(() => {
+    if (initializedFromQuery) return;
+
+    const imageUrl = searchParams.get("imageUrl");
+    const overlayTitle =
+      searchParams.get("overlayTitle") ?? searchParams.get("title") ?? "";
+    const overlaySubtitle =
+      searchParams.get("overlaySubtitle") ?? searchParams.get("subtitle") ?? "";
+    const overlayFooter =
+      searchParams.get("overlayFooter") ??
+      searchParams.get("footer") ??
+      "";
+
+    if (overlayTitle) setTitle(overlayTitle);
+    if (overlaySubtitle) setSubtitle(overlaySubtitle);
+    if (overlayFooter) setFooter(overlayFooter);
+
+    if (imageUrl) {
+      (async () => {
+        try {
+          const res = await fetch(imageUrl);
+          if (!res.ok) {
+            throw new Error("No se pudo descargar la imagen inicial.");
+          }
+
+          const blob = await res.blob();
+          const mime = blob.type || "image/jpeg";
+          let ext = "jpg";
+          if (mime === "image/png") ext = "png";
+          else if (mime === "image/webp") ext = "webp";
+
+          const f = new File([blob], `image-from-article.${ext}`, {
+            type: mime,
+          });
+
+          setFile(f);
+          setPreviewUrl(imageUrl);
+        } catch (err) {
+          console.error(
+            "[image-editor-embed] No se pudo inicializar desde imageUrl:",
+            err
+          );
+        } finally {
+          setInitializedFromQuery(true);
+        }
+      })();
+    } else {
+      setInitializedFromQuery(true);
+    }
+  }, [initializedFromQuery, searchParams]);
+
+  // usar imagen existente como base
   const selectExistingAsBase = async (img: ImageItem) => {
     try {
       setErrorMsg(null);
       setSuccessMsg(null);
       setResultUrl(null);
 
-      // Descargamos el archivo para poder mandarlo como `image` al backend
       const res = await fetch(img.url);
       if (!res.ok) {
         throw new Error("No se pudo descargar la imagen seleccionada.");
       }
-      const blob = await res.blob();
 
-      // Inferimos extensión mínima
+      const blob = await res.blob();
       const mime = blob.type || "image/jpeg";
       let ext = "jpg";
       if (mime === "image/png") ext = "png";
@@ -238,14 +299,14 @@ export default function AdminImageEditorPage() {
       setFile(f);
       setPreviewUrl(img.url);
 
-      // Opcional: subir un poco para ver el preview
       if (typeof window !== "undefined") {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch (err: any) {
-      console.error("[image-editor] selectExistingAsBase error:", err);
+      console.error("[image-editor-embed] selectExistingAsBase error:", err);
       setErrorMsg(
-        err.message ?? "No se pudo usar esa imagen como base para la portada."
+        err.message ??
+          "No se pudo usar esa imagen como base para la portada."
       );
     }
   };
@@ -254,12 +315,10 @@ export default function AdminImageEditorPage() {
     void loadImages();
   }, []);
 
-  // cuando cambian filtros o cantidad de imágenes, volvemos a la página 1
   useEffect(() => {
     setPage(1);
   }, [searchTerm, typeFilter, images.length]);
 
-  // derivar imágenes filtradas + paginadas
   const filteredImages = images.filter((img) => {
     const nameMatch =
       !searchTerm ||
@@ -276,10 +335,7 @@ export default function AdminImageEditorPage() {
     return nameMatch && typeMatch;
   });
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredImages.length / PAGE_SIZE)
-  );
+  const totalPages = Math.max(1, Math.ceil(filteredImages.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * PAGE_SIZE;
   const pagedImages = filteredImages.slice(
@@ -288,13 +344,11 @@ export default function AdminImageEditorPage() {
   );
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 md:py-12">
+    <main className="mx-auto max-w-6xl px-4 py-6 md:py-8">
       <div className="relative overflow-hidden rounded-3xl border border-slate-900/80 bg-slate-950/95 text-slate-50 shadow-[0_32px_90px_rgba(15,23,42,0.95)]">
-        {/* Glow sobrio */}
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),transparent_60%)] opacity-80" />
 
-        <section className="relative z-10 space-y-6 p-6 md:p-8 lg:p-10">
-          {/* Header */}
+        <section className="relative z-10 space-y-6 p-4 md:p-8">
           <header className="space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
               Editor de imágenes · IA
@@ -304,21 +358,21 @@ export default function AdminImageEditorPage() {
             </h1>
             <p className="max-w-2xl text-sm text-slate-300">
               Subí una imagen para usarla como portada o elegí una RAW ya
-              subida en la biblioteca de abajo. Después definí el título, la
-              bajada y la info del canal que quieras superponer con IA.
+              subida en la biblioteca. Después definí el título, la bajada, la
+              etiqueta (URGENTE, etc.) y la firma de CANALIBERTARIO (logo +
+              sitio + redes con iconos).
             </p>
           </header>
 
           <div className="grid gap-6 rounded-2xl border border-slate-800/80 bg-slate-900/80 p-4 md:grid-cols-2 md:p-6">
-            {/* Columna izquierda: carga + textos */}
             <div className="space-y-4">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 1. Cargar imagen base
               </div>
 
               <p className="text-xs text-slate-300">
-                Podés subir una imagen nueva desde tu dispositivo o usar
-                alguna RAW de la biblioteca de abajo como base para la portada.
+                Elegí una imagen desde tu dispositivo o usá una RAW existente
+                de la biblioteca de abajo como base para la portada.
               </p>
 
               <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-700/80 bg-slate-800/80 px-4 py-2 text-xs font-medium text-slate-50 hover:border-sky-400/80 hover:bg-slate-800">
@@ -335,7 +389,6 @@ export default function AdminImageEditorPage() {
                 Formatos recomendados: JPG o PNG, proporción 16:9 o similar.
               </p>
 
-              {/* Textos para la portada */}
               <div className="mt-3 space-y-3 rounded-xl border border-slate-800/80 bg-slate-950/70 p-3">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                   Textos de la portada
@@ -363,26 +416,42 @@ export default function AdminImageEditorPage() {
                     value={subtitle}
                     onChange={(e) => setSubtitle(e.target.value)}
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                    placeholder="Ej: Gran anuncio económico"
+                    placeholder="Ej: Nuevo plan económico"
                   />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[11px] text-slate-300">
-                    Pie / info del canal
+                    Etiqueta (opcional)
+                  </label>
+                  <select
+                    value={alertTag}
+                    onChange={(e) => setAlertTag(e.target.value as AlertTag)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                  >
+                    <option value="">Sin etiqueta</option>
+                    <option value="URGENTE">URGENTE</option>
+                    <option value="ALERTA">ALERTA</option>
+                    <option value="ÚLTIMA HORA">ÚLTIMA HORA</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-300">
+                    Sitio del canal (se mostrará junto a iconos de X / Facebook
+                    / Instagram)
                   </label>
                   <input
                     type="text"
                     value={footer}
                     onChange={(e) => setFooter(e.target.value)}
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                    placeholder="Ej: CANALIBERTARIO · INFO LIBERTARIA"
+                    placeholder="www.canalibertario.com"
                   />
                 </div>
               </div>
             </div>
 
-            {/* Columna derecha: preview + resumen de textos + resultado */}
             <div className="space-y-4">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 2. Vista previa
@@ -402,13 +471,13 @@ export default function AdminImageEditorPage() {
                   </div>
                 ) : (
                   <p>
-                    Todavía no cargaste ninguna imagen. Subí una o elegí una RAW
-                    desde la biblioteca para usarla como base.
+                    Todavía no cargaste ninguna imagen. Subí una o elegí una
+                    RAW desde la biblioteca para ver cómo se vería como
+                    portada.
                   </p>
                 )}
               </div>
 
-              {/* Resumen de textos que se mandan a la IA */}
               <div className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-3 text-[11px] text-slate-300">
                 <div className="mb-1 text-[11px] font-semibold text-slate-200">
                   Textos que se enviarán a la IA:
@@ -427,8 +496,17 @@ export default function AdminImageEditorPage() {
                     {subtitle || <span className="text-slate-500">—</span>}
                   </div>
                   <div>
-                    <span className="font-semibold text-slate-100">Pie:</span>{" "}
-                    {footer || <span className="text-slate-500">—</span>}
+                    <span className="font-semibold text-slate-100">
+                      Etiqueta:
+                    </span>{" "}
+                    {alertTag || <span className="text-slate-500">(sin)</span>}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-100">
+                      Firma CANALIBERTARIO:
+                    </span>{" "}
+                    {(footer || "www.canalibertario.com") +
+                      " + iconos de X / Facebook / Instagram"}
                   </div>
                 </div>
               </div>
@@ -472,8 +550,7 @@ export default function AdminImageEditorPage() {
         </section>
       </div>
 
-      {/* Biblioteca de imágenes */}
-      <section className="mt-8 rounded-3xl border border-slate-900/80 bg-slate-950/95 p-6 text-slate-50">
+      <section className="mt-6 rounded-3xl border border-slate-900/80 bg-slate-950/95 p-4 text-slate-50">
         <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-sm font-semibold">Biblioteca de imágenes</h2>
@@ -540,12 +617,11 @@ export default function AdminImageEditorPage() {
         {!listError && filteredImages.length > 0 && (
           <>
             <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-              {pagedImages.map((img) => {
+              {pagedImages.map((img, index) => {
                 const imgType = resolveImageType(img);
-                const key = `${imgType}:${img.filename}`;
                 return (
                   <div
-                    key={key}
+                    key={img.url || `${img.filename}-${index}`}
                     className="flex flex-col rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-[11px]"
                   >
                     <div className="mb-2 aspect-video overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
@@ -576,7 +652,6 @@ export default function AdminImageEditorPage() {
                     </div>
 
                     <div className="mt-auto flex flex-col gap-1">
-                      {/* NUEVO: usar esta imagen como base */}
                       <button
                         type="button"
                         onClick={() => void selectExistingAsBase(img)}
@@ -614,7 +689,6 @@ export default function AdminImageEditorPage() {
               })}
             </div>
 
-            {/* Paginación */}
             <div className="mt-4 flex flex-col items-center justify-between gap-2 text-[11px] text-slate-300 sm:flex-row">
               <div>
                 Mostrando{" "}
@@ -630,9 +704,7 @@ export default function AdminImageEditorPage() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() =>
-                    setPage((prev) => Math.max(1, prev - 1))
-                  }
+                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                   disabled={currentPage === 1}
                   className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:border-sky-400 hover:bg-slate-800 disabled:cursor-default disabled:opacity-50"
                 >
