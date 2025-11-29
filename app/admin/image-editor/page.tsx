@@ -7,7 +7,6 @@ import { useSearchParams } from "next/navigation";
 type EnhanceResponse = {
   enhancedImageUrl: string;
   message?: string;
-
   overlay?: {
     title?: string | null;
     subtitle?: string | null;
@@ -32,7 +31,9 @@ function getImageTypeFromUrl(url: string): ImageKind {
   try {
     const u = new URL(url);
     path = u.pathname.toLowerCase();
-  } catch {}
+  } catch {
+    // ignore
+  }
 
   if (
     path.includes("/covers/") ||
@@ -118,13 +119,12 @@ export default function ImageEditorEmbedPage() {
   const [footer, setFooter] = useState("www.canalibertario.com");
   const [alertTag, setAlertTag] = useState<AlertTag>("");
 
-  // posición del bloque de texto (por defecto, abajo)
-  const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
+  const [textPosition, setTextPosition] =
+    useState<TextPosition>("bottom");
 
-  // colores de textos
-  const [titleColor, setTitleColor] = useState<string>("#ffffff");
-  const [subtitleColor, setSubtitleColor] = useState<string>("#e5e7eb");
-  const [handleColor, setHandleColor] = useState<string>("#e5e7eb");
+  const [titleColor, setTitleColor] = useState("#ffffff");
+  const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
+  const [handleColor, setHandleColor] = useState("#e5e7eb");
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -135,12 +135,15 @@ export default function ImageEditorEmbedPage() {
   const [listError, setListError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | "raw" | "cover">("all");
+  const [typeFilter, setTypeFilter] =
+    useState<"all" | "raw" | "cover">("all");
   const [page, setPage] = useState(1);
-  const [initializedFromQuery, setInitializedFromQuery] = useState(false);
+
+  const [initializedFromQuery, setInitializedFromQuery] =
+    useState(false);
 
   // -----------------------------
-  // HANDLE FILE
+  // FILE
   // -----------------------------
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -153,9 +156,9 @@ export default function ImageEditorEmbedPage() {
     setPreviewUrl(objectUrl);
   };
 
-  // ------------------------------
-  // IA Enhance
-  // ------------------------------
+  // -----------------------------
+  // ENHANCE
+  // -----------------------------
   const handleEnhance = async () => {
     if (!file) {
       setErrorMsg(
@@ -191,7 +194,6 @@ export default function ImageEditorEmbedPage() {
         socialIcons: ["x", "facebook", "instagram"] as const,
       };
 
-      // layout + colors para que el backend pinte igual que nuestra UI
       const optionsJson = {
         title: title.trim() || null,
         subtitle: subtitle.trim() || null,
@@ -200,7 +202,7 @@ export default function ImageEditorEmbedPage() {
         alertTag: alertTag || null,
         useSocialIcons: true,
         layout: {
-          textPosition, // "top" | "middle" | "bottom"
+          textPosition,
         },
         colors: {
           bottomBar: "rgba(0,0,0,0.85)",
@@ -244,9 +246,9 @@ export default function ImageEditorEmbedPage() {
     }
   };
 
-  // ------------------------------
-  // Abrir editor en pantalla completa
-  // ------------------------------
+  // -----------------------------
+  // FULL EDITOR
+  // -----------------------------
   const handleOpenFullEditor = () => {
     if (typeof window === "undefined") return;
 
@@ -262,14 +264,14 @@ export default function ImageEditorEmbedPage() {
       subtitle,
       footer,
       alertTag: alertTag || "",
-      textPosition: textPosition, // bottom | middle | top
+      textPosition,
     });
 
     window.open(`/admin/image-editor/full?${q.toString()}`, "_blank");
   };
 
   // -----------------------------
-  // LIST IMAGES
+  // LOAD IMAGES
   // -----------------------------
   const loadImages = async () => {
     setListLoading(true);
@@ -309,41 +311,7 @@ export default function ImageEditorEmbedPage() {
   };
 
   // -----------------------------
-  // USAR IMAGEN EXISTENTE COMO BASE
-  // -----------------------------
-  const selectExistingAsBase = async (img: ImageItem) => {
-    try {
-      setErrorMsg(null);
-      setSuccessMsg(null);
-      setResultUrl(null);
-
-      const res = await fetch(img.url);
-      if (!res.ok) throw new Error("No se pudo descargar la imagen seleccionada.");
-
-      const blob = await res.blob();
-      const mime = blob.type || "image/jpeg";
-
-      let ext = "jpg";
-      if (mime === "image/png") ext = "png";
-      else if (mime === "image/webp") ext = "webp";
-
-      const name = img.filename || `image-from-library.${ext}`;
-      const f = new File([blob], name, { type: mime });
-
-      setFile(f);
-      setPreviewUrl(img.url);
-
-      if (typeof window !== "undefined") {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }
-    } catch (err: any) {
-      console.error("selectExistingAsBase error:", err);
-      setErrorMsg(err.message ?? "No se pudo usar esa imagen como base.");
-    }
-  };
-
-  // -----------------------------
-  // LOAD FROM QUERY PARAMS
+  // INIT FROM QUERY
   // -----------------------------
   useEffect(() => {
     if (initializedFromQuery) return;
@@ -401,7 +369,41 @@ export default function ImageEditorEmbedPage() {
   }, [initializedFromQuery, searchParams]);
 
   // -----------------------------
-  // LOAD IMAGE LIST
+  // SELECT EXISTING AS BASE
+  // -----------------------------
+  const selectExistingAsBase = async (img: ImageItem) => {
+    try {
+      setErrorMsg(null);
+      setSuccessMsg(null);
+      setResultUrl(null);
+
+      const res = await fetch(img.url);
+      if (!res.ok) throw new Error("No se pudo descargar la imagen seleccionada.");
+
+      const blob = await res.blob();
+      const mime = blob.type || "image/jpeg";
+
+      let ext = "jpg";
+      if (mime === "image/png") ext = "png";
+      else if (mime === "image/webp") ext = "webp";
+
+      const name = img.filename || `image-from-library.${ext}`;
+      const f = new File([blob], name, { type: mime });
+
+      setFile(f);
+      setPreviewUrl(img.url);
+
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    } catch (err: any) {
+      console.error("selectExistingAsBase error:", err);
+      setErrorMsg(err.message ?? "No se pudo usar esa imagen como base.");
+    }
+  };
+
+  // -----------------------------
+  // EFFECTS
   // -----------------------------
   useEffect(() => {
     void loadImages();
@@ -412,7 +414,7 @@ export default function ImageEditorEmbedPage() {
   }, [searchTerm, typeFilter, images.length]);
 
   // -----------------------------
-  // FILTER IMAGES
+  // FILTER + PAGINATE
   // -----------------------------
   const filteredImages = images.filter((img) => {
     const nameMatch =
@@ -443,11 +445,10 @@ export default function ImageEditorEmbedPage() {
   // -----------------------------
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 md:py-8">
-      {/* === CONTENEDOR PRINCIPAL === */}
+      {/* PANEL PRINCIPAL */}
       <div className="relative overflow-hidden rounded-3xl border border-slate-900/80 bg-slate-950/95 text-slate-50 shadow-[0_32px_90px_rgba(15,23,42,0.95)]">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),transparent_60%)] opacity-80" />
 
-        {/* === INFORMACIÓN === */}
         <section className="relative z-10 space-y-6 p-4 md:p-8">
           <header className="space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
@@ -462,9 +463,8 @@ export default function ImageEditorEmbedPage() {
             </p>
           </header>
 
-          {/* GRID PRINCIPAL */}
           <div className="grid gap-6 rounded-2xl border border-slate-800/80 bg-slate-900/80 p-4 md:grid-cols-2 md:p-6">
-            {/* COLUMNA IZQUIERDA */}
+            {/* IZQUIERDA */}
             <div className="space-y-4">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 1. Cargar imagen base
@@ -480,7 +480,6 @@ export default function ImageEditorEmbedPage() {
                 />
               </label>
 
-              {/* TEXTOS */}
               <div className="mt-3 space-y-3 rounded-xl border border-slate-800/80 bg-slate-950/70 p-3">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                   Textos de la portada
@@ -541,7 +540,6 @@ export default function ImageEditorEmbedPage() {
                   />
                 </div>
 
-                {/* POSICIÓN DEL BLOQUE DE TEXTO */}
                 <div className="space-y-1">
                   <label className="text-[11px] text-slate-300">
                     Posición del bloque de texto
@@ -559,7 +557,6 @@ export default function ImageEditorEmbedPage() {
                   </select>
                 </div>
 
-                {/* COLORES */}
                 <div className="mt-2 grid gap-3 md:grid-cols-3">
                   <ColorSwatches
                     label="Color título"
@@ -580,7 +577,7 @@ export default function ImageEditorEmbedPage() {
               </div>
             </div>
 
-            {/* COLUMNA DERECHA */}
+            {/* DERECHA */}
             <div className="space-y-4">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 2. Vista previa
@@ -641,7 +638,6 @@ export default function ImageEditorEmbedPage() {
                 {loading ? "Procesando..." : "Mejorar imagen con IA"}
               </button>
 
-              {/* botón para abrir el editor full */}
               <button
                 type="button"
                 onClick={handleOpenFullEditor}

@@ -19,6 +19,15 @@ const RAW_API_BASE =
 export const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 
 /**
+ * Base pública del sitio (Next).
+ * La podemos usar para armar links públicos a notas, etc.
+ */
+const RAW_SITE_BASE =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3001";
+
+export const SITE_BASE = RAW_SITE_BASE.replace(/\/+$/, "");
+
+/**
  * Helper para armar URLs de la API.
  * - Acepta path ("/articles", "/articles/:slug", etc.)
  * - Opcionalmente, un URLSearchParams con query (?page=1&limit=10...)
@@ -38,8 +47,13 @@ export function buildApiUrl(path: string, params?: URLSearchParams): string {
 
 /**
  * Convierte una URL relativa devuelta por el backend (ej: "/uploads/archivo.png")
- * en una URL absoluta (ej: "http://localhost:5001/uploads/archivo.png").
- * Si ya viene absoluta, la devuelve tal cual.
+ * en una URL absoluta.
+ *
+ * Reglas:
+ * - Si viene absoluta (http/https), se respeta tal cual.
+ * - Si empieza con /uploads/... => se cuelga SIEMPRE de la API (Nest),
+ *   porque ahí es donde se sirve el estático (/app/uploads).
+ * - Para cualquier otra ruta relativa, se cuelga del sitio público (Next).
  */
 export function getPublicUrl(pathOrUrl: string): string {
   if (!pathOrUrl) return "";
@@ -51,7 +65,13 @@ export function getPublicUrl(pathOrUrl: string): string {
 
   const cleanPath = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
 
-  return `${API_BASE}${cleanPath}`;
+  if (cleanPath.startsWith("/uploads/")) {
+    // IMPORTANTE: imágenes y estáticos van contra la API
+    return `${API_BASE}${cleanPath}`;
+  }
+
+  // resto de rutas -> sitio público
+  return `${SITE_BASE}${cleanPath}`;
 }
 
 /* =======================

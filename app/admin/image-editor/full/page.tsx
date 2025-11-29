@@ -10,6 +10,7 @@ import {
 import { useSearchParams } from "next/navigation";
 
 type DragTarget = "block" | "title" | "subtitle" | "handle" | "resize" | null;
+type TextPosition = "top" | "middle" | "bottom";
 
 type DragState = {
   target: DragTarget;
@@ -48,16 +49,19 @@ export default function ImageEditorFullPage() {
   const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
   const [brandColor, setBrandColor] = useState("#ffffff");
 
-  // Tamaños de fuente
+  // Tamaños de fuente (solo preview)
   const [titleSize, setTitleSize] = useState(40); // px
   const [subtitleSize, setSubtitleSize] = useState(22); // px
 
-  // Posición y tamaño del bloque oscuro (overlay)
-  // *** CORRECCIÓN: arranca en 260px para que siempre quede dentro de la imagen ***
+  // Posición del bloque
   const [blockTop, setBlockTop] = useState(260);
   const [blockHeight, setBlockHeight] = useState(130);
 
-  // Offsets de cada texto / handle dentro del bloque
+  // Guardamos posición inicial para poder calcular el offset
+  const [initialBlockTop, setInitialBlockTop] = useState(260);
+  const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
+
+  // Offsets internos
   const [titleOffsetX, setTitleOffsetX] = useState(40);
   const [titleOffsetY, setTitleOffsetY] = useState(30);
 
@@ -92,16 +96,25 @@ export default function ImageEditorFullPage() {
     setFooter(initialFooter);
     setAlertTag(initialAlert);
 
-    // Ajuste inicial aproximado según textPosition
-    const textPos = searchParams.get("textPosition");
-    if (textPos === "top") {
-      setBlockTop(80);
-    } else if (textPos === "middle") {
-      setBlockTop(170);
+    const textPosParam = searchParams.get("textPosition") as TextPosition | null;
+
+    let pos: TextPosition = "bottom";
+    let startTop = 260;
+
+    if (textPosParam === "top") {
+      pos = "top";
+      startTop = 80;
+    } else if (textPosParam === "middle") {
+      pos = "middle";
+      startTop = 170;
     } else {
-      // bottom / default
-      setBlockTop(260); // <-- dentro de la imagen
+      pos = "bottom";
+      startTop = 260;
     }
+
+    setTextPosition(pos);
+    setBlockTop(startTop);
+    setInitialBlockTop(startTop);
 
     if (!imageUrl) return;
 
@@ -174,6 +187,7 @@ export default function ImageEditorFullPage() {
 
   useEffect(() => {
     if (!drag) return;
+
     const handleMove = (ev: MouseEvent) => {
       if (!drag) return;
       const dx = ev.clientX - drag.startX;
@@ -181,9 +195,8 @@ export default function ImageEditorFullPage() {
 
       switch (drag.target) {
         case "block": {
-          // *** CORRECCIÓN: límites más ajustados para que NUNCA salga de la imagen ***
           const minTop = 40;
-          const maxTop = 340; // para alto ~360px, queda dentro
+          const maxTop = 340;
           const newTop = drag.blockTop + dy;
           setBlockTop(Math.min(maxTop, Math.max(minTop, newTop)));
           break;
@@ -206,8 +219,8 @@ export default function ImageEditorFullPage() {
           break;
         }
         case "handle": {
-          setHandleOffsetX(drag.handleOffsetX - dx); 
-          setHandleOffsetY(drag.handleOffsetY - dy); 
+          setHandleOffsetX(drag.handleOffsetX - dx);
+          setHandleOffsetY(drag.handleOffsetY - dy);
           break;
         }
         default:
@@ -232,8 +245,7 @@ export default function ImageEditorFullPage() {
   // RESET POSITIONS
   // ==========================
   function resetPositions() {
-    // *** CORRECCIÓN: mismo default que el estado inicial (260px) ***
-    setBlockTop(260);
+    setBlockTop(initialBlockTop);
     setBlockHeight(130);
 
     setTitleOffsetX(40);
@@ -279,7 +291,19 @@ export default function ImageEditorFullPage() {
         useHeaderWordmark: true,
         siteUrl: safeFooter,
         socialHandle: "@canalibertario",
-        socialIcons: ["x", "facebook", "instagram"],
+        socialIcons: ["x", "facebook", "instagram"] as const,
+      };
+
+      // offset relativo que espera el backend
+      const layout = {
+        textPosition,
+        textOffsetY: blockTop - initialBlockTop,
+      };
+
+      const colors = {
+        title: titleColor,
+        subtitle: subtitleColor,
+        handle: brandColor,
       };
 
       const options = {
@@ -289,23 +313,8 @@ export default function ImageEditorFullPage() {
         brand: brandConfig,
         alertTag: alertTag || null,
         useSocialIcons: true,
-
-        // Config avanzada de overlay
-        overlay: {
-          blockTop,
-          blockHeight,
-          titleOffsetX,
-          titleOffsetY,
-          subtitleOffsetX,
-          subtitleOffsetY,
-          handleOffsetX,
-          handleOffsetY,
-          titleSize,
-          subtitleSize,
-          titleColor,
-          subtitleColor,
-          brandColor,
-        },
+        layout,
+        colors,
       };
 
       fd.append("optionsJson", JSON.stringify(options));
@@ -325,7 +334,7 @@ export default function ImageEditorFullPage() {
       const data = await res.json();
       setStatusMsg(
         data?.message ??
-        "Imagen procesada correctamente. Se generó una portada (cover) lista para usar."
+          "Imagen procesada correctamente. Se generó una portada (cover) lista para usar."
       );
     } catch (err: any) {
       console.error("[editor-full] error:", err);
@@ -371,7 +380,7 @@ export default function ImageEditorFullPage() {
                     className="h-full w-full object-cover"
                   />
 
-                  {/* BLOQUE OSCURO (overlay) */}
+                  {/* BLOQUE OSCURO */}
                   <div
                     className="absolute left-0 right-0 cursor-move bg-gradient-to-r from-black/85 via-black/80 to-black/70"
                     style={{
@@ -409,7 +418,7 @@ export default function ImageEditorFullPage() {
                         {subtitle || "Bajada / descripción corta de ejemplo"}
                       </span>
 
-                      {/* HANDLE @canallibertario + iconos */}
+                      {/* HANDLE + ICONOS */}
                       <div
                         className="absolute flex cursor-move select-none items-center gap-3 drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]"
                         style={{
@@ -435,7 +444,7 @@ export default function ImageEditorFullPage() {
                         </div>
                       </div>
 
-                      {/* HANDLE DE ALTURA DEL BLOQUE */}
+                      {/* HANDLE ALTURA BLOQUE */}
                       <div
                         className="absolute bottom-2 left-[10%] right-[10%] h-1.5 cursor-ns-resize rounded-full bg-slate-200/80"
                         onMouseDown={(e) => startDrag("resize", e)}
@@ -468,10 +477,11 @@ export default function ImageEditorFullPage() {
                         key={c}
                         type="button"
                         onClick={() => setTitleColor(c)}
-                        className={`h-5 w-5 rounded-full border ${titleColor === c
+                        className={`h-5 w-5 rounded-full border ${
+                          titleColor === c
                             ? "border-sky-400 ring-2 ring-sky-400/60"
                             : "border-slate-600"
-                          }`}
+                        }`}
                         style={{ backgroundColor: c }}
                       />
                     ))}
@@ -488,21 +498,24 @@ export default function ImageEditorFullPage() {
                         key={c}
                         type="button"
                         onClick={() => setSubtitleColor(c)}
-                        className={`h-5 w-5 rounded-full border ${subtitleColor === c
+                        className={`h-5 w-5 rounded-full border ${
+                          subtitleColor === c
                             ? "border-sky-400 ring-2 ring-sky-400/60"
                             : "border-slate-600"
-                          }`}
+                        }`}
                         style={{ backgroundColor: c }}
                       />
                     ))}
                   </div>
-                  <span className="ml-2 text-slate-400">{subtitleColor}</span>
+                  <span className="ml-2 text-slate-400">
+                    {subtitleColor}
+                  </span>
                 </div>
 
                 {/* COLOR BRAND */}
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="w-28 text-slate-300">
-                    Color @canallibertario + iconos
+                    Color @canalibertario + iconos
                   </span>
                   <div className="flex items-center gap-1">
                     {BRAND_COLORS.map((c) => (
@@ -510,10 +523,11 @@ export default function ImageEditorFullPage() {
                         key={c}
                         type="button"
                         onClick={() => setBrandColor(c)}
-                        className={`h-5 w-5 rounded-full border ${brandColor === c
+                        className={`h-5 w-5 rounded-full border ${
+                          brandColor === c
                             ? "border-sky-400 ring-2 ring-sky-400/60"
                             : "border-slate-600"
-                          }`}
+                        }`}
                         style={{ backgroundColor: c }}
                       />
                     ))}
@@ -539,7 +553,7 @@ export default function ImageEditorFullPage() {
           </section>
         </div>
 
-        {/* COLUMNA DERECHA: CONTROLES */}
+        {/* COLUMNA DERECHA */}
         <aside className="w-full max-w-md space-y-4">
           {/* IMAGEN BASE + TEXTOS */}
           <section className="space-y-4 rounded-3xl border border-slate-900 bg-slate-950/90 p-5">
@@ -620,7 +634,7 @@ export default function ImageEditorFullPage() {
                 </select>
               </div>
 
-              {/* SLIDERS TAMAÑO TEXTO */}
+              {/* SLIDERS TAMAÑO TEXTO (solo preview) */}
               <div className="mt-3 space-y-3 border-t border-slate-800 pt-3 text-[11px] text-slate-300">
                 <div>
                   <div className="mb-1 flex items-center justify-between">
@@ -647,7 +661,9 @@ export default function ImageEditorFullPage() {
                     min={16}
                     max={32}
                     value={subtitleSize}
-                    onChange={(e) => setSubtitleSize(Number(e.target.value))}
+                    onChange={(e) =>
+                      setSubtitleSize(Number(e.target.value))
+                    }
                     className="w-full"
                   />
                 </div>
@@ -682,7 +698,7 @@ export default function ImageEditorFullPage() {
                 {Math.round(blockHeight)}px
               </div>
               <div>
-                <b>Tipografía:</b> título {titleSize}px · bajada{" "}
+                <b>Tipografía (preview):</b> título {titleSize}px · bajada{" "}
                 {subtitleSize}px
               </div>
             </div>
