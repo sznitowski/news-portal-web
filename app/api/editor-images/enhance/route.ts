@@ -73,6 +73,9 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers,
       body: uploadBody,
+      // necesario en Node/undici para cuerpos tipo FormData grandes
+      // @ts-ignore
+      duplex: "half",
     });
 
     if (!uploadRes.ok) {
@@ -124,18 +127,9 @@ export async function POST(req: NextRequest) {
     const overlay =
       options && typeof options === "object"
         ? {
-            title:
-              options.title ??
-              options.overlay?.title ??
-              null,
-            subtitle:
-              options.subtitle ??
-              options.overlay?.subtitle ??
-              null,
-            footer:
-              options.footer ??
-              options.overlay?.footer ??
-              null,
+            title: options.title ?? options.overlay?.title ?? null,
+            subtitle: options.subtitle ?? options.overlay?.subtitle ?? null,
+            footer: options.footer ?? options.overlay?.footer ?? null,
           }
         : undefined;
 

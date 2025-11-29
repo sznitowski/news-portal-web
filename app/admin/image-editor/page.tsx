@@ -24,6 +24,8 @@ type ImageItem = {
   kind?: "raw" | "cover" | "other";
 };
 
+type TextPosition = "top" | "middle" | "bottom";
+
 function getImageTypeFromUrl(url: string): ImageKind {
   let path = url.toLowerCase();
 
@@ -62,6 +64,48 @@ const PAGE_SIZE = 10;
 const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
 type AlertTag = (typeof ALERT_TAGS)[number];
 
+// Paleta fija de colores para textos
+const PALETTE = [
+  "#ffffff", // blanco
+  "#facc15", // amarillo
+  "#f97316", // naranja
+  "#ef4444", // rojo
+  "#22c55e", // verde
+  "#38bdf8", // celeste
+] as const;
+
+function ColorSwatches({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (c: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="text-[11px] text-slate-300">{label}</label>
+      <div className="flex flex-wrap gap-2">
+        {PALETTE.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onChange(c)}
+            className="h-6 w-6 rounded-full border border-slate-700"
+            style={{
+              backgroundColor: c,
+              outline: value === c ? "2px solid #e5e7eb" : "none",
+              boxShadow:
+                value === c ? "0 0 0 1px rgba(15,23,42,0.9)" : "none",
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ImageEditorEmbedPage() {
   const searchParams = useSearchParams();
 
@@ -73,6 +117,14 @@ export default function ImageEditorEmbedPage() {
   const [subtitle, setSubtitle] = useState("");
   const [footer, setFooter] = useState("www.canalibertario.com");
   const [alertTag, setAlertTag] = useState<AlertTag>("");
+
+  // posición del bloque de texto (por defecto, abajo)
+  const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
+
+  // colores de textos
+  const [titleColor, setTitleColor] = useState<string>("#ffffff");
+  const [subtitleColor, setSubtitleColor] = useState<string>("#e5e7eb");
+  const [handleColor, setHandleColor] = useState<string>("#e5e7eb");
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -136,20 +188,29 @@ export default function ImageEditorEmbedPage() {
         useHeaderWordmark: true,
         siteUrl: safeFooter,
         socialHandle: "@canallibertario",
-        socialIcons: ["x", "facebook", "instagram"],
+        socialIcons: ["x", "facebook", "instagram"] as const,
       };
 
-      fd.append(
-        "optionsJson",
-        JSON.stringify({
-          title: title.trim() || null,
-          subtitle: subtitle.trim() || null,
-          footer: safeFooter,
-          brand: brandConfig,
-          alertTag: alertTag || null,
-          useSocialIcons: true,
-        })
-      );
+      // layout + colors para que el backend pinte igual que nuestra UI
+      const optionsJson = {
+        title: title.trim() || null,
+        subtitle: subtitle.trim() || null,
+        footer: safeFooter,
+        brand: brandConfig,
+        alertTag: alertTag || null,
+        useSocialIcons: true,
+        layout: {
+          textPosition, // "top" | "middle" | "bottom"
+        },
+        colors: {
+          bottomBar: "rgba(0,0,0,0.85)",
+          title: titleColor,
+          subtitle: subtitleColor,
+          handle: handleColor,
+        },
+      };
+
+      fd.append("optionsJson", JSON.stringify(optionsJson));
 
       const res = await fetch("/api/editor-images/enhance", {
         method: "POST",
@@ -181,6 +242,30 @@ export default function ImageEditorEmbedPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ------------------------------
+  // Abrir editor en pantalla completa
+  // ------------------------------
+  const handleOpenFullEditor = () => {
+    if (typeof window === "undefined") return;
+
+    const baseImageUrl = resultUrl || previewUrl;
+    if (!baseImageUrl) {
+      alert("Primero cargá una imagen o generá una cover.");
+      return;
+    }
+
+    const q = new URLSearchParams({
+      imageUrl: baseImageUrl,
+      title,
+      subtitle,
+      footer,
+      alertTag: alertTag || "",
+      textPosition: textPosition, // bottom | middle | top
+    });
+
+    window.open(`/admin/image-editor/full?${q.toString()}`, "_blank");
   };
 
   // -----------------------------
@@ -276,6 +361,11 @@ export default function ImageEditorEmbedPage() {
       searchParams.get("overlayFooter") ??
       searchParams.get("footer") ??
       "";
+
+    const qpTextPos = searchParams.get("textPosition");
+    if (qpTextPos === "top" || qpTextPos === "middle" || qpTextPos === "bottom") {
+      setTextPosition(qpTextPos);
+    }
 
     if (overlayTitle) setTitle(overlayTitle);
     if (overlaySubtitle) setSubtitle(overlaySubtitle);
@@ -450,6 +540,43 @@ export default function ImageEditorEmbedPage() {
                     placeholder="www.canalibertario.com"
                   />
                 </div>
+
+                {/* POSICIÓN DEL BLOQUE DE TEXTO */}
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-300">
+                    Posición del bloque de texto
+                  </label>
+                  <select
+                    value={textPosition}
+                    onChange={(e) =>
+                      setTextPosition(e.target.value as TextPosition)
+                    }
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                  >
+                    <option value="bottom">Inferior (clásico)</option>
+                    <option value="middle">Centro</option>
+                    <option value="top">Superior</option>
+                  </select>
+                </div>
+
+                {/* COLORES */}
+                <div className="mt-2 grid gap-3 md:grid-cols-3">
+                  <ColorSwatches
+                    label="Color título"
+                    value={titleColor}
+                    onChange={setTitleColor}
+                  />
+                  <ColorSwatches
+                    label="Color bajada"
+                    value={subtitleColor}
+                    onChange={setSubtitleColor}
+                  />
+                  <ColorSwatches
+                    label="Color @canallibertario"
+                    value={handleColor}
+                    onChange={setHandleColor}
+                  />
+                </div>
               </div>
             </div>
 
@@ -480,13 +607,27 @@ export default function ImageEditorEmbedPage() {
                   Textos que se enviarán:
                 </div>
                 <div className="space-y-1 text-slate-300">
-                  <div><b>Título:</b> {title || "—"}</div>
-                  <div><b>Bajada:</b> {subtitle || "—"}</div>
-                  <div><b>Etiqueta:</b> {alertTag || "(sin)"}</div>
+                  <div>
+                    <b>Título:</b> {title || "—"}
+                  </div>
+                  <div>
+                    <b>Bajada:</b> {subtitle || "—"}
+                  </div>
+                  <div>
+                    <b>Etiqueta:</b> {alertTag || "(sin)"}{" "}
+                  </div>
                   <div>
                     <b>Firma:</b>{" "}
                     {(footer || "www.canalibertario.com") +
                       " + X / Facebook / Instagram"}
+                  </div>
+                  <div>
+                    <b>Posición texto:</b>{" "}
+                    {textPosition === "bottom"
+                      ? "Inferior"
+                      : textPosition === "middle"
+                      ? "Centro"
+                      : "Superior"}
                   </div>
                 </div>
               </div>
@@ -498,6 +639,16 @@ export default function ImageEditorEmbedPage() {
                 className="inline-flex w-full items-center justify-center rounded-full bg-sky-500 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_18px_35px_rgba(56,189,248,0.45)] hover:bg-sky-400 disabled:bg-slate-700 disabled:text-slate-300"
               >
                 {loading ? "Procesando..." : "Mejorar imagen con IA"}
+              </button>
+
+              {/* botón para abrir el editor full */}
+              <button
+                type="button"
+                onClick={handleOpenFullEditor}
+                disabled={!previewUrl && !resultUrl}
+                className="inline-flex w-full items-center justify-center rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-100 hover:border-sky-400 hover:bg-slate-800 disabled:opacity-50"
+              >
+                Abrir editor en pantalla completa
               </button>
 
               {resultUrl && (
