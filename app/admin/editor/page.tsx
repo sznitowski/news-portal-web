@@ -1,7 +1,9 @@
+// app/admin/editor/page.tsx
 "use client";
 
 import Link from "next/link";
 import EditorialArticlesTable from "../../api/editor/articles/EditorialArticlesTable";
+import { FacebookPublishButton } from "../../components/admin/FacebookPublishButton";
 
 export default function AdminEditorPage() {
   return (
@@ -23,6 +25,20 @@ export default function AdminEditorPage() {
                 borradores, archivadas) del portal. Los cambios impactan
                 directamente en la portada.
               </p>
+
+              {/* Botón de prueba: publicar artículo 1 en Facebook (simulado) */}
+              <div className="mt-4">
+                <p className="mb-1 text-xs text-slate-400">
+                  Acción rápida de prueba: publicar en Facebook (simulado) la
+                  nota con ID 1.
+                </p>
+                <FacebookPublishButton
+                  articleId={1}
+                  title="Prueba desde panel"
+                  summary={null}
+                  coverImageUrl={null}
+                />
+              </div>
             </div>
 
             {/* Botones de atajo a otros flujos IA */}
