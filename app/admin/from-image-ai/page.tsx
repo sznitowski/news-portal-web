@@ -8,6 +8,8 @@ import {
   ChangeEvent,
 } from "react";
 
+import { publishArticleToFacebook } from "../../lib/facebook";
+
 type FormState = {
   title: string;
   summary: string;
@@ -58,6 +60,17 @@ function isScreenshotUrl(url?: string | null): boolean {
   );
 }
 
+// 🔹 Helper: limpiar HTML a texto plano para redes
+function stripHtml(html: string): string {
+  if (!html) return "";
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export default function EditorFromImagePage() {
   const [form, setForm] = useState<FormState>({
     title: "",
@@ -82,6 +95,10 @@ export default function EditorFromImagePage() {
   // datos que le mandamos al editor de portadas
   const [editorSyncData, setEditorSyncData] = useState<EditorSyncData>({});
   const [editorReloadTick, setEditorReloadTick] = useState(0);
+
+  // 🔹 Nuevo: flag para publicar en Facebook al crear
+  const [publishToFacebook, setPublishToFacebook] = useState(true);
+  const [fbErrorMsg, setFbErrorMsg] = useState<string | null>(null);
 
   const handleChange = (
     e: ChangeEvent<
@@ -195,8 +212,6 @@ export default function EditorFromImagePage() {
                 subtitle: autoSummary ?? "",
                 footer:
                   "@canallibertario · X · Facebook · Instagram",
-                // si algún día querés forzar keyword, podés agregarla acá:
-                // keyword: "trump",
               }),
             },
           );
@@ -328,6 +343,7 @@ export default function EditorFromImagePage() {
     setLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
+    setFbErrorMsg(null);
 
     try {
       const payload = {
@@ -354,9 +370,29 @@ export default function EditorFromImagePage() {
 
       const article = await res.json();
 
-      setSuccessMsg(
-        `Nota creada correctamente: "${article.title}" (slug: ${article.slug})`,
-      );
+      let okMsg = `Nota creada correctamente: "${article.title}" (slug: ${article.slug})`;
+
+      // 🔹 Si está en "published" y el toggle está activo → publicamos en Facebook
+      if (publishToFacebook && payload.status === "published") {
+        try {
+          const fbText = stripHtml(form.bodyHtml);
+          const fbRes = await publishArticleToFacebook(article.id, {
+            customTitle: form.title,
+            customSummary: fbText,
+            imageUrlOverride: form.imageUrl ?? undefined,
+          });
+
+          okMsg += ` · Enviada a Facebook (simulado), estado=${fbRes.status}`;
+        } catch (err: any) {
+          console.error("Error al publicar en Facebook", err);
+          setFbErrorMsg(
+            err?.message ||
+              "La nota se creó, pero falló la publicación en Facebook.",
+          );
+        }
+      }
+
+      setSuccessMsg(okMsg);
 
       setForm((prev) => ({
         ...prev,
@@ -421,7 +457,6 @@ export default function EditorFromImagePage() {
   }
 
   const editorIframeSrc = `/admin/image-editor-embed?${editorParams.toString()}`;
-
   const editorPageUrl = `/admin/image-editor?${editorParams.toString()}`;
 
   return (
@@ -667,6 +702,34 @@ export default function EditorFromImagePage() {
                 </div>
               </div>
 
+              {/* 🔹 Bloque nuevo: publicación en Facebook al crear */}
+              <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/80 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
+                  Publicación en redes
+                </p>
+                <label className="inline-flex items-center gap-2 text-xs text-zinc-200">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded border-zinc-500 bg-zinc-900 text-fuchsia-500 focus:ring-fuchsia-500"
+                    checked={publishToFacebook}
+                    onChange={(e) =>
+                      setPublishToFacebook(e.target.checked)
+                    }
+                  />
+                  <span>
+                    Publicar en Facebook al crear{" "}
+                    <span className="text-[10px] text-zinc-400">
+                      (si el estado es <code>published</code>)
+                    </span>
+                  </span>
+                </label>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Se enviará el título y el cuerpo completo de la nota
+                  como texto del post. La publicación es simulada por el
+                  backend actual.
+                </p>
+              </div>
+
               <div>
                 <label htmlFor="publishedAt" className={labelClass}>
                   Fecha/hora publicada (ISO) *
@@ -719,6 +782,12 @@ export default function EditorFromImagePage() {
               {successMsg && (
                 <div className="rounded-xl border border-emerald-400/60 bg-emerald-500/10 px-3 py-2.5 text-xs text-emerald-100">
                   {successMsg}
+                </div>
+              )}
+
+              {fbErrorMsg && (
+                <div className="rounded-xl border border-amber-400/60 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-100">
+                  {fbErrorMsg}
                 </div>
               )}
 

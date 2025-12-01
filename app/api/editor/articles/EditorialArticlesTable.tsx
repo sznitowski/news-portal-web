@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { FacebookRowToggle } from "./../../../components/admin/FacebookRowToggle";
 
 type EditorialStatus = "draft" | "published" | "archived";
 
@@ -18,6 +19,9 @@ type EditorialArticle = {
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+
+  coverImageUrl?: string | null;
+  imageUrl?: string | null;
 };
 
 const STATUS_LABEL: Record<EditorialStatus, string> = {
@@ -41,9 +45,7 @@ function formatDate(value: string | null) {
 
 export default function EditorialArticlesTable() {
   const [articles, setArticles] = useState<EditorialArticle[]>([]);
-  const [statusFilter, setStatusFilter] = useState<"all" | EditorialStatus>(
-    "all"
-  );
+  const [statusFilter, setStatusFilter] = useState<"all" | EditorialStatus>("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +75,6 @@ export default function EditorialArticlesTable() {
 
       const raw = await res.json();
 
-      // 🔑 Siempre garantizamos un array
       let list: EditorialArticle[] = [];
       if (Array.isArray(raw)) {
         list = raw;
@@ -228,6 +229,9 @@ export default function EditorialArticlesTable() {
                     Creada
                   </th>
                   <th className="border-b border-slate-800 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Facebook
+                  </th>
+                  <th className="border-b border-slate-800 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
                     Acciones
                   </th>
                 </tr>
@@ -288,8 +292,23 @@ export default function EditorialArticlesTable() {
                     <td className="border-b border-slate-900 px-3 py-2.5 align-top text-xs text-slate-300">
                       {formatDate(a.createdAt)}
                     </td>
+
+                    {/* Facebook */}
+                    <td className="border-b border-slate-900 px-3 py-2.5 align-top text-xs">
+                      <FacebookRowToggle
+                        articleId={a.id}
+                        title={a.title}
+                        summary={a.summary ?? undefined}
+                        coverImageUrl={
+                          a.coverImageUrl ?? a.imageUrl ?? undefined
+                        }
+                        disabled={a.status !== "published"}
+                      />
+                    </td>
+
+                    {/* Acciones */}
                     <td className="border-b border-slate-900 px-3 py-2.5 align-top">
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {a.status !== "published" && (
                           <button
                             type="button"
@@ -299,6 +318,7 @@ export default function EditorialArticlesTable() {
                             Publicar
                           </button>
                         )}
+
                         {a.status === "published" && (
                           <button
                             type="button"
