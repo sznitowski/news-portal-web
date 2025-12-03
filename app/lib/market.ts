@@ -9,7 +9,35 @@ import type {
 import type { IndecSummary } from "../types/economy";
 import { fetchIndecSummary } from "./economy";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
+/**
+ * Misma normalización que en lib/api.ts:
+ * - default a http://127.0.0.1:5001
+ * - si el host es "localhost", lo cambiamos por "127.0.0.1"
+ */
+function normalizeApiBase(raw: string | undefined): string {
+  let value = (raw ?? "").trim();
+
+  if (!value) {
+    value = "http://127.0.0.1:5001";
+  }
+
+  if (!/^https?:\/\//i.test(value)) {
+    value = `http://${value}`;
+  }
+
+  try {
+    const u = new URL(value);
+    if (u.hostname === "localhost") {
+      u.hostname = "127.0.0.1";
+    }
+    return u.toString().replace(/\/+$/, "");
+  } catch {
+    return value.replace("localhost", "127.0.0.1").replace(/\/+$/, "");
+  }
+}
+
+const RAW_API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:5001";
+const API_BASE = normalizeApiBase(RAW_API_BASE);
 
 async function safeGet<T>(path: string): Promise<T | null> {
   try {
@@ -55,9 +83,9 @@ export async function fetchMarketAll(): Promise<MarketAll> {
     } else if (
       countryRiskRaw &&
       typeof countryRiskRaw === "object" &&
-      typeof countryRiskRaw.value === "number"
+      typeof (countryRiskRaw as any).value === "number"
     ) {
-      countryRisk = countryRiskRaw.value;
+      countryRisk = (countryRiskRaw as any).value;
     }
 
     return {

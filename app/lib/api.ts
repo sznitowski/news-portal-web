@@ -13,17 +13,40 @@ import type {
 const RAW_API_BASE =
   process.env.NEXT_PUBLIC_API_URL ??
   process.env.NEXT_PUBLIC_API_BASE ?? // fallback por si después la querés usar
-  "http://localhost:5001";
+  "http://127.0.0.1:5001";
 
-// normalizo para que no termine en "/"
-export const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
+/**
+ * Normaliza la base de la API:
+ * - Quita barras finales.
+ * - Si el host es "localhost", lo fuerza a "127.0.0.1"
+ *   para evitar quilombos de resolución (ECONNRESET).
+ */
+function normalizeApiBase(raw: string): string {
+  const trimmed = raw.replace(/\/+$/, "");
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  try {
+    const url = new URL(trimmed);
+    if (url.hostname === "localhost") {
+      url.hostname = "127.0.0.1";
+    }
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return trimmed;
+  }
+}
+
+export const API_BASE = normalizeApiBase(RAW_API_BASE);
 
 /**
  * Base pública del sitio (Next).
  * La podemos usar para armar links públicos a notas, etc.
  */
 const RAW_SITE_BASE =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3001";
+  process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3001";
 
 export const SITE_BASE = RAW_SITE_BASE.replace(/\/+$/, "");
 

@@ -6,7 +6,7 @@ import { buildApiUrl } from "../../../lib/api";
 const INGEST_KEY = process.env.INGEST_KEY;
 
 if (!INGEST_KEY) {
-  console.warn("INGEST_KEY no está definida en el front (.env.local)");
+  console.warn("INGEST_KEY no está definida en el front (.envl)");
 }
 
 export async function GET(req: NextRequest) {
