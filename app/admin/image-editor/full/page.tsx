@@ -9,8 +9,13 @@ import {
 } from "react";
 import { useSearchParams } from "next/navigation";
 
-type DragTarget = "block" | "title" | "subtitle" | "handle" | "resize" | null;
 type TextPosition = "top" | "middle" | "bottom";
+type CoverTheme = "purple" | "sunset" | "wine";
+
+const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
+type AlertTag = (typeof ALERT_TAGS)[number];
+
+type DragTarget = "block" | "title" | "subtitle" | "resize" | null;
 
 type DragState = {
   target: DragTarget;
@@ -22,13 +27,63 @@ type DragState = {
   titleOffsetY: number;
   subtitleOffsetX: number;
   subtitleOffsetY: number;
-  handleOffsetX: number;
-  handleOffsetY: number;
-};
+} | null;
 
 const TITLE_COLORS = ["#ffffff", "#22c55e", "#0ea5e9", "#f97316", "#ef4444"];
-const SUBTITLE_COLORS = ["#e5e7eb", "#bae6fd", "#fef9c3", "#e5e5e5", "#93c5fd"];
+const SUBTITLE_COLORS = [
+  "#e5e7eb",
+  "#bae6fd",
+  "#fef9c3",
+  "#e5e5e5",
+  "#93c5fd",
+];
 const BRAND_COLORS = ["#ffffff", "#22c55e", "#0ea5e9", "#f97316", "#ef4444"];
+
+const DEFAULT_BLOCK_HEIGHT = 130;
+const FOOTER_HEIGHT = 46;
+
+function themeLabel(value: CoverTheme): string {
+  switch (value) {
+    case "purple":
+      return "Canalibertario (violeta)";
+    case "sunset":
+      return "Sunset / Urgente (naranja)";
+    case "wine":
+      return "Wine / Impacto (bordó)";
+    default:
+      return value;
+  }
+}
+
+function getThemePreviewColors(theme: CoverTheme) {
+  switch (theme) {
+    case "sunset":
+      return {
+        bandFrom: "rgba(15,23,42,0.0)",
+        bandMid: "rgba(15,23,42,0.45)",
+        bandTo: "rgba(249,115,22,0.96)",
+        footerBg: "#7c2d12",
+        footerBorder: "#f97316",
+      };
+    case "wine":
+      return {
+        bandFrom: "rgba(2,6,23,0.0)",
+        bandMid: "rgba(15,23,42,0.45)",
+        bandTo: "rgba(185,28,28,0.96)",
+        footerBg: "#450a0a",
+        footerBorder: "#b91c1c",
+      };
+    case "purple":
+    default:
+      return {
+        bandFrom: "rgba(2,6,23,0.0)",
+        bandMid: "rgba(15,23,42,0.45)",
+        bandTo: "rgba(109,40,217,0.96)",
+        footerBg: "#020617",
+        footerBorder: "#4338ca",
+      };
+  }
+}
 
 export default function ImageEditorFullPage() {
   const searchParams = useSearchParams();
@@ -42,37 +97,34 @@ export default function ImageEditorFullPage() {
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
   const [footer, setFooter] = useState("www.canalibertario.com");
-  const [alertTag, setAlertTag] = useState("");
+  const [alertTag, setAlertTag] = useState<AlertTag>("");
 
   // Colores
-  const [titleColor, setTitleColor] = useState("#22c55e");
+  const [titleColor, setTitleColor] = useState("#ffffff");
   const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
   const [brandColor, setBrandColor] = useState("#ffffff");
 
-  // Tamaños de fuente (solo preview)
-  const [titleSize, setTitleSize] = useState(40); // px
-  const [subtitleSize, setSubtitleSize] = useState(22); // px
+  // Tema de color
+  const [theme, setTheme] = useState<CoverTheme>("purple");
+
+  // Tamaños de fuente
+  const [titleSize, setTitleSize] = useState(40);
+  const [subtitleSize, setSubtitleSize] = useState(22);
 
   // Posición del bloque
   const [blockTop, setBlockTop] = useState(260);
-  const [blockHeight, setBlockHeight] = useState(130);
-
-  // Guardamos posición inicial para poder calcular el offset
+  const [blockHeight, setBlockHeight] = useState(DEFAULT_BLOCK_HEIGHT);
   const [initialBlockTop, setInitialBlockTop] = useState(260);
   const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
 
-  // Offsets internos
+  // Offsets internos para título y bajada
   const [titleOffsetX, setTitleOffsetX] = useState(40);
   const [titleOffsetY, setTitleOffsetY] = useState(30);
-
   const [subtitleOffsetX, setSubtitleOffsetX] = useState(40);
   const [subtitleOffsetY, setSubtitleOffsetY] = useState(80);
 
-  const [handleOffsetX, setHandleOffsetX] = useState(40);
-  const [handleOffsetY, setHandleOffsetY] = useState(30);
-
   // Drag
-  const [drag, setDrag] = useState<DragState | null>(null);
+  const [drag, setDrag] = useState<DragState>(null);
 
   // Estado general
   const [loadingImage, setLoadingImage] = useState(false);
@@ -89,12 +141,16 @@ export default function ImageEditorFullPage() {
     const initialSubtitle = searchParams.get("subtitle") ?? "";
     const initialFooter =
       searchParams.get("footer") ?? "www.canalibertario.com";
-    const initialAlert = searchParams.get("alertTag") ?? "";
+    const initialAlert = (searchParams.get("alertTag") as AlertTag | null) ?? "";
+    const qpTheme = searchParams.get("theme") as CoverTheme | null;
 
     setTitle(initialTitle);
     setSubtitle(initialSubtitle);
     setFooter(initialFooter);
     setAlertTag(initialAlert);
+    if (qpTheme === "purple" || qpTheme === "sunset" || qpTheme === "wine") {
+      setTheme(qpTheme);
+    }
 
     const textPosParam = searchParams.get("textPosition") as TextPosition | null;
 
@@ -103,7 +159,7 @@ export default function ImageEditorFullPage() {
 
     if (textPosParam === "top") {
       pos = "top";
-      startTop = 80;
+      startTop = 90;
     } else if (textPosParam === "middle") {
       pos = "middle";
       startTop = 170;
@@ -115,6 +171,11 @@ export default function ImageEditorFullPage() {
     setTextPosition(pos);
     setBlockTop(startTop);
     setInitialBlockTop(startTop);
+    setBlockHeight(DEFAULT_BLOCK_HEIGHT);
+    setTitleOffsetX(40);
+    setTitleOffsetY(30);
+    setSubtitleOffsetX(40);
+    setSubtitleOffsetY(80);
 
     if (!imageUrl) return;
 
@@ -162,10 +223,7 @@ export default function ImageEditorFullPage() {
   // ==========================
   // DRAG HANDLERS
   // ==========================
-  const startDrag = (
-    target: DragTarget,
-    e: ReactMouseEvent<HTMLDivElement | HTMLSpanElement>
-  ) => {
+  const startDrag = (target: DragTarget, e: ReactMouseEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
     if (!containerRef.current) return;
@@ -180,8 +238,6 @@ export default function ImageEditorFullPage() {
       titleOffsetY,
       subtitleOffsetX,
       subtitleOffsetY,
-      handleOffsetX,
-      handleOffsetY,
     });
   };
 
@@ -196,14 +252,14 @@ export default function ImageEditorFullPage() {
       switch (drag.target) {
         case "block": {
           const minTop = 40;
-          const maxTop = 340;
+          const maxTop = 360 - drag.blockHeight; // 360px aprox parte visible útil
           const newTop = drag.blockTop + dy;
           setBlockTop(Math.min(maxTop, Math.max(minTop, newTop)));
           break;
         }
         case "resize": {
           const minHeight = 90;
-          const maxHeight = 220;
+          const maxHeight = 240;
           const newH = drag.blockHeight + dy;
           setBlockHeight(Math.min(maxHeight, Math.max(minHeight, newH)));
           break;
@@ -216,11 +272,6 @@ export default function ImageEditorFullPage() {
         case "subtitle": {
           setSubtitleOffsetX(drag.subtitleOffsetX + dx);
           setSubtitleOffsetY(drag.subtitleOffsetY + dy);
-          break;
-        }
-        case "handle": {
-          setHandleOffsetX(drag.handleOffsetX - dx);
-          setHandleOffsetY(drag.handleOffsetY - dy);
           break;
         }
         default:
@@ -246,16 +297,11 @@ export default function ImageEditorFullPage() {
   // ==========================
   function resetPositions() {
     setBlockTop(initialBlockTop);
-    setBlockHeight(130);
-
+    setBlockHeight(DEFAULT_BLOCK_HEIGHT);
     setTitleOffsetX(40);
     setTitleOffsetY(30);
-
     setSubtitleOffsetX(40);
     setSubtitleOffsetY(80);
-
-    setHandleOffsetX(40);
-    setHandleOffsetY(30);
   }
 
   // ==========================
@@ -294,13 +340,16 @@ export default function ImageEditorFullPage() {
         socialIcons: ["x", "facebook", "instagram"] as const,
       };
 
-      // offset relativo que espera el backend
       const layout = {
         textPosition,
         textOffsetY: blockTop - initialBlockTop,
+        blockHeightPx: blockHeight,
+        titleFontPx: titleSize,
+        subtitleFontPx: subtitleSize,
       };
 
       const colors = {
+        theme,
         title: titleColor,
         subtitle: subtitleColor,
         handle: brandColor,
@@ -331,7 +380,7 @@ export default function ImageEditorFullPage() {
         );
       }
 
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
       setStatusMsg(
         data?.message ??
           "Imagen procesada correctamente. Se generó una portada (cover) lista para usar."
@@ -343,6 +392,8 @@ export default function ImageEditorFullPage() {
       setSaving(false);
     }
   };
+
+  const themeColors = getThemePreviewColors(theme);
 
   // ==========================
   // RENDER
@@ -380,75 +431,94 @@ export default function ImageEditorFullPage() {
                     className="h-full w-full object-cover"
                   />
 
-                  {/* BLOQUE OSCURO */}
+                  {/* BLOQUE DEGRADADO */}
                   <div
-                    className="absolute left-0 right-0 cursor-move bg-gradient-to-r from-black/85 via-black/80 to-black/70"
+                    className="absolute left-0 right-0 cursor-move"
                     style={{
                       top: blockTop,
                       height: blockHeight,
+                      background: `linear-gradient(to bottom, ${themeColors.bandFrom} 0%, ${themeColors.bandMid} 40%, ${themeColors.bandTo} 100%)`,
                     }}
                     onMouseDown={(e) => startDrag("block", e)}
                   >
                     <div className="relative h-full w-full">
+                      {/* ETIQUETA */}
+                      {alertTag && (
+                        <div
+                          className="absolute left-10 top-3 inline-flex cursor-default select-none items-center rounded-full bg-rose-500 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
+                        >
+                          {alertTag}
+                        </div>
+                      )}
+
                       {/* TÍTULO */}
-                      <span
-                        className="absolute cursor-move select-none font-extrabold tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
-                        style={{
-                          left: titleOffsetX,
-                          top: titleOffsetY,
-                          fontSize: `${titleSize}px`,
-                          color: titleColor,
-                        }}
-                        onMouseDown={(e) => startDrag("title", e)}
-                      >
-                        {title || "Título de ejemplo"}
-                      </span>
+                      {title && (
+                        <span
+                          className="absolute cursor-move select-none font-extrabold tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
+                          style={{
+                            left: titleOffsetX,
+                            top: titleOffsetY,
+                            fontSize: `${titleSize}px`,
+                            color: titleColor,
+                          }}
+                          onMouseDown={(e) => startDrag("title", e)}
+                        >
+                          {title}
+                        </span>
+                      )}
 
                       {/* BAJADA */}
-                      <span
-                        className="absolute max-w-[60%] cursor-move select-none font-medium drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]"
-                        style={{
-                          left: subtitleOffsetX,
-                          top: subtitleOffsetY,
-                          fontSize: `${subtitleSize}px`,
-                          color: subtitleColor,
-                        }}
-                        onMouseDown={(e) => startDrag("subtitle", e)}
-                      >
-                        {subtitle || "Bajada / descripción corta de ejemplo"}
-                      </span>
-
-                      {/* HANDLE + ICONOS */}
-                      <div
-                        className="absolute flex cursor-move select-none items-center gap-3 drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]"
-                        style={{
-                          right: handleOffsetX,
-                          bottom: handleOffsetY,
-                          color: brandColor,
-                        }}
-                        onMouseDown={(e) => startDrag("handle", e)}
-                      >
-                        <span className="text-lg font-extrabold">
-                          @canalibertario
+                      {subtitle && (
+                        <span
+                          className="absolute max-w-[65%] cursor-move select-none font-medium drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]"
+                          style={{
+                            left: subtitleOffsetX,
+                            top: subtitleOffsetY,
+                            fontSize: `${subtitleSize}px`,
+                            color: subtitleColor,
+                          }}
+                          onMouseDown={(e) => startDrag("subtitle", e)}
+                        >
+                          {subtitle}
                         </span>
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/70">
-                            X
-                          </span>
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/70">
-                            f
-                          </span>
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-[11px]">
-                            ig
-                          </span>
-                        </div>
-                      </div>
+                      )}
 
                       {/* HANDLE ALTURA BLOQUE */}
                       <div
                         className="absolute bottom-2 left-[10%] right-[10%] h-1.5 cursor-ns-resize rounded-full bg-slate-200/80"
                         onMouseDown={(e) => startDrag("resize", e)}
                       />
+                    </div>
+                  </div>
+
+                  {/* FOOTER FIJO ABAJO */}
+                  <div
+                    className="absolute inset-x-0 flex items-center justify-between px-8 text-xs"
+                    style={{
+                      bottom: 0,
+                      height: FOOTER_HEIGHT,
+                      backgroundColor: themeColors.footerBg,
+                      borderTop: `1px solid ${themeColors.footerBorder}`,
+                    }}
+                  >
+                    <span className="font-semibold text-slate-200">
+                      {footer.trim() || "www.canalibertario.com"}
+                    </span>
+                    <div className="flex items-center gap-4 text-slate-100">
+                      <span className="text-sm font-extrabold">
+                        @canalibertario
+                      </span>
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/70">
+                          X
+                        </span>
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/70">
+                          f
+                        </span>
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-[11px]">
+                          ig
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </>
@@ -461,16 +531,39 @@ export default function ImageEditorFullPage() {
               )}
             </div>
 
-            {/* COLORES */}
+            {/* COLORES Y TEMA */}
             <div className="mt-4 rounded-b-3xl border-t border-slate-800 bg-slate-950/80 px-6 py-4">
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Colores
+                Colores y tema
               </h2>
 
               <div className="space-y-3 text-[11px]">
+                {/* TEMA */}
+                <div className="space-y-2">
+                  <span className="block text-slate-300">
+                    Tema de color de la barra
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {(["purple", "sunset", "wine"] as CoverTheme[]).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setTheme(t)}
+                        className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
+                          theme === t
+                            ? "border-sky-400 bg-sky-500/10 text-sky-100"
+                            : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400/70"
+                        }`}
+                      >
+                        {themeLabel(t)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* COLOR TÍTULO */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="w-28 text-slate-300">Color título</span>
+                  <span className="w-32 text-slate-300">Color título</span>
                   <div className="flex items-center gap-1">
                     {TITLE_COLORS.map((c) => (
                       <button
@@ -491,7 +584,7 @@ export default function ImageEditorFullPage() {
 
                 {/* COLOR BAJADA */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="w-28 text-slate-300">Color bajada</span>
+                  <span className="w-32 text-slate-300">Color bajada</span>
                   <div className="flex items-center gap-1">
                     {SUBTITLE_COLORS.map((c) => (
                       <button
@@ -507,14 +600,12 @@ export default function ImageEditorFullPage() {
                       />
                     ))}
                   </div>
-                  <span className="ml-2 text-slate-400">
-                    {subtitleColor}
-                  </span>
+                  <span className="ml-2 text-slate-400">{subtitleColor}</span>
                 </div>
 
                 {/* COLOR BRAND */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="w-28 text-slate-300">
+                  <span className="w-32 text-slate-300">
                     Color @canalibertario + iconos
                   </span>
                   <div className="flex items-center gap-1">
@@ -544,9 +635,10 @@ export default function ImageEditorFullPage() {
                 </button>
 
                 <p className="mt-1 text-[10px] text-slate-400">
-                  Tip: arrastrá el bloque oscuro y cada texto directamente sobre
-                  la imagen para reposicionarlos. El borde inferior del bloque
-                  ajusta la altura.
+                  Tip: arrastrá el bloque degradado directamente sobre la
+                  imagen para moverlo arriba o abajo. El borde inferior del
+                  bloque ajusta la altura. El footer se mantiene fijo al borde
+                  inferior.
                 </p>
               </div>
             </div>
@@ -609,7 +701,9 @@ export default function ImageEditorFullPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] text-slate-300">Sitio / firma</label>
+                <label className="text-[11px] text-slate-300">
+                  Sitio / firma
+                </label>
                 <input
                   type="text"
                   value={footer}
@@ -624,7 +718,7 @@ export default function ImageEditorFullPage() {
                 </label>
                 <select
                   value={alertTag}
-                  onChange={(e) => setAlertTag(e.target.value)}
+                  onChange={(e) => setAlertTag(e.target.value as AlertTag)}
                   className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
                 >
                   <option value="">Sin etiqueta</option>
@@ -634,7 +728,7 @@ export default function ImageEditorFullPage() {
                 </select>
               </div>
 
-              {/* SLIDERS TAMAÑO TEXTO (solo preview) */}
+              {/* SLIDERS TAMAÑO TEXTO */}
               <div className="mt-3 space-y-3 border-t border-slate-800 pt-3 text-[11px] text-slate-300">
                 <div>
                   <div className="mb-1 flex items-center justify-between">
@@ -691,6 +785,9 @@ export default function ImageEditorFullPage() {
                 <b>Firma:</b>{" "}
                 {(footer || "www.canalibertario.com") +
                   " + X / Facebook / Instagram"}
+              </div>
+              <div>
+                <b>Tema de color:</b> {themeLabel(theme)}
               </div>
               <div>
                 <b>Posición bloque:</b>{" "}
