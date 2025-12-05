@@ -25,6 +25,7 @@ type EditorSyncData = {
   imageUrl?: string;
   title?: string;
   subtitle?: string;
+  footer?: string;
 };
 
 type EnhanceResponse = {
@@ -54,10 +55,7 @@ function getAuthHeaders(): Record<string, string> {
 function isScreenshotUrl(url?: string | null): boolean {
   if (!url) return false;
   const lower = url.toLowerCase();
-  return (
-    lower.includes("screenshot") ||
-    lower.includes("/screenshots/")
-  );
+  return lower.includes("screenshot") || lower.includes("/screenshots/");
 }
 
 // 🔹 Helper: limpiar HTML a texto plano para redes
@@ -70,6 +68,8 @@ function stripHtml(html: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+const DEFAULT_SITE_FOOTER = "www.canalibertario.com";
 
 export default function EditorFromImagePage() {
   const [form, setForm] = useState<FormState>({
@@ -200,21 +200,17 @@ export default function EditorFromImagePage() {
 
         // primero intentamos con una RAW existente (auto-from-raw)
         try {
-          const autoRes = await fetch(
-            "/api/editor-images/auto-from-raw",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                title: autoTitle ?? "",
-                subtitle: autoSummary ?? "",
-                footer:
-                  "@canallibertario · X · Facebook · Instagram",
-              }),
+          const autoRes = await fetch("/api/editor-images/auto-from-raw", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
             },
-          );
+            body: JSON.stringify({
+              title: autoTitle ?? "",
+              subtitle: autoSummary ?? "",
+              footer: DEFAULT_SITE_FOOTER,
+            }),
+          });
 
           if (autoRes.ok) {
             const autoData = (await autoRes.json()) as {
@@ -245,8 +241,7 @@ export default function EditorFromImagePage() {
           coverFd.append("image", imageFile);
 
           if (typeof window !== "undefined") {
-            const token =
-              window.localStorage.getItem("news_access_token");
+            const token = window.localStorage.getItem("news_access_token");
             if (token) {
               coverFd.append("accessToken", token);
             }
@@ -257,18 +252,14 @@ export default function EditorFromImagePage() {
             JSON.stringify({
               title: autoTitle ?? null,
               subtitle: autoSummary ?? null,
-              footer:
-                "@canallibertario · X · Facebook · Instagram",
+              footer: DEFAULT_SITE_FOOTER,
             }),
           );
 
-          const coverRes = await fetch(
-            "/api/editor-images/enhance",
-            {
-              method: "POST",
-              body: coverFd,
-            },
-          );
+          const coverRes = await fetch("/api/editor-images/enhance", {
+            method: "POST",
+            body: coverFd,
+          });
 
           if (coverRes.ok) {
             const coverData =
@@ -319,6 +310,7 @@ export default function EditorFromImagePage() {
         title: autoTitle,
         subtitle: autoSummary,
         imageUrl: editorImageForSync,
+        footer: DEFAULT_SITE_FOOTER,
       });
       setEditorReloadTick((t) => t + 1);
 
@@ -454,6 +446,9 @@ export default function EditorFromImagePage() {
   }
   if (editorSyncData.imageUrl) {
     editorParams.set("imageUrl", editorSyncData.imageUrl);
+  }
+  if (editorSyncData.footer) {
+    editorParams.set("footer", editorSyncData.footer);
   }
 
   const editorIframeSrc = `/admin/image-editor-embed?${editorParams.toString()}`;
@@ -826,7 +821,7 @@ export default function EditorFromImagePage() {
               1. Procesá la captura y generá la nota con IA. <br />
               2. El sistema intenta elegir automáticamente una RAW
               relacionada (Trump, Milei, Caputo, etc.) y generar la portada
-              con texto. <br />
+              con texto en formato 1280×720 para redes. <br />
               3. Si no te gusta, podés retocar la portada en el editor y
               reemplazar la URL manualmente.
             </p>

@@ -1,4 +1,4 @@
-//app/admin/image-editor-embed/page.tsx
+// app/admin/image-editor-embed/page.tsx
 "use client";
 
 import { useState, useEffect, ChangeEvent } from "react";
@@ -24,6 +24,7 @@ type ImageItem = {
 };
 
 type TextPosition = "top" | "middle" | "bottom";
+type CoverTheme = "purple" | "sunset" | "wine";
 
 function getImageTypeFromUrl(url: string): ImageKind {
   let path = url.toLowerCase();
@@ -65,14 +66,13 @@ const PAGE_SIZE = 10;
 const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
 type AlertTag = (typeof ALERT_TAGS)[number];
 
-// Paleta fija de colores para textos
 const PALETTE = [
-  "#ffffff", // blanco
-  "#facc15", // amarillo
-  "#f97316", // naranja
-  "#ef4444", // rojo
-  "#22c55e", // verde
-  "#38bdf8", // celeste
+  "#ffffff",
+  "#facc15",
+  "#f97316",
+  "#ef4444",
+  "#22c55e",
+  "#38bdf8",
 ] as const;
 
 function ColorSwatches({
@@ -119,8 +119,8 @@ export default function ImageEditorEmbedPage() {
   const [footer, setFooter] = useState("www.canalibertario.com");
   const [alertTag, setAlertTag] = useState<AlertTag>("");
 
-  const [textPosition, setTextPosition] =
-    useState<TextPosition>("bottom");
+  const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
+  const [theme, setTheme] = useState<CoverTheme>("purple");
 
   const [titleColor, setTitleColor] = useState("#ffffff");
   const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
@@ -135,16 +135,11 @@ export default function ImageEditorEmbedPage() {
   const [listError, setListError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [typeFilter, setTypeFilter] =
-    useState<"all" | "raw" | "cover">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "raw" | "cover">("all");
   const [page, setPage] = useState(1);
 
-  const [initializedFromQuery, setInitializedFromQuery] =
-    useState(false);
+  const [initializedFromQuery, setInitializedFromQuery] = useState(false);
 
-  // -----------------------------
-  // FILE
-  // -----------------------------
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -156,13 +151,10 @@ export default function ImageEditorEmbedPage() {
     setPreviewUrl(objectUrl);
   };
 
-  // -----------------------------
-  // ENHANCE
-  // -----------------------------
   const handleEnhance = async () => {
     if (!file) {
       setErrorMsg(
-        "Primero seleccioná una imagen base (subí una o elegí un RAW de la biblioteca)."
+        "Primero seleccioná una imagen base (subí una o elegí un RAW de la biblioteca).",
       );
       return;
     }
@@ -205,6 +197,7 @@ export default function ImageEditorEmbedPage() {
           textPosition,
         },
         colors: {
+          theme,
           bottomBar: "rgba(0,0,0,0.85)",
           title: titleColor,
           subtitle: subtitleColor,
@@ -222,7 +215,7 @@ export default function ImageEditorEmbedPage() {
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(
-          text || `Error HTTP ${res.status} al procesar la imagen`
+          text || `Error HTTP ${res.status} al procesar la imagen`,
         );
       }
 
@@ -232,7 +225,7 @@ export default function ImageEditorEmbedPage() {
         setResultUrl(data.enhancedImageUrl);
         setSuccessMsg(
           data.message ??
-            "Imagen procesada correctamente. Se generó una portada (cover) lista para usar."
+            "Imagen procesada correctamente. Se generó una portada (cover) lista para usar.",
         );
         void loadImages();
       } else {
@@ -246,9 +239,6 @@ export default function ImageEditorEmbedPage() {
     }
   };
 
-  // -----------------------------
-  // FULL EDITOR
-  // -----------------------------
   const handleOpenFullEditor = () => {
     if (typeof window === "undefined") return;
 
@@ -270,9 +260,6 @@ export default function ImageEditorEmbedPage() {
     window.open(`/admin/image-editor/full?${q.toString()}`, "_blank");
   };
 
-  // -----------------------------
-  // LOAD IMAGES
-  // -----------------------------
   const loadImages = async () => {
     setListLoading(true);
     setListError(null);
@@ -296,7 +283,7 @@ export default function ImageEditorEmbedPage() {
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(
-          text || `Error HTTP ${res.status} al obtener la lista de imágenes`
+          text || `Error HTTP ${res.status} al obtener la lista de imágenes`,
         );
       }
 
@@ -310,28 +297,25 @@ export default function ImageEditorEmbedPage() {
     }
   };
 
-  // -----------------------------
-  // INIT FROM QUERY
-  // -----------------------------
   useEffect(() => {
     if (initializedFromQuery) return;
 
     const imageUrl = searchParams.get("imageUrl");
     const overlayTitle =
-      searchParams.get("overlayTitle") ??
-      searchParams.get("title") ??
-      "";
+      searchParams.get("overlayTitle") ?? searchParams.get("title") ?? "";
     const overlaySubtitle =
       searchParams.get("overlaySubtitle") ??
       searchParams.get("subtitle") ??
       "";
     const overlayFooter =
-      searchParams.get("overlayFooter") ??
-      searchParams.get("footer") ??
-      "";
+      searchParams.get("overlayFooter") ?? searchParams.get("footer") ?? "";
 
     const qpTextPos = searchParams.get("textPosition");
-    if (qpTextPos === "top" || qpTextPos === "middle" || qpTextPos === "bottom") {
+    if (
+      qpTextPos === "top" ||
+      qpTextPos === "middle" ||
+      qpTextPos === "bottom"
+    ) {
       setTextPosition(qpTextPos);
     }
 
@@ -368,9 +352,6 @@ export default function ImageEditorEmbedPage() {
     }
   }, [initializedFromQuery, searchParams]);
 
-  // -----------------------------
-  // SELECT EXISTING AS BASE
-  // -----------------------------
   const selectExistingAsBase = async (img: ImageItem) => {
     try {
       setErrorMsg(null);
@@ -378,7 +359,8 @@ export default function ImageEditorEmbedPage() {
       setResultUrl(null);
 
       const res = await fetch(img.url);
-      if (!res.ok) throw new Error("No se pudo descargar la imagen seleccionada.");
+      if (!res.ok)
+        throw new Error("No se pudo descargar la imagen seleccionada.");
 
       const blob = await res.blob();
       const mime = blob.type || "image/jpeg";
@@ -402,9 +384,6 @@ export default function ImageEditorEmbedPage() {
     }
   };
 
-  // -----------------------------
-  // EFFECTS
-  // -----------------------------
   useEffect(() => {
     void loadImages();
   }, []);
@@ -413,9 +392,6 @@ export default function ImageEditorEmbedPage() {
     setPage(1);
   }, [searchTerm, typeFilter, images.length]);
 
-  // -----------------------------
-  // FILTER + PAGINATE
-  // -----------------------------
   const filteredImages = images.filter((img) => {
     const nameMatch =
       !searchTerm ||
@@ -437,12 +413,25 @@ export default function ImageEditorEmbedPage() {
   const startIndex = (currentPage - 1) * PAGE_SIZE;
   const pagedImages = filteredImages.slice(
     startIndex,
-    startIndex + PAGE_SIZE
+    startIndex + PAGE_SIZE,
   );
 
-  // -----------------------------
-  // RENDER
-  // -----------------------------
+  function themeLabel(value: CoverTheme): string {
+    switch (value) {
+      case "purple":
+        return "Canalibertario (violeta)";
+      case "sunset":
+        return "Sunset / Urgente (naranja)";
+      case "wine":
+        return "Wine / Impacto (bordó)";
+      default:
+        return value;
+    }
+  }
+
+  // URL principal para la vista previa: primero la portada procesada, si no, la imagen base
+  const mainPreviewUrl = resultUrl || previewUrl;
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 md:py-8">
       {/* PANEL PRINCIPAL */}
@@ -460,6 +449,8 @@ export default function ImageEditorEmbedPage() {
             <p className="max-w-2xl text-sm text-slate-300">
               Subí una imagen o elegí una RAW de la biblioteca. Después definí
               el título, la bajada, la etiqueta y la firma CANALIBERTARIO.
+              La salida es una cover horizontal 1280×720 pensada para X/Twitter,
+              Facebook e Instagram (post clásico).
             </p>
           </header>
 
@@ -557,6 +548,30 @@ export default function ImageEditorEmbedPage() {
                   </select>
                 </div>
 
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-300">
+                    Tema de color de la barra
+                  </label>
+                  <div className="flex flex-wrap gap-2 text-[11px]">
+                    {(["purple", "sunset", "wine"] as CoverTheme[]).map(
+                      (t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setTheme(t)}
+                          className={`rounded-full border px-3 py-1 font-semibold ${
+                            theme === t
+                              ? "border-sky-400 bg-sky-500/10 text-sky-200"
+                              : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400 hover:bg-slate-800"
+                          }`}
+                        >
+                          {themeLabel(t)}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </div>
+
                 <div className="mt-2 grid gap-3 md:grid-cols-3">
                   <ColorSwatches
                     label="Color título"
@@ -584,10 +599,10 @@ export default function ImageEditorEmbedPage() {
               </div>
 
               <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-3">
-                {previewUrl ? (
+                {mainPreviewUrl ? (
                   <div className="space-y-3">
                     <img
-                      src={previewUrl}
+                      src={mainPreviewUrl}
                       alt="Preview portada"
                       className="max-h-64 w-full rounded-lg border border-slate-800 object-cover"
                     />
@@ -625,6 +640,9 @@ export default function ImageEditorEmbedPage() {
                       : textPosition === "middle"
                       ? "Centro"
                       : "Superior"}
+                  </div>
+                  <div>
+                    <b>Tema de color:</b> {themeLabel(theme)}
                   </div>
                 </div>
               </div>
@@ -809,7 +827,10 @@ export default function ImageEditorEmbedPage() {
                 <span className="font-semibold">
                   {startIndex + 1}-{startIndex + pagedImages.length}
                 </span>{" "}
-                de <span className="font-semibold">{filteredImages.length}</span>
+                de{" "}
+                <span className="font-semibold">
+                  {filteredImages.length}
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
