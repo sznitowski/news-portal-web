@@ -174,7 +174,7 @@ export default function ImageEditorEmbedPage() {
         }
       }
 
-      const safeFooter = footer.trim() || "www.canalibertario.com";
+      const safeFooter = footer.trim() || null;
 
       const brandConfig = {
         brandName: "CANALIBERTARIO",
@@ -524,7 +524,7 @@ export default function ImageEditorEmbedPage() {
                     value={footer}
                     onChange={(e) => setFooter(e.target.value)}
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                    placeholder="www.canalibertario.com"
+                    /* placeholder="www.canalibertario.com" */
                   />
                 </div>
 
@@ -626,7 +626,7 @@ export default function ImageEditorEmbedPage() {
                   </div>
                   <div>
                     <b>Firma:</b>{" "}
-                    {(footer || "www.canalibertario.com") +
+                    {(footer || null) +
                       " + X / Facebook / Instagram"}
                   </div>
                   <div>

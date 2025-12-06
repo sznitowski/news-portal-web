@@ -69,7 +69,7 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-const DEFAULT_SITE_FOOTER = "www.canalibertario.com";
+const DEFAULT_SITE_FOOTER = "";
 
 export default function EditorFromImagePage() {
   const [form, setForm] = useState<FormState>({

@@ -328,7 +328,7 @@ export default function ImageEditorFullPage() {
         if (token) fd.append("accessToken", token);
       }
 
-      const safeFooter = footer.trim() || "www.canalibertario.com";
+      const safeFooter = footer.trim() || null;
 
       const brandConfig = {
         brandName: "CANALIBERTARIO",
@@ -502,7 +502,7 @@ export default function ImageEditorFullPage() {
                     }}
                   >
                     <span className="font-semibold text-slate-200">
-                      {footer.trim() || "www.canalibertario.com"}
+                      {footer.trim() || null}
                     </span>
                     <div className="flex items-center gap-4 text-slate-100">
                       <span className="text-sm font-extrabold">
@@ -783,7 +783,7 @@ export default function ImageEditorFullPage() {
               </div>
               <div>
                 <b>Firma:</b>{" "}
-                {(footer || "www.canalibertario.com") +
+                {(footer || null) +
                   " + X / Facebook / Instagram"}
               </div>
               <div>

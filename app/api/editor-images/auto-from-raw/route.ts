@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     const title = body.title ?? "";
     const subtitle = body.subtitle ?? "";
     // 👉 default igual que en el editor de imágenes
-    const footer = body.footer ?? "www.canalibertario.com";
+    const footer = body.footer ?? null;
 
     // Si no viene keyword explícita, derivamos una del título
     const keyword = (body.keyword ?? deriveKeyword(title)) || undefined;
