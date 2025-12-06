@@ -1,3 +1,4 @@
+// app/admin/image-editor-embed/page.tsx
 // app/admin/image-editor/page.tsx
 "use client";
 
@@ -116,7 +117,8 @@ export default function ImageEditorEmbedPage() {
 
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
-  const [footer, setFooter] = useState("www.canalibertario.com");
+  // footer apagado por defecto
+  const [footer, setFooter] = useState("");
   const [alertTag, setAlertTag] = useState<AlertTag>("");
 
   const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
@@ -125,6 +127,15 @@ export default function ImageEditorEmbedPage() {
   const [titleColor, setTitleColor] = useState("#ffffff");
   const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
   const [handleColor, setHandleColor] = useState("#e5e7eb");
+
+  // Cabecera tipo "La Derecha Diario"
+  const [useHeaderStrip, setUseHeaderStrip] = useState(false);
+  const [headerDate, setHeaderDate] = useState("");
+  const [headerLabel, setHeaderLabel] = useState("");
+
+  // Fondo / degradado agrandable
+  const [overlayHeight, setOverlayHeight] = useState(38); // % de alto
+  const [overlayOpacity, setOverlayOpacity] = useState(0.92); // 0–1
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -154,7 +165,7 @@ export default function ImageEditorEmbedPage() {
   const handleEnhance = async () => {
     if (!file) {
       setErrorMsg(
-        "Primero seleccioná una imagen base (subí una o elegí un RAW de la biblioteca)."
+        "Primero seleccioná una imagen base (subí una o elegí un RAW de la biblioteca).",
       );
       return;
     }
@@ -186,22 +197,37 @@ export default function ImageEditorEmbedPage() {
         socialIcons: ["x", "facebook", "instagram"] as const,
       };
 
+      // mapeamos fecha + texto extra al footerLabel/footerDate para el renderer
+      const footerLabel = useHeaderStrip ? headerLabel.trim() || null : null;
+      const footerDate = useHeaderStrip ? headerDate.trim() || null : null;
+
       const optionsJson = {
         title: title.trim() || null,
         subtitle: subtitle.trim() || null,
         footer: safeFooter,
+        footerLabel,
+        footerDate,
         brand: brandConfig,
         alertTag: alertTag || null,
         useSocialIcons: true,
         layout: {
           textPosition,
+          overlayHeightPct: overlayHeight,
+          overlayOpacity,
+          headerStrip: useHeaderStrip
+            ? {
+                date: headerDate.trim() || null,
+                label: headerLabel.trim() || null,
+              }
+            : null,
         },
         colors: {
           theme,
           bottomBar: "rgba(0,0,0,0.85)",
           title: titleColor,
           subtitle: subtitleColor,
-          handle: handleColor,
+          // color del handle se manda como "footer" para el backend
+          footer: handleColor,
         },
       };
 
@@ -215,7 +241,7 @@ export default function ImageEditorEmbedPage() {
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(
-          text || `Error HTTP ${res.status} al procesar la imagen`
+          text || `Error HTTP ${res.status} al procesar la imagen`,
         );
       }
 
@@ -225,7 +251,7 @@ export default function ImageEditorEmbedPage() {
         setResultUrl(data.enhancedImageUrl);
         setSuccessMsg(
           data.message ??
-          "Imagen procesada correctamente. Se generó una portada (cover) lista para usar."
+            "Imagen procesada correctamente. Se generó una portada (cover) lista para usar.",
         );
         void loadImages();
       } else {
@@ -283,7 +309,7 @@ export default function ImageEditorEmbedPage() {
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(
-          text || `Error HTTP ${res.status} al obtener la lista de imágenes`
+          text || `Error HTTP ${res.status} al obtener la lista de imágenes`,
         );
       }
 
@@ -327,7 +353,8 @@ export default function ImageEditorEmbedPage() {
       (async () => {
         try {
           const res = await fetch(imageUrl);
-          if (!res.ok) throw new Error("No se pudo descargar la imagen inicial.");
+          if (!res.ok)
+            throw new Error("No se pudo descargar la imagen inicial.");
 
           const blob = await res.blob();
           const mime = blob.type || "image/jpeg";
@@ -359,7 +386,8 @@ export default function ImageEditorEmbedPage() {
       setResultUrl(null);
 
       const res = await fetch(img.url);
-      if (!res.ok) throw new Error("No se pudo descargar la imagen seleccionada.");
+      if (!res.ok)
+        throw new Error("No se pudo descargar la imagen seleccionada.");
 
       const blob = await res.blob();
       const mime = blob.type || "image/jpeg";
@@ -401,8 +429,8 @@ export default function ImageEditorEmbedPage() {
       typeFilter === "all"
         ? true
         : typeFilter === "raw"
-          ? imgType === "raw"
-          : imgType === "cover";
+        ? imgType === "raw"
+        : imgType === "cover";
 
     return nameMatch && typeMatch;
   });
@@ -412,7 +440,7 @@ export default function ImageEditorEmbedPage() {
   const startIndex = (currentPage - 1) * PAGE_SIZE;
   const pagedImages = filteredImages.slice(
     startIndex,
-    startIndex + PAGE_SIZE
+    startIndex + PAGE_SIZE,
   );
 
   function themeLabel(value: CoverTheme): string {
@@ -428,7 +456,7 @@ export default function ImageEditorEmbedPage() {
     }
   }
 
-  // URL principal para la vista previa: primero la portada procesada, si no, la imagen base
+  // URL principal para la vista previa: portada procesada o, si no, la base
   const mainPreviewUrl = resultUrl || previewUrl;
 
   return (
@@ -447,7 +475,9 @@ export default function ImageEditorEmbedPage() {
             </h1>
             <p className="max-w-2xl text-sm text-slate-300">
               Subí una imagen o elegí una RAW de la biblioteca. Después definí
-              el título, la bajada, la etiqueta y la firma CANALIBERTARIO.
+              el título, la bajada, la etiqueta y la firma CANALIBERTARIO. La
+              salida es una cover horizontal 1280×720 pensada para X/Twitter,
+              Facebook e Instagram (post clásico).
             </p>
           </header>
 
@@ -515,6 +545,48 @@ export default function ImageEditorEmbedPage() {
                   </select>
                 </div>
 
+                <div className="space-y-2 rounded-lg border border-slate-800/70 bg-slate-900/60 p-2">
+                  <label className="flex items-center gap-2 text-[11px] text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={useHeaderStrip}
+                      onChange={(e) => setUseHeaderStrip(e.target.checked)}
+                      className="h-3 w-3 rounded border-slate-600 bg-slate-900"
+                    />
+                    Mostrar franja superior (fecha / contexto)
+                  </label>
+
+                  {useHeaderStrip && (
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-slate-300">
+                          Fecha / momento
+                        </label>
+                        <input
+                          type="text"
+                          value={headerDate}
+                          onChange={(e) => setHeaderDate(e.target.value)}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                          placeholder="Ej: 05 de diciembre 2025 · 04:30 PM"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-slate-300">
+                          Texto extra (opcional)
+                        </label>
+                        <input
+                          type="text"
+                          value={headerLabel}
+                          onChange={(e) => setHeaderLabel(e.target.value)}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                          placeholder="Ej: Cobertura especial · Elecciones Honduras"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="space-y-1">
                   <label className="text-[11px] text-slate-300">
                     Sitio del canal
@@ -524,7 +596,7 @@ export default function ImageEditorEmbedPage() {
                     value={footer}
                     onChange={(e) => setFooter(e.target.value)}
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                    /* placeholder="www.canalibertario.com" */
+                    placeholder="www.canalibertario.com (opcional)"
                   />
                 </div>
 
@@ -550,21 +622,67 @@ export default function ImageEditorEmbedPage() {
                     Tema de color de la barra
                   </label>
                   <div className="flex flex-wrap gap-2 text-[11px]">
-                    {(["purple", "sunset", "wine"] as CoverTheme[]).map(
-                      (t) => (
-                        <button
-                          key={t}
-                          type="button"
-                          onClick={() => setTheme(t)}
-                          className={`rounded-full border px-3 py-1 font-semibold ${theme === t
-                              ? "border-sky-400 bg-sky-500/10 text-sky-200"
-                              : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400 hover:bg-slate-800"
-                            }`}
-                        >
-                          {themeLabel(t)}
-                        </button>
-                      )
-                    )}
+                    {(["purple", "sunset", "wine"] as CoverTheme[]).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setTheme(t)}
+                        className={`rounded-full border px-3 py-1 font-semibold ${
+                          theme === t
+                            ? "border-sky-400 bg-sky-500/10 text-sky-200"
+                            : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400 hover:bg-slate-800"
+                        }`}
+                      >
+                        {themeLabel(t)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Controles de fondo / degradado */}
+                <div className="mt-2 grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-slate-300">
+                      Altura del fondo (barra)
+                    </label>
+                    <input
+                      type="range"
+                      min={25}
+                      max={60}
+                      value={overlayHeight}
+                      onChange={(e) =>
+                        setOverlayHeight(Number(e.target.value) || 25)
+                      }
+                      className="w-full"
+                    />
+                    <div className="text-[10px] text-slate-400">
+                      {overlayHeight}% de la altura de la imagen.
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-slate-300">
+                      Opacidad del fondo
+                    </label>
+                    <input
+                      type="range"
+                      min={40}
+                      max={100}
+                      value={Math.round(overlayOpacity * 100)}
+                      onChange={(e) =>
+                        setOverlayOpacity(
+                          Math.max(
+                            0.4,
+                            Math.min(1, Number(e.target.value) / 100),
+                          ),
+                        )
+                      }
+                      className="w-full"
+                    />
+                    <div className="text-[10px] text-slate-400">
+                      {Math.round(overlayOpacity * 100)}% — tipo “glass”:
+                      desde semi-transparente hasta casi sólido.
+                    </div>
                   </div>
                 </div>
 
@@ -625,8 +743,16 @@ export default function ImageEditorEmbedPage() {
                     <b>Etiqueta:</b> {alertTag || "(sin)"}{" "}
                   </div>
                   <div>
+                    <b>Cabecera:</b>{" "}
+                    {useHeaderStrip
+                      ? `${headerDate || "—"} · ${
+                          headerLabel || "sin texto extra"
+                        }`
+                      : "desactivada"}
+                  </div>
+                  <div>
                     <b>Firma:</b>{" "}
-                    {(footer || null) +
+                    {(footer || "(sin sitio)") +
                       " + X / Facebook / Instagram"}
                   </div>
                   <div>
@@ -634,11 +760,15 @@ export default function ImageEditorEmbedPage() {
                     {textPosition === "bottom"
                       ? "Inferior"
                       : textPosition === "middle"
-                        ? "Centro"
-                        : "Superior"}
+                      ? "Centro"
+                      : "Superior"}
                   </div>
                   <div>
                     <b>Tema de color:</b> {themeLabel(theme)}
+                  </div>
+                  <div>
+                    <b>Fondo:</b> altura {overlayHeight}% · opacidad{" "}
+                    {Math.round(overlayOpacity * 100)}%
                   </div>
                 </div>
               </div>
@@ -766,10 +896,11 @@ export default function ImageEditorEmbedPage() {
                       </span>
 
                       <span
-                        className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${imgType === "raw"
+                        className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${
+                          imgType === "raw"
                             ? "border border-amber-400/70 bg-amber-500/10 text-amber-200"
                             : "border border-sky-400/70 bg-sky-500/10 text-sky-200"
-                          }`}
+                        }`}
                       >
                         {imgType === "raw" ? "RAW" : "COVER"}
                       </span>
@@ -803,7 +934,9 @@ export default function ImageEditorEmbedPage() {
                             try {
                               await navigator.clipboard.writeText(img.url);
                               alert("URL copiada al portapapeles");
-                            } catch { }
+                            } catch {
+                              // ignore
+                            }
                           }}
                           className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
                         >
