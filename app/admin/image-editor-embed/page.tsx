@@ -201,7 +201,8 @@ export default function ImageEditorEmbedPage() {
           bottomBar: "rgba(0,0,0,0.85)",
           title: titleColor,
           subtitle: subtitleColor,
-          handle: handleColor,
+          // 🔹 acá el cambio: el backend espera "footer" para el color del handle
+          footer: handleColor,
         },
       };
 
@@ -327,7 +328,8 @@ export default function ImageEditorEmbedPage() {
       (async () => {
         try {
           const res = await fetch(imageUrl);
-          if (!res.ok) throw new Error("No se pudo descargar la imagen inicial.");
+          if (!res.ok)
+            throw new Error("No se pudo descargar la imagen inicial.");
 
           const blob = await res.blob();
           const mime = blob.type || "image/jpeg";
@@ -448,8 +450,8 @@ export default function ImageEditorEmbedPage() {
             </h1>
             <p className="max-w-2xl text-sm text-slate-300">
               Subí una imagen o elegí una RAW de la biblioteca. Después definí
-              el título, la bajada, la etiqueta y la firma CANALIBERTARIO.
-              La salida es una cover horizontal 1280×720 pensada para X/Twitter,
+              el título, la bajada, la etiqueta y la firma CANALIBERTARIO. La
+              salida es una cover horizontal 1280×720 pensada para X/Twitter,
               Facebook e Instagram (post clásico).
             </p>
           </header>
