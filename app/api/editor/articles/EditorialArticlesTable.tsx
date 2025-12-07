@@ -299,9 +299,7 @@ export default function EditorialArticlesTable() {
                         articleId={a.id}
                         title={a.title}
                         summary={a.summary ?? undefined}
-                        coverImageUrl={
-                          a.coverImageUrl ?? a.imageUrl ?? undefined
-                        }
+                        coverImageUrl={a.coverImageUrl ?? a.imageUrl ?? undefined}
                         disabled={a.status !== "published"}
                       />
                     </td>
