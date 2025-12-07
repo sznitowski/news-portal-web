@@ -6,6 +6,7 @@ import {
   useState,
   ClipboardEvent,
   ChangeEvent,
+  useEffect,
 } from "react";
 
 import { publishArticleToFacebook } from "../../lib/facebook";
@@ -69,6 +70,30 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+// 🔹 Formatear publishedAt para usarlo como footer/fecha en la portada
+function formatPublishedAtForFooter(
+  iso: string | undefined | null,
+): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  try {
+    const datePart = d.toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+    const timePart = d.toLocaleTimeString("es-AR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    return `${datePart} · ${timePart}`;
+  } catch {
+    return iso;
+  }
+}
+
 const DEFAULT_SITE_FOOTER = "";
 
 export default function EditorFromImagePage() {
@@ -91,6 +116,7 @@ export default function EditorFromImagePage() {
   const [imageLoading, setImageLoading] = useState(false);
 
   const [showEditor, setShowEditor] = useState(true);
+  const [showEditorModal, setShowEditorModal] = useState(false);
 
   // datos que le mandamos al editor de portadas
   const [editorSyncData, setEditorSyncData] = useState<EditorSyncData>({});
@@ -99,6 +125,38 @@ export default function EditorFromImagePage() {
   // 🔹 Nuevo: flag para publicar en Facebook al crear
   const [publishToFacebook, setPublishToFacebook] = useState(true);
   const [fbErrorMsg, setFbErrorMsg] = useState<string | null>(null);
+
+  // 🔹 Escuchar mensajes del iframe (URL copiada)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handler = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || typeof data !== "object") return;
+
+      if (data.type === "editor-image-url" && typeof data.url === "string") {
+        setForm((prev) => ({
+          ...prev,
+          imageUrl: data.url,
+        }));
+      }
+    };
+
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  // 🔹 Cuando cambia la fecha publicada, actualizar footer del editor
+  useEffect(() => {
+    const footerFromDate = formatPublishedAtForFooter(form.publishedAt);
+    if (!footerFromDate) return;
+
+    setEditorSyncData((prev) => ({
+      ...prev,
+      footer: footerFromDate,
+    }));
+    setEditorReloadTick((t) => t + 1);
+  }, [form.publishedAt]);
 
   const handleChange = (
     e: ChangeEvent<
@@ -247,14 +305,41 @@ export default function EditorFromImagePage() {
             }
           }
 
-          coverFd.append(
-            "optionsJson",
-            JSON.stringify({
-              title: autoTitle ?? null,
-              subtitle: autoSummary ?? null,
-              footer: DEFAULT_SITE_FOOTER,
-            }),
-          );
+          const brandConfig = {
+            brandName: "CANALIBERTARIO",
+            claim:
+              "NOTICIAS Y ANÁLISIS ECONÓMICOS Y POLÍTICOS DESDE UNA MIRADA LIBERTARIA",
+            useHeaderWordmark: true,
+            siteUrl: DEFAULT_SITE_FOOTER || null,
+            socialHandle: "@canalibertario",
+            socialIcons: ["x", "facebook", "instagram"] as const,
+          };
+
+          const optionsJson = {
+            title: autoTitle ?? null,
+            subtitle: autoSummary ?? null,
+            footer: DEFAULT_SITE_FOOTER || null,
+            footerLabel: null,
+            footerDate: null,
+            brand: brandConfig,
+            alertTag: null,
+            useSocialIcons: true,
+            layout: {
+              textPosition: "bottom" as const,
+              overlayHeightPct: 38,
+              overlayOpacity: 0.92,
+              headerStrip: null,
+            },
+            colors: {
+              theme: "purple" as const,
+              bottomBar: "rgba(0,0,0,0.85)",
+              title: "#ffffff",
+              subtitle: "#e5e7eb",
+              footer: "#e5e7eb", // color del handle
+            },
+          };
+
+          coverFd.append("optionsJson", JSON.stringify(optionsJson));
 
           const coverRes = await fetch("/api/editor-images/enhance", {
             method: "POST",
@@ -262,8 +347,7 @@ export default function EditorFromImagePage() {
           });
 
           if (coverRes.ok) {
-            const coverData =
-              (await coverRes.json()) as EnhanceResponse;
+            const coverData = (await coverRes.json()) as EnhanceResponse;
             if (coverData.enhancedImageUrl) {
               autoImage = coverData.enhancedImageUrl;
             }
@@ -285,9 +369,7 @@ export default function EditorFromImagePage() {
       //    - Si es screenshot => NO la mandamos al editor
       //    - Si es cover/RAW => sí
       const editorImageForSync =
-        autoImage && !isScreenshotUrl(autoImage)
-          ? autoImage
-          : undefined;
+        autoImage && !isScreenshotUrl(autoImage) ? autoImage : undefined;
 
       // 3) Actualizar el formulario con lo generado (incluida la portada)
       setForm((prev) => {
@@ -306,11 +388,14 @@ export default function EditorFromImagePage() {
       });
 
       // 4) Sincronizar con el editor de la derecha
+      const footerFromDate =
+        formatPublishedAtForFooter(form.publishedAt) || DEFAULT_SITE_FOOTER;
+
       setEditorSyncData({
         title: autoTitle,
         subtitle: autoSummary,
         imageUrl: editorImageForSync,
-        footer: DEFAULT_SITE_FOOTER,
+        footer: footerFromDate,
       });
       setEditorReloadTick((t) => t + 1);
 
@@ -457,7 +542,8 @@ export default function EditorFromImagePage() {
   return (
     <main className="mx-auto w-full py-10">
       <div className="relative overflow-hidden rounded-3xl border border-zinc-800/90 bg-zinc-950/95 text-zinc-50 shadow-[0_40px_90px_rgba(0,0,0,0.8)]">
-        <div className="relative z-10 grid gap-8 p-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] md:p-8 lg:p-10">
+        {/* 🔹 Cambio: la columna derecha (editor) ahora es más grande */}
+        <div className="relative z-10 grid gap-8 p-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.9fr)] md:p-8 lg:p-10">
           {/* Columna izquierda: captura + formulario */}
           <div className="space-y-6">
             <header className="space-y-3">
@@ -606,7 +692,8 @@ export default function EditorFromImagePage() {
                 <small className="mt-1 block text-[11px] text-zinc-400">
                   Copiá la URL de la portada generada en el editor de
                   imágenes y pegala acá (o usá el botón si ya está en el
-                  portapapeles).
+                  portapapeles). Si la copiás desde el editor, se completa
+                  automáticamente.
                 </small>
               </div>
 
@@ -697,7 +784,7 @@ export default function EditorFromImagePage() {
                 </div>
               </div>
 
-              {/* 🔹 Bloque nuevo: publicación en Facebook al crear */}
+              {/* Publicación en redes */}
               <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/80 p-3">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
                   Publicación en redes
@@ -740,7 +827,8 @@ export default function EditorFromImagePage() {
                 />
                 <small className="mt-1 block text-[11px] text-zinc-400">
                   Formato: 2025-11-15T12:00:00Z (después lo cambiamos por un
-                  datepicker).
+                  datepicker). Esta fecha también se muestra en el footer
+                  de la portada.
                 </small>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-300">
                   <span>Atajos rápidos:</span>
@@ -796,7 +884,7 @@ export default function EditorFromImagePage() {
             </form>
           </div>
 
-          {/* Columna derecha: editor de portadas embebido */}
+          {/* Columna derecha: editor de portadas embebido (más grande) */}
           <aside className="space-y-3 rounded-2xl border border-zinc-700/80 bg-zinc-900/90 p-4 md:p-5">
             <div className="flex items-center justify-between gap-2">
               <div>
@@ -808,13 +896,22 @@ export default function EditorFromImagePage() {
                   a partir de la captura o cualquier otra foto.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowEditor((v) => !v)}
-                className="rounded-full border border-zinc-600 bg-zinc-800 px-3 py-1 text-[11px] font-semibold text-zinc-100 hover:border-purple-300/70"
-              >
-                {showEditor ? "Ocultar editor" : "Mostrar editor"}
-              </button>
+              <div className="flex flex-col items-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditor((v) => !v)}
+                  className="rounded-full border border-zinc-600 bg-zinc-800 px-3 py-1 text-[11px] font-semibold text-zinc-100 hover:border-purple-300/70"
+                >
+                  {showEditor ? "Ocultar editor" : "Mostrar editor"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEditorModal(true)}
+                  className="rounded-full border border-purple-400/70 bg-purple-500/15 px-3 py-1 text-[11px] font-semibold text-purple-100 hover:bg-purple-500/25"
+                >
+                  Ver grande (modal)
+                </button>
+              </div>
             </div>
 
             <p className="text-[11px] text-zinc-400">
@@ -823,7 +920,7 @@ export default function EditorFromImagePage() {
               relacionada (Trump, Milei, Caputo, etc.) y generar la portada
               con texto en formato 1280×720 para redes. <br />
               3. Si no te gusta, podés retocar la portada en el editor y
-              reemplazar la URL manualmente.
+              reemplazar la URL manualmente (se pega sola al copiarla).
             </p>
 
             <div className="mt-3 rounded-2xl bg-zinc-950/90 p-3">
@@ -835,13 +932,13 @@ export default function EditorFromImagePage() {
                   rel="noreferrer"
                   className="text-[11px] font-semibold text-purple-300 hover:text-purple-200"
                 >
-                  Abrir editor en pestaña nueva
+                  Abrir en pestaña nueva
                 </a>
               </div>
 
               {showEditor ? (
                 <div className="relative overflow-hidden rounded-[28px] border border-zinc-700 bg-black/80">
-                  <div className="mx-auto w-full max-w-[560px] md:max-w-[640px]">
+                  <div className="mx-auto w-full max-w-[640px]">
                     <div className="aspect-[9/16] overflow-hidden bg-black">
                       <iframe
                         key={editorReloadTick}
@@ -862,6 +959,41 @@ export default function EditorFromImagePage() {
           </aside>
         </div>
       </div>
+
+      {/* 🔹 Modal flotante con el editor en grande */}
+      {showEditorModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+          <div className="relative w-full max-w-5xl rounded-3xl border border-zinc-700 bg-zinc-950 p-4 md:p-6">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-zinc-50">
+                  Editor de portadas · vista grande
+                </h2>
+                <p className="text-[11px] text-zinc-400">
+                  Ajustá la portada en grande. Cuando copies la URL desde el
+                  editor, se completa sola en el campo de portada.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditorModal(false)}
+                className="rounded-full border border-zinc-600 bg-zinc-800 px-3 py-1 text-[11px] font-semibold text-zinc-100 hover:border-red-400/80 hover:text-red-200"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div className="aspect-[16/9] w-full overflow-hidden rounded-2xl border border-zinc-700 bg-black">
+              <iframe
+                key={editorReloadTick + 1000}
+                src={editorIframeSrc}
+                className="h-full w-full border-0"
+                title="Editor de portadas grande"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

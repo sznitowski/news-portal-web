@@ -1,5 +1,5 @@
-// app/admin/image-editor-embed/page.tsx
 // app/admin/image-editor/page.tsx
+// app/admin/image-editor-embed/page.tsx
 "use client";
 
 import { useState, useEffect, ChangeEvent } from "react";
@@ -108,6 +108,19 @@ function ColorSwatches({
   );
 }
 
+// pequeño helper para el degradado de la barra según tema
+function getOverlayGradient(theme: CoverTheme): string {
+  switch (theme) {
+    case "sunset":
+      return "linear-gradient(135deg, rgba(248,113,113,1) 0%, rgba(249,115,22,1) 40%, rgba(30,64,175,1) 100%)";
+    case "wine":
+      return "linear-gradient(135deg, rgba(76,29,149,1) 0%, rgba(136,19,55,1) 45%, rgba(15,23,42,1) 100%)";
+    case "purple":
+    default:
+      return "linear-gradient(135deg, rgba(147,51,234,1) 0%, rgba(59,130,246,1) 40%, rgba(15,23,42,1) 100%)";
+  }
+}
+
 export default function ImageEditorEmbedPage() {
   const searchParams = useSearchParams();
 
@@ -122,6 +135,8 @@ export default function ImageEditorEmbedPage() {
   const [alertTag, setAlertTag] = useState<AlertTag>("");
 
   const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
+  // nuevo: ajuste fino vertical extra
+  const [textOffsetPct, setTextOffsetPct] = useState(0);
   const [theme, setTheme] = useState<CoverTheme>("purple");
 
   const [titleColor, setTitleColor] = useState("#ffffff");
@@ -149,7 +164,8 @@ export default function ImageEditorEmbedPage() {
   const [typeFilter, setTypeFilter] = useState<"all" | "raw" | "cover">("all");
   const [page, setPage] = useState(1);
 
-  const [initializedFromQuery, setInitializedFromQuery] = useState(false);
+  const [initializedFromQuery, setInitializedFromQuery] =
+    useState(false);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -212,6 +228,7 @@ export default function ImageEditorEmbedPage() {
         useSocialIcons: true,
         layout: {
           textPosition,
+          textOffsetPct, // nuevo campo para el renderer
           overlayHeightPct: overlayHeight,
           overlayOpacity,
           headerStrip: useHeaderStrip
@@ -458,6 +475,19 @@ export default function ImageEditorEmbedPage() {
 
   // URL principal para la vista previa: portada procesada o, si no, la base
   const mainPreviewUrl = resultUrl || previewUrl;
+  const hasBaseImage = !!mainPreviewUrl;
+
+  // clases para posición vertical del bloque de texto
+  const textPositionClass =
+    textPosition === "top"
+      ? "top-0 justify-start"
+      : textPosition === "middle"
+      ? "top-1/2 -translate-y-1/2 justify-center"
+      : "bottom-0 justify-end";
+
+  // líneas del título para respetar saltos de línea
+  const displayTitle = title || "Título de la portada";
+  const titleLines = displayTitle.split(/\r?\n/);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 md:py-8">
@@ -503,17 +533,22 @@ export default function ImageEditorEmbedPage() {
                   Textos de la portada
                 </div>
 
+                {/* TÍTULO CON SALTOS DE LÍNEA */}
                 <div className="space-y-1">
                   <label className="text-[11px] text-slate-300">
                     Título principal
                   </label>
-                  <input
-                    type="text"
+                  <textarea
+                    rows={2}
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
                     placeholder="Ej: Milei anuncia medidas"
                   />
+                  <p className="text-[10px] text-slate-400">
+                    Podés usar <strong>Enter</strong> para forzar saltos de
+                    línea en la portada.
+                  </p>
                 </div>
 
                 <div className="space-y-1">
@@ -617,6 +652,26 @@ export default function ImageEditorEmbedPage() {
                   </select>
                 </div>
 
+                {/* NUEVO: ajuste fino vertical del bloque de texto */}
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-300">
+                    Ajuste fino vertical del texto
+                  </label>
+                  <input
+                    type="range"
+                    min={-20}
+                    max={20}
+                    value={textOffsetPct}
+                    onChange={(e) =>
+                      setTextOffsetPct(Number(e.target.value) || 0)
+                    }
+                    className="w-full"
+                  />
+                  <div className="text-[10px] text-slate-400">
+                    {textOffsetPct}% (negativo sube, positivo baja).
+                  </div>
+                </div>
+
                 <div className="space-y-1">
                   <label className="text-[11px] text-slate-300">
                     Tema de color de la barra
@@ -712,14 +767,125 @@ export default function ImageEditorEmbedPage() {
                 2. Vista previa
               </div>
 
-              <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-3">
-                {mainPreviewUrl ? (
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3">
+                {hasBaseImage ? (
                   <div className="space-y-3">
-                    <img
-                      src={mainPreviewUrl}
-                      alt="Preview portada"
-                      className="max-h-64 w-full rounded-lg border border-slate-800 object-cover"
-                    />
+                    {/* Vista previa “en vivo”: overlay aprox. de lo que hará el backend */}
+                    <div className="relative mx-auto w-full max-w-2xl overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+                      <div className="relative aspect-video w-full">
+                        {mainPreviewUrl && (
+                          <img
+                            src={mainPreviewUrl}
+                            alt="Preview portada"
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+
+                        {/* Franja superior (header strip) */}
+                        {useHeaderStrip && (
+                          <div
+                            className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-6 py-2 text-[11px] font-semibold uppercase tracking-[0.16em]"
+                            style={{
+                              background:
+                                "linear-gradient(to right, rgba(15,23,42,0.96), rgba(15,23,42,0.9))",
+                            }}
+                          >
+                            <span className="text-slate-200">
+                              {headerDate || "Fecha no definida"}
+                            </span>
+                            <span className="text-slate-300">
+                              {headerLabel || "Cobertura especial"}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Overlay principal */}
+                        {hasBaseImage && (
+                          <div
+                            className={`pointer-events-none absolute inset-x-0 z-10 flex px-8 pb-6 pt-6 ${textPositionClass}`}
+                            style={{
+                              height: "100%",
+                              transform:
+                                textOffsetPct !== 0
+                                  ? `translateY(${textOffsetPct}%)`
+                                  : undefined,
+                            }}
+                          >
+                            <div
+                              className="relative w-full rounded-[26px] border border-slate-900/70 px-7 py-5"
+                              style={{
+                                backgroundImage: getOverlayGradient(theme),
+                                opacity: overlayOpacity,
+                                height: `${overlayHeight}%`,
+                                alignSelf:
+                                  textPosition === "top"
+                                    ? "flex-start"
+                                    : textPosition === "middle"
+                                    ? "center"
+                                    : "flex-end",
+                                boxShadow:
+                                  "0 26px 80px rgba(15,23,42,0.95)",
+                              }}
+                            >
+                              <div className="flex h-full flex-col justify-between">
+                                <div className="space-y-1">
+                                  {alertTag && (
+                                    <div
+                                      className="inline-flex items-center rounded-full bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]"
+                                      style={{ color: titleColor }}
+                                    >
+                                      {alertTag}
+                                    </div>
+                                  )}
+                                  <h2
+                                    className="text-lg font-semibold leading-tight md:text-xl lg:text-2xl"
+                                    style={{ color: titleColor }}
+                                  >
+                                    {titleLines.map((line, idx) => (
+                                      <span
+                                        key={idx}
+                                        className={idx > 0 ? "block" : ""}
+                                      >
+                                        {line}
+                                      </span>
+                                    ))}
+                                  </h2>
+                                  {subtitle && (
+                                    <p
+                                      className="mt-1 text-[12px] leading-snug md:text-[13px]"
+                                      style={{ color: subtitleColor }}
+                                    >
+                                      {subtitle}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="mt-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.18em]">
+                                  <span
+                                    className="text-xs"
+                                    style={{ color: handleColor }}
+                                  >
+                                    @canallibertario
+                                  </span>
+                                  <span className="flex items-center gap-2 text-[10px] text-slate-100">
+                                    {footer && (
+                                      <span className="hidden md:inline">
+                                        {footer}
+                                      </span>
+                                    )}
+                                    <span className="flex items-center gap-1 opacity-90">
+                                      <span>𝕏</span>
+                                      <span>f</span>
+                                      <span>◎</span>
+                                    </span>
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <p className="text-xs text-slate-300">
@@ -734,7 +900,19 @@ export default function ImageEditorEmbedPage() {
                 </div>
                 <div className="space-y-1 text-slate-300">
                   <div>
-                    <b>Título:</b> {title || "—"}
+                    <b>Título:</b>{" "}
+                    {title ? (
+                      <>
+                        {titleLines.map((l, i) => (
+                          <span key={i}>
+                            {i > 0 && <br />}
+                            {l}
+                          </span>
+                        ))}
+                      </>
+                    ) : (
+                      "—"
+                    )}
                   </div>
                   <div>
                     <b>Bajada:</b> {subtitle || "—"}
@@ -762,6 +940,9 @@ export default function ImageEditorEmbedPage() {
                       : textPosition === "middle"
                       ? "Centro"
                       : "Superior"}
+                    {textOffsetPct !== 0
+                      ? ` · offset ${textOffsetPct}%`
+                      : ""}
                   </div>
                   <div>
                     <b>Tema de color:</b> {themeLabel(theme)}
@@ -799,7 +980,7 @@ export default function ImageEditorEmbedPage() {
                   <img
                     src={resultUrl}
                     alt="Imagen mejorada"
-                    className="max-h-64 w-full rounded-lg border border-emerald-500/70 object-cover"
+                    className="max-h-72 w-full rounded-lg border border-emerald-500/70 object-cover"
                   />
                 </div>
               )}

@@ -41,6 +41,8 @@ const BRAND_COLORS = ["#ffffff", "#22c55e", "#0ea5e9", "#f97316", "#ef4444"];
 
 const DEFAULT_BLOCK_HEIGHT = 130;
 const FOOTER_HEIGHT = 46;
+// alto “lógico” del área 16:9 del preview (coincide con el cálculo que ya usabas)
+const PREVIEW_HEIGHT = 360;
 
 function themeLabel(value: CoverTheme): string {
   switch (value) {
@@ -99,6 +101,11 @@ export default function ImageEditorFullPage() {
   const [footer, setFooter] = useState("www.canalibertario.com");
   const [alertTag, setAlertTag] = useState<AlertTag>("");
 
+  // Franja superior (fecha / contexto)
+  const [showHeaderStrip, setShowHeaderStrip] = useState(false);
+  const [headerDate, setHeaderDate] = useState("");
+  const [headerLabel, setHeaderLabel] = useState("");
+
   // Colores
   const [titleColor, setTitleColor] = useState("#ffffff");
   const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
@@ -117,7 +124,11 @@ export default function ImageEditorFullPage() {
   const [initialBlockTop, setInitialBlockTop] = useState(260);
   const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
 
-  // Offsets internos para título y bajada
+  // Opacidad del fondo (0.4 – 1)
+  const [overlayOpacity, setOverlayOpacity] = useState(0.92);
+
+  // Offsets internos para título y bajada (solo afectan el preview, el backend
+  // sigue centrado “lógico”)
   const [titleOffsetX, setTitleOffsetX] = useState(40);
   const [titleOffsetY, setTitleOffsetY] = useState(30);
   const [subtitleOffsetX, setSubtitleOffsetX] = useState(40);
@@ -141,18 +152,31 @@ export default function ImageEditorFullPage() {
     const initialSubtitle = searchParams.get("subtitle") ?? "";
     const initialFooter =
       searchParams.get("footer") ?? "www.canalibertario.com";
-    const initialAlert = (searchParams.get("alertTag") as AlertTag | null) ?? "";
+    const initialAlert =
+      (searchParams.get("alertTag") as AlertTag | null) ?? "";
     const qpTheme = searchParams.get("theme") as CoverTheme | null;
+
+    // opcionales para franja superior si algún día los pasás por query
+    const qpHeaderEnabled = searchParams.get("headerEnabled") === "1";
+    const qpHeaderDate = searchParams.get("headerDate") ?? "";
+    const qpHeaderLabel = searchParams.get("headerLabel") ?? "";
 
     setTitle(initialTitle);
     setSubtitle(initialSubtitle);
     setFooter(initialFooter);
     setAlertTag(initialAlert);
+
+    setShowHeaderStrip(qpHeaderEnabled);
+    if (qpHeaderDate) setHeaderDate(qpHeaderDate);
+    if (qpHeaderLabel) setHeaderLabel(qpHeaderLabel);
+
     if (qpTheme === "purple" || qpTheme === "sunset" || qpTheme === "wine") {
       setTheme(qpTheme);
     }
 
-    const textPosParam = searchParams.get("textPosition") as TextPosition | null;
+    const textPosParam = searchParams.get(
+      "textPosition",
+    ) as TextPosition | null;
 
     let pos: TextPosition = "bottom";
     let startTop = 260;
@@ -199,7 +223,7 @@ export default function ImageEditorFullPage() {
       } catch (err: any) {
         console.error("[editor-full] error al cargar imagen inicial:", err);
         setErrorMsg(
-          err?.message ?? "No se pudo cargar la imagen inicial para editar."
+          err?.message ?? "No se pudo cargar la imagen inicial para editar.",
         );
       } finally {
         setLoadingImage(false);
@@ -252,7 +276,7 @@ export default function ImageEditorFullPage() {
       switch (drag.target) {
         case "block": {
           const minTop = 40;
-          const maxTop = 360 - drag.blockHeight; // 360px aprox parte visible útil
+          const maxTop = PREVIEW_HEIGHT - drag.blockHeight; // 360px aprox parte visible útil
           const newTop = drag.blockTop + dy;
           setBlockTop(Math.min(maxTop, Math.max(minTop, newTop)));
           break;
@@ -310,7 +334,7 @@ export default function ImageEditorFullPage() {
   const handleGenerate = async () => {
     if (!file) {
       setErrorMsg(
-        "Primero seleccioná una imagen base (o asegurate que se haya cargado la del artículo)."
+        "Primero seleccioná una imagen base (o asegurate que se haya cargado la del artículo).",
       );
       return;
     }
@@ -340,12 +364,24 @@ export default function ImageEditorFullPage() {
         socialIcons: ["x", "facebook", "instagram"] as const,
       };
 
+      // porcentaje real de altura del fondo respecto a la imagen final
+      const overlayHeightPct = Math.round(
+        (blockHeight / PREVIEW_HEIGHT) * 100,
+      );
+
       const layout = {
         textPosition,
-        textOffsetY: blockTop - initialBlockTop,
-        blockHeightPx: blockHeight,
+        textOffsetY: blockTop - initialBlockTop, // mismo criterio que antes
         titleFontPx: titleSize,
         subtitleFontPx: subtitleSize,
+        overlayHeightPct,
+        overlayOpacity,
+        headerStrip: showHeaderStrip
+          ? {
+              date: headerDate || null,
+              label: headerLabel || null,
+            }
+          : null,
       };
 
       const colors = {
@@ -375,16 +411,50 @@ export default function ImageEditorFullPage() {
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        throw new Error(
-          text || `Error HTTP ${res.status} al generar la portada`
-        );
+        throw new Error(text || `Error HTTP ${res.status} al generar la portada`);
       }
 
       const data = await res.json().catch(() => null);
+      const coverUrl: string | null =
+        data?.enhancedImageUrl ?? data?.url ?? null;
+
       setStatusMsg(
         data?.message ??
-          "Imagen procesada correctamente. Se generó una portada (cover) lista para usar."
+          "Imagen procesada correctamente. Se generó una portada (cover) lista para usar.",
       );
+
+      // Copiar al portapapeles
+      if (coverUrl && typeof navigator !== "undefined" && navigator.clipboard) {
+        try {
+          await navigator.clipboard.writeText(coverUrl);
+          setStatusMsg(
+            (prev) =>
+              (prev ?? "") + " La URL de la portada se copió al portapapeles.",
+          );
+        } catch {
+          // ignorar error de clipboard
+        }
+      }
+
+      // Avisar a la ventana que abrió este editor (from-image-ai)
+      if (
+        coverUrl &&
+        typeof window !== "undefined" &&
+        window.opener &&
+        window.location
+      ) {
+        try {
+          window.opener.postMessage(
+            {
+              type: "editor-image-url",
+              url: coverUrl,
+            },
+            window.location.origin,
+          );
+        } catch {
+          // ignorar si el opener no acepta el mensaje
+        }
+      }
     } catch (err: any) {
       console.error("[editor-full] error:", err);
       setErrorMsg(err?.message ?? "Error al generar la portada con IA.");
@@ -394,6 +464,7 @@ export default function ImageEditorFullPage() {
   };
 
   const themeColors = getThemePreviewColors(theme);
+  const overlayHeightPct = Math.round((blockHeight / PREVIEW_HEIGHT) * 100);
 
   // ==========================
   // RENDER
@@ -431,6 +502,28 @@ export default function ImageEditorFullPage() {
                     className="h-full w-full object-cover"
                   />
 
+                  {/* FRANJA SUPERIOR */}
+                  {showHeaderStrip && (headerDate || headerLabel) && (
+                    <div
+                      className="absolute inset-x-0 flex items-center justify-between px-6 text-xs"
+                      style={{
+                        top: 0,
+                        height: 40,
+                        backgroundColor: themeColors.footerBg,
+                        borderBottom: `1px solid ${themeColors.footerBorder}`,
+                      }}
+                    >
+                      <span className="font-semibold text-slate-200">
+                        {headerDate || "Fecha / sitio del canal"}
+                      </span>
+                      {headerLabel && (
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200">
+                          {headerLabel}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {/* BLOQUE DEGRADADO */}
                   <div
                     className="absolute left-0 right-0 cursor-move"
@@ -438,6 +531,7 @@ export default function ImageEditorFullPage() {
                       top: blockTop,
                       height: blockHeight,
                       background: `linear-gradient(to bottom, ${themeColors.bandFrom} 0%, ${themeColors.bandMid} 40%, ${themeColors.bandTo} 100%)`,
+                      opacity: overlayOpacity,
                     }}
                     onMouseDown={(e) => startDrag("block", e)}
                   >
@@ -460,6 +554,8 @@ export default function ImageEditorFullPage() {
                             top: titleOffsetY,
                             fontSize: `${titleSize}px`,
                             color: titleColor,
+                            whiteSpace: "pre-line",
+                            maxWidth: "80%",
                           }}
                           onMouseDown={(e) => startDrag("title", e)}
                         >
@@ -476,6 +572,7 @@ export default function ImageEditorFullPage() {
                             top: subtitleOffsetY,
                             fontSize: `${subtitleSize}px`,
                             color: subtitleColor,
+                            whiteSpace: "pre-line",
                           }}
                           onMouseDown={(e) => startDrag("subtitle", e)}
                         >
@@ -635,10 +732,9 @@ export default function ImageEditorFullPage() {
                 </button>
 
                 <p className="mt-1 text-[10px] text-slate-400">
-                  Tip: arrastrá el bloque degradado directamente sobre la
-                  imagen para moverlo arriba o abajo. El borde inferior del
-                  bloque ajusta la altura. El footer se mantiene fijo al borde
-                  inferior.
+                  Tip: arrastrá el bloque degradado directamente sobre la imagen
+                  para moverlo arriba o abajo. El borde inferior del bloque
+                  ajusta la altura. El footer se mantiene fijo al borde inferior.
                 </p>
               </div>
             </div>
@@ -679,25 +775,63 @@ export default function ImageEditorFullPage() {
               <div className="space-y-1">
                 <label className="text-[11px] text-slate-300">
                   Título principal
+                  <span className="ml-1 text-[10px] text-slate-500">
+                    (Enter agrega salto de línea)
+                  </span>
                 </label>
-                <input
-                  type="text"
+                <textarea
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                  rows={3}
+                  className="w-full resize-y rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
                 />
               </div>
 
               <div className="space-y-1">
                 <label className="text-[11px] text-slate-300">
                   Bajada / descripción
+                  <span className="ml-1 text-[10px] text-slate-500">
+                    (también acepta saltos de línea)
+                  </span>
                 </label>
-                <input
-                  type="text"
+                <textarea
                   value={subtitle}
                   onChange={(e) => setSubtitle(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                  rows={2}
+                  className="w-full resize-y rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
                 />
+              </div>
+
+              {/* Franja superior */}
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={showHeaderStrip}
+                    onChange={(e) => setShowHeaderStrip(e.target.checked)}
+                    className="h-3 w-3 rounded border-slate-600 bg-slate-900"
+                  />
+                  Mostrar franja superior (fecha / contexto)
+                </label>
+
+                {showHeaderStrip && (
+                  <div className="space-y-1">
+                    <input
+                      type="text"
+                      value={headerDate}
+                      onChange={(e) => setHeaderDate(e.target.value)}
+                      placeholder="06/12/2025 - 20:57"
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                    />
+                    <input
+                      type="text"
+                      value={headerLabel}
+                      onChange={(e) => setHeaderLabel(e.target.value)}
+                      placeholder="Ej: ECONOMÍA / POLÍTICA, etc."
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -728,7 +862,7 @@ export default function ImageEditorFullPage() {
                 </select>
               </div>
 
-              {/* SLIDERS TAMAÑO TEXTO */}
+              {/* SLIDERS TAMAÑO TEXTO + FONDO */}
               <div className="mt-3 space-y-3 border-t border-slate-800 pt-3 text-[11px] text-slate-300">
                 <div>
                   <div className="mb-1 flex items-center justify-between">
@@ -761,6 +895,58 @@ export default function ImageEditorFullPage() {
                     className="w-full"
                   />
                 </div>
+
+                {/* Altura del fondo */}
+                <div className="pt-2 border-t border-slate-800">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span>Altura del fondo (barra)</span>
+                    <span className="text-slate-400">
+                      {overlayHeightPct}% altura imagen
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={25}
+                    max={60}
+                    value={overlayHeightPct}
+                    onChange={(e) => {
+                      const pct = Number(e.target.value);
+                      const newHeight = Math.round(
+                        (pct / 100) * PREVIEW_HEIGHT,
+                      );
+                      setBlockHeight(newHeight);
+                    }}
+                    className="w-full"
+                  />
+                  <p className="mt-0.5 text-[10px] text-slate-500">
+                    38% ≈ tipo Derecha Diario; menor sube la barra, mayor cubre
+                    más la imagen.
+                  </p>
+                </div>
+
+                {/* Opacidad del fondo */}
+                <div>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span>Opacidad del fondo</span>
+                    <span className="text-slate-400">
+                      {Math.round(overlayOpacity * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={40}
+                    max={100}
+                    value={Math.round(overlayOpacity * 100)}
+                    onChange={(e) =>
+                      setOverlayOpacity(Number(e.target.value) / 100)
+                    }
+                    className="w-full"
+                  />
+                  <p className="mt-0.5 text-[10px] text-slate-500">
+                    92% ≈ tipo “glass”: desde semi-transparente hasta casi
+                    sólido.
+                  </p>
+                </div>
               </div>
             </div>
           </section>
@@ -782,9 +968,16 @@ export default function ImageEditorFullPage() {
                 <b>Etiqueta:</b> {alertTag || "(sin)"}
               </div>
               <div>
+                <b>Franja superior:</b>{" "}
+                {showHeaderStrip
+                  ? `${headerDate || "sin fecha"} · ${
+                      headerLabel || "sin etiqueta"
+                    }`
+                  : "desactivada"}
+              </div>
+              <div>
                 <b>Firma:</b>{" "}
-                {(footer || null) +
-                  " + X / Facebook / Instagram"}
+                {(footer || null) + " + X / Facebook / Instagram"}
               </div>
               <div>
                 <b>Tema de color:</b> {themeLabel(theme)}
@@ -797,6 +990,10 @@ export default function ImageEditorFullPage() {
               <div>
                 <b>Tipografía (preview):</b> título {titleSize}px · bajada{" "}
                 {subtitleSize}px
+              </div>
+              <div>
+                <b>Fondo:</b> altura {overlayHeightPct}% · opacidad{" "}
+                {Math.round(overlayOpacity * 100)}%
               </div>
             </div>
 
