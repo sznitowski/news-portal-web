@@ -52,22 +52,18 @@ function getAuthHeaders(): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
 
-// 🔹 Helper: detectar si una URL corresponde a una captura (screenshot)
-function isScreenshotUrl(url?: string | null): boolean {
-  if (!url) return false;
-  const lower = url.toLowerCase();
-  return lower.includes("screenshot") || lower.includes("/screenshots/");
-}
-
 // 🔹 Helper: limpiar HTML a texto plano para redes
 function stripHtml(html: string): string {
   if (!html) return "";
-  return html
+  const plain = html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+  // recorte suave para no pasarse del límite de Facebook
+  return plain.slice(0, 4500);
 }
 
 // 🔹 Formatear publishedAt para usarlo como footer/fecha en la portada
@@ -115,6 +111,11 @@ export default function EditorFromImagePage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
 
+  // 🔹 solo para la vista previa local de la captura
+  const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState<
+    string | null
+  >(null);
+
   const [showEditor, setShowEditor] = useState(true);
   const [showEditorModal, setShowEditorModal] = useState(false);
 
@@ -122,9 +123,18 @@ export default function EditorFromImagePage() {
   const [editorSyncData, setEditorSyncData] = useState<EditorSyncData>({});
   const [editorReloadTick, setEditorReloadTick] = useState(0);
 
-  // 🔹 Nuevo: flag para publicar en Facebook al crear
+  // 🔹 flag para publicar en Facebook al crear
   const [publishToFacebook, setPublishToFacebook] = useState(true);
   const [fbErrorMsg, setFbErrorMsg] = useState<string | null>(null);
+
+  // limpiar URL de objeto cuando cambie la captura
+  useEffect(() => {
+    return () => {
+      if (screenshotPreviewUrl) {
+        URL.revokeObjectURL(screenshotPreviewUrl);
+      }
+    };
+  }, [screenshotPreviewUrl]);
 
   // 🔹 Escuchar mensajes del iframe (URL copiada)
   useEffect(() => {
@@ -171,6 +181,12 @@ export default function EditorFromImagePage() {
   };
 
   const handleScreenshotFile = (file: File) => {
+    if (screenshotPreviewUrl) {
+      URL.revokeObjectURL(screenshotPreviewUrl);
+    }
+    const objectUrl = URL.createObjectURL(file);
+    setScreenshotPreviewUrl(objectUrl);
+
     setImageFile(file);
     setErrorMsg(null);
     setSuccessMsg(
@@ -225,7 +241,7 @@ export default function EditorFromImagePage() {
     setImageLoading(true);
 
     try {
-      // 1) Generar nota desde la captura
+      // 1) Generar nota desde la captura (SOLO TEXTO + URL de la captura en el backend)
       const fd = new FormData();
       fd.append("image", imageFile);
       fd.append("formJson", JSON.stringify(form));
@@ -245,170 +261,51 @@ export default function EditorFromImagePage() {
 
       const suggested = await res.json();
 
-      let autoTitle: string | undefined =
+      const autoTitle: string | undefined =
         suggested.title || form.title || undefined;
-      let autoSummary: string | undefined =
+
+      const autoSummary: string | undefined =
         suggested.summary || form.summary || undefined;
-      let autoImage: string | undefined =
-        suggested.imageUrl || form.imageUrl || undefined;
 
-      // 2) Intentar generar automáticamente la portada con texto
-      try {
-        let autoImageFromRaw: string | undefined;
-
-        // primero intentamos con una RAW existente (auto-from-raw)
-        try {
-          const autoRes = await fetch("/api/editor-images/auto-from-raw", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              title: autoTitle ?? "",
-              subtitle: autoSummary ?? "",
-              footer: DEFAULT_SITE_FOOTER,
-            }),
-          });
-
-          if (autoRes.ok) {
-            const autoData = (await autoRes.json()) as {
-              enhancedImageUrl?: string;
-            };
-            if (autoData.enhancedImageUrl) {
-              autoImageFromRaw = autoData.enhancedImageUrl;
-            }
-          } else {
-            console.warn(
-              "[from-image-ai] auto-from-raw devolvió error",
-              autoRes.status,
-            );
-          }
-        } catch (err) {
-          console.error(
-            "[from-image-ai] Error llamando a /api/editor-images/auto-from-raw:",
-            err,
-          );
-        }
-
-        if (autoImageFromRaw) {
-          // si encontramos RAW relacionada, usamos esa portada
-          autoImage = autoImageFromRaw;
-        } else {
-          // fallback: usamos la captura como base (enhance actual)
-          const coverFd = new FormData();
-          coverFd.append("image", imageFile);
-
-          if (typeof window !== "undefined") {
-            const token = window.localStorage.getItem("news_access_token");
-            if (token) {
-              coverFd.append("accessToken", token);
-            }
-          }
-
-          const brandConfig = {
-            brandName: "CANALIBERTARIO",
-            claim:
-              "NOTICIAS Y ANÁLISIS ECONÓMICOS Y POLÍTICOS DESDE UNA MIRADA LIBERTARIA",
-            useHeaderWordmark: true,
-            siteUrl: DEFAULT_SITE_FOOTER || null,
-            socialHandle: "@canalibertario",
-            socialIcons: ["x", "facebook", "instagram"] as const,
-          };
-
-          const optionsJson = {
-            title: autoTitle ?? null,
-            subtitle: autoSummary ?? null,
-            footer: DEFAULT_SITE_FOOTER || null,
-            footerLabel: null,
-            footerDate: null,
-            brand: brandConfig,
-            alertTag: null,
-            useSocialIcons: true,
-            layout: {
-              textPosition: "bottom" as const,
-              overlayHeightPct: 38,
-              overlayOpacity: 0.92,
-              headerStrip: null,
-            },
-            colors: {
-              theme: "purple" as const,
-              bottomBar: "rgba(0,0,0,0.85)",
-              title: "#ffffff",
-              subtitle: "#e5e7eb",
-              footer: "#e5e7eb", // color del handle
-            },
-          };
-
-          coverFd.append("optionsJson", JSON.stringify(optionsJson));
-
-          const coverRes = await fetch("/api/editor-images/enhance", {
-            method: "POST",
-            body: coverFd,
-          });
-
-          if (coverRes.ok) {
-            const coverData = (await coverRes.json()) as EnhanceResponse;
-            if (coverData.enhancedImageUrl) {
-              autoImage = coverData.enhancedImageUrl;
-            }
-          } else {
-            console.warn(
-              "[from-image-ai] No se pudo generar la portada automática",
-              coverRes.status,
-            );
-          }
-        }
-      } catch (err) {
-        console.error(
-          "[from-image-ai] Error al generar portada automática:",
-          err,
-        );
-      }
-
-      // 🔹 Definimos qué imagen se sincroniza con el editor:
-      //    - Si es screenshot => NO la mandamos al editor
-      //    - Si es cover/RAW => sí
-      const editorImageForSync =
-        autoImage && !isScreenshotUrl(autoImage) ? autoImage : undefined;
-
-      // 3) Actualizar el formulario con lo generado (incluida la portada)
+      // 2) Actualizar el formulario con lo generado
+      //    ⚠️ Importante: NO pisamos imageUrl con lo que venga del backend
       setForm((prev) => {
         const next: FormState = {
           ...prev,
           ...suggested,
           ideology: prev.ideology,
           status: prev.status,
+          imageUrl: prev.imageUrl, // mantenemos la portada que haya puesto el usuario (o vacío)
         };
-
-        if (autoImage) {
-          next.imageUrl = autoImage;
-        }
-
         return next;
       });
 
-      // 4) Sincronizar con el editor de la derecha
-      const footerFromDate =
+      // 3) Sincronizar con el editor de la derecha.
+      //    El editor arranca con:
+      //    - la captura cruda (screenshotPreviewUrl)
+      //    - título y resumen sugeridos
+      const defaultFooterFromDate =
         formatPublishedAtForFooter(form.publishedAt) || DEFAULT_SITE_FOOTER;
 
+      const editorImageForSync = screenshotPreviewUrl || undefined;
+      const syncTitle = autoTitle;
+      const syncSubtitle = autoSummary;
+      const syncFooter = defaultFooterFromDate;
+
       setEditorSyncData({
-        title: autoTitle,
-        subtitle: autoSummary,
+        title: syncTitle,
+        subtitle: syncSubtitle,
         imageUrl: editorImageForSync,
-        footer: footerFromDate,
+        footer: syncFooter,
       });
       setEditorReloadTick((t) => t + 1);
 
       setSuccessMsg(
-        autoImage
-          ? "Campos rellenados y portada generada automáticamente con IA."
-          : "Campos rellenados a partir de la captura con IA.",
+        "Campos rellenados a partir de la captura con IA. Ahora podés generar y ajustar la portada desde el editor de la derecha.",
       );
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(
-        err?.message ?? "Error al procesar la captura con la IA.",
-      );
+      setErrorMsg(err?.message ?? "Error al procesar la captura con la IA.");
     } finally {
       setImageLoading(false);
     }
@@ -479,6 +376,10 @@ export default function EditorFromImagePage() {
         imageUrl: "",
       }));
       setImageFile(null);
+      if (screenshotPreviewUrl) {
+        URL.revokeObjectURL(screenshotPreviewUrl);
+        setScreenshotPreviewUrl(null);
+      }
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err?.message ?? "Error inesperado al crear la nota");
@@ -542,7 +443,7 @@ export default function EditorFromImagePage() {
   return (
     <main className="mx-auto w-full py-10">
       <div className="relative overflow-hidden rounded-3xl border border-zinc-800/90 bg-zinc-950/95 text-zinc-50 shadow-[0_40px_90px_rgba(0,0,0,0.8)]">
-        {/* 🔹 Cambio: la columna derecha (editor) ahora es más grande */}
+        {/* 🔹 Columna derecha (editor) más grande */}
         <div className="relative z-10 grid gap-8 p-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.9fr)] md:p-8 lg:p-10">
           {/* Columna izquierda: captura + formulario */}
           <div className="space-y-6">
@@ -554,11 +455,11 @@ export default function EditorFromImagePage() {
                 Cargar artículo desde imagen (IA)
               </h1>
               <p className="max-w-2xl text-sm text-zinc-300">
-                Subí una captura de una publicación (Twitter, Facebook,
-                portal de medios, etc.) o una imagen de portada. La IA
-                sugiere título, resumen, cuerpo e inserta la imagen en la
-                nota. Después podés ajustar todo antes de publicar y
-                reemplazar la imagen por una portada procesada.
+                Subí una captura de una publicación (Twitter, Facebook, portal
+                de medios, etc.) o una imagen de portada. La IA sugiere título,
+                resumen, cuerpo e inserta la imagen en la nota. Después podés
+                ajustar todo antes de publicar y, si querés, generar una portada
+                desde el editor de la derecha.
               </p>
             </header>
 
@@ -569,10 +470,11 @@ export default function EditorFromImagePage() {
                   Procesar captura de pantalla
                 </h2>
                 <p className="mt-1 text-xs text-zinc-300">
-                  Subí una captura de una publicación oficial. Al hacer
-                  clic en <strong>“Procesar captura con IA”</strong>, se
-                  sube la imagen al backend, se genera texto sugerido y se
-                  inserta la imagen en el cuerpo de la nota.
+                  Subí una captura de una publicación oficial. Al hacer clic en{" "}
+                  <strong>“Procesar captura con IA”</strong>, se sube la imagen
+                  al backend, se genera texto sugerido y se inserta la imagen en
+                  el cuerpo de la nota (sin modificarla). La portada la generás
+                  aparte desde el editor de la derecha.
                 </p>
               </div>
 
@@ -618,13 +520,13 @@ export default function EditorFromImagePage() {
                 </p>
               </div>
 
-              {form.imageUrl && (
+              {(screenshotPreviewUrl || form.imageUrl) && (
                 <div className="pt-2">
                   <p className="mb-2 text-xs text-zinc-200">
                     Vista previa de la imagen subida:
                   </p>
                   <img
-                    src={form.imageUrl}
+                    src={screenshotPreviewUrl || (form.imageUrl as string)}
                     alt="Preview captura"
                     className="max-h-72 w-full rounded-xl border border-zinc-700 object-cover"
                   />
@@ -690,10 +592,9 @@ export default function EditorFromImagePage() {
                   </button>
                 </div>
                 <small className="mt-1 block text-[11px] text-zinc-400">
-                  Copiá la URL de la portada generada en el editor de
-                  imágenes y pegala acá (o usá el botón si ya está en el
-                  portapapeles). Si la copiás desde el editor, se completa
-                  automáticamente.
+                  Copiá la URL de la portada generada en el editor de imágenes
+                  y pegala acá (o usá el botón si ya está en el portapapeles).
+                  Si la copiás desde el editor, se completa automáticamente.
                 </small>
               </div>
 
@@ -806,9 +707,9 @@ export default function EditorFromImagePage() {
                   </span>
                 </label>
                 <p className="mt-1 text-[11px] text-zinc-500">
-                  Se enviará el título y el cuerpo completo de la nota
-                  como texto del post. La publicación es simulada por el
-                  backend actual.
+                  Se enviará el título y el cuerpo (en texto plano) como
+                  contenido del post. La publicación se hace en la página de
+                  Facebook configurada en el backend.
                 </p>
               </div>
 
@@ -827,8 +728,8 @@ export default function EditorFromImagePage() {
                 />
                 <small className="mt-1 block text-[11px] text-zinc-400">
                   Formato: 2025-11-15T12:00:00Z (después lo cambiamos por un
-                  datepicker). Esta fecha también se muestra en el footer
-                  de la portada.
+                  datepicker). Esta fecha también se muestra en el footer de la
+                  portada.
                 </small>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-300">
                   <span>Atajos rápidos:</span>
@@ -892,8 +793,8 @@ export default function EditorFromImagePage() {
                   Editor de portadas (IA)
                 </h2>
                 <p className="text-[11px] text-zinc-400">
-                  Usá este editor de imágenes para generar portadas (covers)
-                  a partir de la captura o cualquier otra foto.
+                  Usá este editor de imágenes para generar portadas (covers) a
+                  partir de la captura o cualquier otra foto.
                 </p>
               </div>
               <div className="flex flex-col items-end gap-2">
@@ -916,11 +817,10 @@ export default function EditorFromImagePage() {
 
             <p className="text-[11px] text-zinc-400">
               1. Procesá la captura y generá la nota con IA. <br />
-              2. El sistema intenta elegir automáticamente una RAW
-              relacionada (Trump, Milei, Caputo, etc.) y generar la portada
-              con texto en formato 1280×720 para redes. <br />
-              3. Si no te gusta, podés retocar la portada en el editor y
-              reemplazar la URL manualmente (se pega sola al copiarla).
+              2. El editor se carga con la misma imagen base (cruda) y los
+              textos sugeridos. <br />
+              3. Desde ahí podés ajustar todo y generar la portada; al copiar la
+              URL desde el editor se pega sola en el campo de portada.
             </p>
 
             <div className="mt-3 rounded-2xl bg-zinc-950/90 p-3">

@@ -344,6 +344,7 @@ export default function ImageEditorEmbedPage() {
     if (initializedFromQuery) return;
 
     const imageUrl = searchParams.get("imageUrl");
+
     const overlayTitle =
       searchParams.get("overlayTitle") ?? searchParams.get("title") ?? "";
     const overlaySubtitle =
@@ -352,6 +353,18 @@ export default function ImageEditorEmbedPage() {
       "";
     const overlayFooter =
       searchParams.get("overlayFooter") ?? searchParams.get("footer") ?? "";
+
+    // NUEVO: colores sugeridos por IA (coinciden con CoverOverlaySuggestion)
+    const overlayPrimaryColor =
+      searchParams.get("overlayPrimaryColor") ??
+      searchParams.get("primaryColor") ??
+      "";
+    const overlaySecondaryColor =
+      searchParams.get("overlaySecondaryColor") ??
+      searchParams.get("secondaryColor") ??
+      "";
+    const overlayTone =
+      searchParams.get("overlayTone") ?? searchParams.get("tone") ?? "";
 
     const qpTextPos = searchParams.get("textPosition");
     if (
@@ -365,6 +378,23 @@ export default function ImageEditorEmbedPage() {
     if (overlayTitle) setTitle(overlayTitle);
     if (overlaySubtitle) setSubtitle(overlaySubtitle);
     if (overlayFooter) setFooter(overlayFooter);
+
+    // Aplicar colores sugeridos si vienen en la URL
+    if (overlayPrimaryColor) {
+      setTitleColor(overlayPrimaryColor);
+    }
+    if (overlaySecondaryColor) {
+      setSubtitleColor(overlaySecondaryColor);
+      setHandleColor(overlaySecondaryColor);
+    }
+
+    // Si querés usar el "tone" para algo (p.ej. ajustar opacidad o tema)
+    if (overlayTone === "light") {
+      // Podés suavizar un poco el overlay si viene "light"
+      setOverlayOpacity(0.85);
+    } else if (overlayTone === "dark") {
+      setOverlayOpacity(0.95);
+    }
 
     if (imageUrl) {
       (async () => {
