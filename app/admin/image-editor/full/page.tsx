@@ -10,13 +10,12 @@ import {
 import { useSearchParams } from "next/navigation";
 
 type TextPosition = "top" | "middle" | "bottom";
-type CoverTheme = "purple" | "sunset" | "wine";
+type CoverTheme = "purple" | "sunset" | "wine" | "blue" | "black";
 
 const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
 type AlertTag = (typeof ALERT_TAGS)[number];
 
-// ahora también soporta arrastrar la etiqueta
-type DragTarget = "block" | "title" | "subtitle" | "alert" | "resize" | null;
+type DragTarget = "block" | "title" | "subtitle" | "resize" | "alert" | null;
 
 type DragState = {
   target: DragTarget;
@@ -41,11 +40,18 @@ const SUBTITLE_COLORS = [
   "#93c5fd",
 ];
 const BRAND_COLORS = ["#ffffff", "#22c55e", "#0ea5e9", "#f97316", "#ef4444"];
+const TAG_COLORS = [
+  "#f97316",
+  "#ef4444",
+  "#22c55e",
+  "#0ea5e9",
+  "#f97316",
+  "#000000",
+];
 
 const DEFAULT_BLOCK_HEIGHT = 130;
 const FOOTER_HEIGHT = 46;
-// alto “lógico” del área 16:9 del preview
-const PREVIEW_HEIGHT = 360;
+const PREVIEW_HEIGHT_FALLBACK = 360;
 
 function themeLabel(value: CoverTheme): string {
   switch (value) {
@@ -55,6 +61,10 @@ function themeLabel(value: CoverTheme): string {
       return "Sunset / Urgente (naranja)";
     case "wine":
       return "Wine / Impacto (bordó)";
+    case "blue":
+      return "Azul / Institucional";
+    case "black":
+      return "Negro / Luto / Máximo contraste";
     default:
       return value;
   }
@@ -78,6 +88,22 @@ function getThemePreviewColors(theme: CoverTheme) {
         footerBg: "#450a0a",
         footerBorder: "#b91c1c",
       };
+    case "blue":
+      return {
+        bandFrom: "rgba(15,23,42,0.0)",
+        bandMid: "rgba(15,23,42,0.45)",
+        bandTo: "rgba(37,99,235,0.96)",
+        footerBg: "#020617",
+        footerBorder: "#0ea5e9",
+      };
+    case "black":
+      return {
+        bandFrom: "rgba(15,23,42,0.0)",
+        bandMid: "rgba(15,23,42,0.7)",
+        bandTo: "rgba(0,0,0,0.98)",
+        footerBg: "#020617",
+        footerBorder: "#64748b",
+      };
     case "purple":
     default:
       return {
@@ -93,6 +119,10 @@ function getThemePreviewColors(theme: CoverTheme) {
 export default function ImageEditorFullPage() {
   const searchParams = useSearchParams();
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
+
+  // altura real del área 16:9
+  const [previewHeight, setPreviewHeight] = useState(PREVIEW_HEIGHT_FALLBACK);
 
   // Imagen base
   const [file, setFile] = useState<File | null>(null);
@@ -113,6 +143,7 @@ export default function ImageEditorFullPage() {
   const [titleColor, setTitleColor] = useState("#ffffff");
   const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
   const [brandColor, setBrandColor] = useState("#ffffff");
+  const [alertColor, setAlertColor] = useState("#f97316");
 
   // Tema de color
   const [theme, setTheme] = useState<CoverTheme>("purple");
@@ -130,15 +161,15 @@ export default function ImageEditorFullPage() {
   // Opacidad del fondo (0.4 – 1)
   const [overlayOpacity, setOverlayOpacity] = useState(0.92);
 
-  // Offsets internos
+  // Offsets internos para título y bajada
   const [titleOffsetX, setTitleOffsetX] = useState(40);
   const [titleOffsetY, setTitleOffsetY] = useState(30);
   const [subtitleOffsetX, setSubtitleOffsetX] = useState(40);
   const [subtitleOffsetY, setSubtitleOffsetY] = useState(80);
 
-  // NUEVO: offsets de la etiqueta
+  // Offset para la etiqueta
   const [alertOffsetX, setAlertOffsetX] = useState(40);
-  const [alertOffsetY, setAlertOffsetY] = useState(12);
+  const [alertOffsetY, setAlertOffsetY] = useState(10);
 
   // Drag
   const [drag, setDrag] = useState<DragState>(null);
@@ -148,6 +179,21 @@ export default function ImageEditorFullPage() {
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // medir altura real del viewport 16:9
+  useEffect(() => {
+    function updateHeight() {
+      if (!previewRef.current) return;
+      const rect = previewRef.current.getBoundingClientRect();
+      if (rect.height > 0) {
+        setPreviewHeight(rect.height);
+      }
+    }
+
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+    return () => window.removeEventListener("resize", updateHeight);
+  }, [previewUrl]);
 
   // ==========================
   // INIT DESDE QUERY STRING
@@ -162,7 +208,6 @@ export default function ImageEditorFullPage() {
       (searchParams.get("alertTag") as AlertTag | null) ?? "";
     const qpTheme = searchParams.get("theme") as CoverTheme | null;
 
-    // opcionales para franja superior
     const qpHeaderEnabled = searchParams.get("headerEnabled") === "1";
     const qpHeaderDate = searchParams.get("headerDate") ?? "";
     const qpHeaderLabel = searchParams.get("headerLabel") ?? "";
@@ -176,7 +221,13 @@ export default function ImageEditorFullPage() {
     if (qpHeaderDate) setHeaderDate(qpHeaderDate);
     if (qpHeaderLabel) setHeaderLabel(qpHeaderLabel);
 
-    if (qpTheme === "purple" || qpTheme === "sunset" || qpTheme === "wine") {
+    if (
+      qpTheme === "purple" ||
+      qpTheme === "sunset" ||
+      qpTheme === "wine" ||
+      qpTheme === "blue" ||
+      qpTheme === "black"
+    ) {
       setTheme(qpTheme);
     }
 
@@ -202,14 +253,12 @@ export default function ImageEditorFullPage() {
     setBlockTop(startTop);
     setInitialBlockTop(startTop);
     setBlockHeight(DEFAULT_BLOCK_HEIGHT);
-
-    // posiciones iniciales
     setTitleOffsetX(40);
     setTitleOffsetY(30);
     setSubtitleOffsetX(40);
     setSubtitleOffsetY(80);
     setAlertOffsetX(40);
-    setAlertOffsetY(12);
+    setAlertOffsetY(10);
 
     if (!imageUrl) return;
 
@@ -285,10 +334,12 @@ export default function ImageEditorFullPage() {
       const dx = ev.clientX - drag.startX;
       const dy = ev.clientY - drag.startY;
 
+      const h = previewHeight || PREVIEW_HEIGHT_FALLBACK;
+
       switch (drag.target) {
         case "block": {
           const minTop = 40;
-          const maxTop = PREVIEW_HEIGHT - drag.blockHeight;
+          const maxTop = h - drag.blockHeight;
           const newTop = drag.blockTop + dy;
           setBlockTop(Math.min(maxTop, Math.max(minTop, newTop)));
           break;
@@ -331,7 +382,7 @@ export default function ImageEditorFullPage() {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [drag]);
+  }, [drag, previewHeight]);
 
   // ==========================
   // RESET POSITIONS
@@ -344,7 +395,7 @@ export default function ImageEditorFullPage() {
     setSubtitleOffsetX(40);
     setSubtitleOffsetY(80);
     setAlertOffsetX(40);
-    setAlertOffsetY(12);
+    setAlertOffsetY(10);
   }
 
   // ==========================
@@ -383,13 +434,20 @@ export default function ImageEditorFullPage() {
         socialIcons: ["x", "facebook", "instagram"] as const,
       };
 
+      const effectiveHeight = previewHeight || PREVIEW_HEIGHT_FALLBACK;
+
       const overlayHeightPct = Math.round(
-        (blockHeight / PREVIEW_HEIGHT) * 100,
+        (blockHeight / (effectiveHeight || PREVIEW_HEIGHT_FALLBACK)) * 100,
       );
+
+      const textOffsetYPct =
+        effectiveHeight > 0
+          ? ((blockTop - initialBlockTop) / effectiveHeight) * 100
+          : 0;
 
       const layout = {
         textPosition,
-        textOffsetY: blockTop - initialBlockTop,
+        textOffsetYPct,
         titleFontPx: titleSize,
         subtitleFontPx: subtitleSize,
         overlayHeightPct,
@@ -400,8 +458,6 @@ export default function ImageEditorFullPage() {
               label: headerLabel || null,
             }
           : null,
-        // las posiciones de título / bajada / etiqueta solo afectan el preview,
-        // el backend sigue centrando en base a layout “lógico”.
       };
 
       const colors = {
@@ -409,6 +465,7 @@ export default function ImageEditorFullPage() {
         title: titleColor,
         subtitle: subtitleColor,
         handle: brandColor,
+        alertBg: alertColor,
       };
 
       const options = {
@@ -451,7 +508,7 @@ export default function ImageEditorFullPage() {
               (prev ?? "") + " La URL de la portada se copió al portapapeles.",
           );
         } catch {
-          // ignore
+          // ignorar error de clipboard
         }
       }
 
@@ -470,7 +527,7 @@ export default function ImageEditorFullPage() {
             window.location.origin,
           );
         } catch {
-          // ignore
+          // ignorar si el opener no acepta el mensaje
         }
       }
     } catch (err: any) {
@@ -482,7 +539,10 @@ export default function ImageEditorFullPage() {
   };
 
   const themeColors = getThemePreviewColors(theme);
-  const overlayHeightPct = Math.round((blockHeight / PREVIEW_HEIGHT) * 100);
+  const effectiveHeight = previewHeight || PREVIEW_HEIGHT_FALLBACK;
+  const overlayHeightPct = Math.round(
+    (blockHeight / (effectiveHeight || PREVIEW_HEIGHT_FALLBACK)) * 100,
+  );
 
   // ==========================
   // RENDER
@@ -513,7 +573,10 @@ export default function ImageEditorFullPage() {
               </span>
             </div>
 
-            <div className="relative mt-3 aspect-[16/9] w-full overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
+            <div
+              ref={previewRef}
+              className="relative mt-3 aspect-[16/9] w-full overflow-hidden rounded-2xl border border-slate-800 bg-black/60"
+            >
               {previewUrl ? (
                 <>
                   <img
@@ -556,13 +619,14 @@ export default function ImageEditorFullPage() {
                     onMouseDown={(e) => startDrag("block", e)}
                   >
                     <div className="relative h-full w-full">
-                      {/* ETIQUETA (arrastrable) */}
+                      {/* ETIQUETA */}
                       {alertTag && (
                         <div
-                          className="absolute inline-flex cursor-move select-none items-center rounded-full bg-rose-500 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
+                          className="absolute inline-flex cursor-move select-none items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
                           style={{
                             left: alertOffsetX,
                             top: alertOffsetY,
+                            backgroundColor: alertColor,
                           }}
                           onMouseDown={(e) => startDrag("alert", e)}
                         >
@@ -627,7 +691,10 @@ export default function ImageEditorFullPage() {
                       {footer.trim() || null}
                     </span>
                     <div className="flex items-center gap-4 text-slate-100">
-                      <span className="text-sm font-extrabold">
+                      <span
+                        className="text-sm font-extrabold"
+                        style={{ color: brandColor }}
+                      >
                         @canalibertario
                       </span>
                       <div className="flex items-center gap-2 text-[11px]">
@@ -666,7 +733,9 @@ export default function ImageEditorFullPage() {
                     Tema de color de la barra
                   </span>
                   <div className="flex flex-wrap gap-2">
-                    {(["purple", "sunset", "wine"] as CoverTheme[]).map((t) => (
+                    {(
+                      ["purple", "sunset", "wine", "blue", "black"] as CoverTheme[]
+                    ).map((t) => (
                       <button
                         key={t}
                         type="button"
@@ -748,6 +817,27 @@ export default function ImageEditorFullPage() {
                   <span className="ml-2 text-slate-400">{brandColor}</span>
                 </div>
 
+                {/* COLOR ETIQUETA */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-32 text-slate-300">Color etiqueta</span>
+                  <div className="flex items-center gap-1">
+                    {TAG_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setAlertColor(c)}
+                        className={`h-5 w-5 rounded-full border ${
+                          alertColor === c
+                            ? "border-sky-400 ring-2 ring-sky-400/60"
+                            : "border-slate-600"
+                        }`}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
+                  <span className="ml-2 text-slate-400">{alertColor}</span>
+                </div>
+
                 <button
                   type="button"
                   onClick={resetPositions}
@@ -757,9 +847,10 @@ export default function ImageEditorFullPage() {
                 </button>
 
                 <p className="mt-1 text-[10px] text-slate-400">
-                  Tip: arrastrá el bloque degradado, el título, la bajada o la
-                  etiqueta directamente sobre la imagen para acomodarlos. El
-                  footer se mantiene fijo al borde inferior.
+                  Tip: arrastrá el bloque degradado directamente sobre la imagen
+                  para moverlo arriba o abajo. El borde inferior del bloque
+                  ajusta la altura. El footer se mantiene fijo al borde inferior.
+                  El título, la bajada y la etiqueta también se pueden mover de forma independiente.
                 </p>
               </div>
             </div>
@@ -936,9 +1027,8 @@ export default function ImageEditorFullPage() {
                     value={overlayHeightPct}
                     onChange={(e) => {
                       const pct = Number(e.target.value);
-                      const newHeight = Math.round(
-                        (pct / 100) * PREVIEW_HEIGHT,
-                      );
+                      const h = previewHeight || PREVIEW_HEIGHT_FALLBACK;
+                      const newHeight = Math.round((pct / 100) * h);
                       setBlockHeight(newHeight);
                     }}
                     className="w-full"
@@ -990,7 +1080,8 @@ export default function ImageEditorFullPage() {
                 <b>Bajada:</b> {subtitle || "—"}
               </div>
               <div>
-                <b>Etiqueta:</b> {alertTag || "(sin)"}
+                <b>Etiqueta:</b> {alertTag || "(sin)"}{" "}
+                {alertTag && `· color ${alertColor}`}
               </div>
               <div>
                 <b>Franja superior:</b>{" "}

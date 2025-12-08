@@ -1,4 +1,3 @@
-// app/admin/image-editor/page.tsx
 // app/admin/image-editor-embed/page.tsx
 "use client";
 
@@ -81,6 +80,35 @@ const PALETTE = [
   "#22c55e",
   "#38bdf8",
 ] as const;
+
+// inserta salto de línea automático para que el texto no se corte
+function normalizeTitleForRender(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+
+  // si el usuario ya metió saltos, respetarlos
+  if (trimmed.includes("\n")) return trimmed;
+
+  // si es corto, no forzamos nada
+  if (trimmed.length <= 45) return trimmed;
+
+  const TARGET = 45;
+
+  let breakIndex = trimmed.lastIndexOf(" ", TARGET);
+  if (breakIndex <= 0) {
+    breakIndex = trimmed.indexOf(" ", TARGET);
+  }
+  if (breakIndex <= 0) {
+    // sin espacios, lo dejamos como una sola línea
+    return trimmed;
+  }
+
+  return (
+    trimmed.slice(0, breakIndex) +
+    "\n" +
+    trimmed.slice(breakIndex + 1)
+  );
+}
 
 function ColorSwatches({
   label,
@@ -298,6 +326,8 @@ export default function ImageEditorEmbedPage() {
       }
 
       const safeFooter = footer.trim() || null;
+      const normalizedTitle = normalizeTitleForRender(title);
+      const normalizedSubtitle = subtitle.trim() || null;
 
       const brandConfig = {
         brandName: "CANALIBERTARIO",
@@ -313,8 +343,8 @@ export default function ImageEditorEmbedPage() {
       const footerDate = useHeaderStrip ? headerDate.trim() || null : null;
 
       const optionsJson = {
-        title: title.trim() || null,
-        subtitle: subtitle.trim() || null,
+        title: normalizedTitle || null,
+        subtitle: normalizedSubtitle,
         footer: safeFooter,
         footerLabel,
         footerDate,
@@ -332,7 +362,7 @@ export default function ImageEditorEmbedPage() {
                 label: headerLabel.trim() || null,
               }
             : null,
-          alertAlign, // NUEVO
+          alertAlign,
         },
         colors: {
           theme,
@@ -386,9 +416,11 @@ export default function ImageEditorEmbedPage() {
       return;
     }
 
+    const normalizedTitle = normalizeTitleForRender(title);
+
     const q = new URLSearchParams({
       imageUrl: baseImageUrl,
-      title,
+      title: normalizedTitle,
       subtitle,
       footer,
       alertTag: alertTag || "",
@@ -599,8 +631,10 @@ export default function ImageEditorEmbedPage() {
       ? "justify-center"
       : "justify-end";
 
-  // líneas del título
-  const displayTitle = title || "Título de la portada";
+  // título normalizado para preview y para mandar al back
+  const normalizedTitleForPreview = normalizeTitleForRender(title);
+  const displayTitle =
+    normalizedTitleForPreview || "Título de la portada";
   const titleLines = displayTitle.split(/\r?\n/);
 
   return (
@@ -615,13 +649,15 @@ export default function ImageEditorEmbedPage() {
               Editor de imágenes · IA
             </div>
             <h1 className="text-2xl font-semibold leading-tight md:text-3xl">
-              Ajustá textos y vista previa antes de generar la cover
+              Ajustá textos y vista previa en grande antes de generar
+              la cover
             </h1>
             <p className="max-w-2xl text-sm text-slate-300">
-              Subí una imagen, pegá una captura o elegí una RAW de la biblioteca.
-              Después definí el título, la bajada, la etiqueta y la firma
-              CANALIBERTARIO. La salida es una cover horizontal 1280×720 pensada
-              para X/Twitter, Facebook e Instagram (post clásico).
+              Subí una imagen, pegá una captura o elegí una RAW de la
+              biblioteca. Después definí el título, la bajada, la
+              etiqueta y la firma CANALIBERTARIO. La salida es una cover
+              horizontal 1280×720 pensada para X/Twitter, Facebook e
+              Instagram (post clásico).
             </p>
           </header>
 
