@@ -29,7 +29,7 @@ type ImageItem = {
 };
 
 type TextPosition = "top" | "middle" | "bottom";
-type CoverTheme = "purple" | "sunset" | "wine";
+type CoverTheme = "purple" | "sunset" | "black";
 type AlertAlign = "left" | "center" | "right";
 
 function getImageTypeFromUrl(url: string): ImageKind {
@@ -72,43 +72,15 @@ const PAGE_SIZE = 10;
 const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
 type AlertTag = (typeof ALERT_TAGS)[number];
 
+// === PALETA AJUSTADA: blanco, negro, púrpura, naranja, rojo, azul ===
 const PALETTE = [
-  "#ffffff",
-  "#facc15",
-  "#f97316",
-  "#ef4444",
-  "#22c55e",
-  "#38bdf8",
+  "#ffffff", // blanco
+  "#000000", // negro
+  "#7c3aed", // púrpura
+  "#f97316", // naranja
+  "#ef4444", // rojo
+  "#0ea5e9", // azul
 ] as const;
-
-// inserta salto de línea automático para que el texto no se corte
-function normalizeTitleForRender(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) return trimmed;
-
-  // si el usuario ya metió saltos, respetarlos
-  if (trimmed.includes("\n")) return trimmed;
-
-  // si es corto, no forzamos nada
-  if (trimmed.length <= 45) return trimmed;
-
-  const TARGET = 45;
-
-  let breakIndex = trimmed.lastIndexOf(" ", TARGET);
-  if (breakIndex <= 0) {
-    breakIndex = trimmed.indexOf(" ", TARGET);
-  }
-  if (breakIndex <= 0) {
-    // sin espacios, lo dejamos como una sola línea
-    return trimmed;
-  }
-
-  return (
-    trimmed.slice(0, breakIndex) +
-    "\n" +
-    trimmed.slice(breakIndex + 1)
-  );
-}
 
 function ColorSwatches({
   label,
@@ -147,8 +119,9 @@ function getOverlayGradient(theme: CoverTheme): string {
   switch (theme) {
     case "sunset":
       return "linear-gradient(135deg, rgba(248,113,113,1) 0%, rgba(249,115,22,1) 40%, rgba(30,64,175,1) 100%)";
-    case "wine":
-      return "linear-gradient(135deg, rgba(76,29,149,1) 0%, rgba(136,19,55,1) 45%, rgba(15,23,42,1) 100%)";
+    case "black":
+      // negro / máximo contraste: barra totalmente opaca
+      return "linear-gradient(180deg, rgba(15,23,42,1) 0%, rgba(0,0,0,1) 45%, rgba(0,0,0,1) 100%)";
     case "purple":
     default:
       return "linear-gradient(135deg, rgba(147,51,234,1) 0%, rgba(59,130,246,1) 40%, rgba(15,23,42,1) 100%)";
@@ -161,8 +134,8 @@ function themeLabel(value: CoverTheme): string {
       return "Canalibertario (violeta)";
     case "sunset":
       return "Sunset / Urgente (naranja)";
-    case "wine":
-      return "Wine / Impacto (bordó)";
+    case "black":
+      return "Negro / Luto / Máximo contraste";
     default:
       return value;
   }
@@ -195,11 +168,13 @@ export default function ImageEditorEmbedPage() {
 
   const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
   const [textOffsetPct, setTextOffsetPct] = useState(0);
-  const [theme, setTheme] = useState<CoverTheme>("purple");
+
+  // === TEMA POR DEFECTO: NEGRO ===
+  const [theme, setTheme] = useState<CoverTheme>("black");
 
   const [titleColor, setTitleColor] = useState("#ffffff");
   const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
-  const [handleColor, setHandleColor] = useState("#e5e7eb");
+  const [handleColor, setHandleColor] = useState("#ffffff");
 
   // posición horizontal de la etiqueta
   const [alertAlign, setAlertAlign] = useState<AlertAlign>("left");
@@ -211,7 +186,8 @@ export default function ImageEditorEmbedPage() {
 
   // Fondo / degradado
   const [overlayHeight, setOverlayHeight] = useState(38); // %
-  const [overlayOpacity, setOverlayOpacity] = useState(0.92); // 0–1
+  // === OPACIDAD POR DEFECTO: 100% ===
+  const [overlayOpacity, setOverlayOpacity] = useState(1); // 0–1
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -326,8 +302,6 @@ export default function ImageEditorEmbedPage() {
       }
 
       const safeFooter = footer.trim() || null;
-      const normalizedTitle = normalizeTitleForRender(title);
-      const normalizedSubtitle = subtitle.trim() || null;
 
       const brandConfig = {
         brandName: "CANALIBERTARIO",
@@ -343,8 +317,8 @@ export default function ImageEditorEmbedPage() {
       const footerDate = useHeaderStrip ? headerDate.trim() || null : null;
 
       const optionsJson = {
-        title: normalizedTitle || null,
-        subtitle: normalizedSubtitle,
+        title: title.trim() || null,
+        subtitle: subtitle.trim() || null,
         footer: safeFooter,
         footerLabel,
         footerDate,
@@ -369,7 +343,7 @@ export default function ImageEditorEmbedPage() {
           bottomBar: "rgba(0,0,0,0.85)",
           title: titleColor,
           subtitle: subtitleColor,
-          footer: handleColor, // color del handle
+          footer: handleColor,
         },
       };
 
@@ -416,11 +390,9 @@ export default function ImageEditorEmbedPage() {
       return;
     }
 
-    const normalizedTitle = normalizeTitleForRender(title);
-
     const q = new URLSearchParams({
       imageUrl: baseImageUrl,
-      title: normalizedTitle,
+      title,
       subtitle,
       footer,
       alertTag: alertTag || "",
@@ -631,10 +603,8 @@ export default function ImageEditorEmbedPage() {
       ? "justify-center"
       : "justify-end";
 
-  // título normalizado para preview y para mandar al back
-  const normalizedTitleForPreview = normalizeTitleForRender(title);
-  const displayTitle =
-    normalizedTitleForPreview || "Título de la portada";
+  // líneas del título
+  const displayTitle = title || "Título de la portada";
   const titleLines = displayTitle.split(/\r?\n/);
 
   return (
@@ -649,15 +619,13 @@ export default function ImageEditorEmbedPage() {
               Editor de imágenes · IA
             </div>
             <h1 className="text-2xl font-semibold leading-tight md:text-3xl">
-              Ajustá textos y vista previa en grande antes de generar
-              la cover
+              Ajustá textos y vista previa antes de generar la cover
             </h1>
             <p className="max-w-2xl text-sm text-slate-300">
-              Subí una imagen, pegá una captura o elegí una RAW de la
-              biblioteca. Después definí el título, la bajada, la
-              etiqueta y la firma CANALIBERTARIO. La salida es una cover
-              horizontal 1280×720 pensada para X/Twitter, Facebook e
-              Instagram (post clásico).
+              Subí una imagen, pegá una captura o elegí una RAW de la biblioteca.
+              Después definí el título, la bajada, la etiqueta y la firma
+              CANALIBERTARIO. La salida es una cover horizontal 1280×720 pensada
+              para X/Twitter, Facebook e Instagram (post clásico).
             </p>
           </header>
 

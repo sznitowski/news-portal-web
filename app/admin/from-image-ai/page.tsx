@@ -118,6 +118,7 @@ export default function EditorFromImagePage() {
 
   const [showEditor, setShowEditor] = useState(true);
   const [showEditorModal, setShowEditorModal] = useState(false);
+  const [showFullEditorModal, setShowFullEditorModal] = useState(false);
 
   // datos que le mandamos al editor de portadas
   const [editorSyncData, setEditorSyncData] = useState<EditorSyncData>({});
@@ -361,7 +362,7 @@ export default function EditorFromImagePage() {
           console.error("Error al publicar en Facebook", err);
           setFbErrorMsg(
             err?.message ||
-              "La nota se creó, pero falló la publicación en Facebook.",
+            "La nota se creó, pero falló la publicación en Facebook.",
           );
         }
       }
@@ -439,6 +440,7 @@ export default function EditorFromImagePage() {
 
   const editorIframeSrc = `/admin/image-editor-embed?${editorParams.toString()}`;
   const editorPageUrl = `/admin/image-editor?${editorParams.toString()}`;
+  const fullEditorPageUrl = `/admin/image-editor/full?${editorParams.toString()}`;
 
   return (
     <main className="mx-auto w-full py-10">
@@ -810,7 +812,13 @@ export default function EditorFromImagePage() {
                   onClick={() => setShowEditorModal(true)}
                   className="rounded-full border border-purple-400/70 bg-purple-500/15 px-3 py-1 text-[11px] font-semibold text-purple-100 hover:bg-purple-500/25"
                 >
-                  Ver grande (modal)
+                  Ver en modal, Edicion básica y selección de imagenes.
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFullEditorModal(true)}
+                  className="rounded-full border border-sky-400/70 bg-sky-500/15 px-3 py-1 text-[11px] font-semibold text-sky-100 hover:bg-sky-500/25"
+                >Ver en modal, Editor completo de imagen.
                 </button>
               </div>
             </div>
@@ -889,6 +897,40 @@ export default function EditorFromImagePage() {
                 src={editorIframeSrc}
                 className="h-full w-full border-0"
                 title="Editor de portadas grande"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 🔹 Modal flotante con el editor FULL (pantalla completa 16:9) */}
+      {showFullEditorModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4">
+          <div className="relative w-full max-w-6xl rounded-3xl border border-zinc-700 bg-zinc-950 p-4 md:p-6">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-zinc-50">
+                  Editor de portadas · pantalla completa
+                </h2>
+                <p className="text-[11px] text-zinc-400">
+                  Esta vista usa el editor full 16:9. Los cambios de portada se siguen
+                  enviando a este formulario cuando copiás la URL.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFullEditorModal(false)}
+                className="rounded-full border border-zinc-600 bg-zinc-800 px-3 py-1 text-[11px] font-semibold text-zinc-100 hover:border-red-400/80 hover:text-red-200"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div className="aspect-[16/9] w-full overflow-hidden rounded-2xl border border-zinc-700 bg-black">
+              <iframe
+                key={editorReloadTick + 2000}
+                src={fullEditorPageUrl}
+                className="h-full w-full border-0"
+                title="Editor de portadas full"
               />
             </div>
           </div>
