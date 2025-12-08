@@ -2,7 +2,12 @@
 // app/admin/image-editor-embed/page.tsx
 "use client";
 
-import { useState, useEffect, ChangeEvent } from "react";
+import {
+  useState,
+  useEffect,
+  ChangeEvent,
+  ClipboardEvent,
+} from "react";
 import { useSearchParams } from "next/navigation";
 
 type EnhanceResponse = {
@@ -26,6 +31,7 @@ type ImageItem = {
 
 type TextPosition = "top" | "middle" | "bottom";
 type CoverTheme = "purple" | "sunset" | "wine";
+type AlertAlign = "left" | "center" | "right";
 
 function getImageTypeFromUrl(url: string): ImageKind {
   let path = url.toLowerCase();
@@ -108,7 +114,7 @@ function ColorSwatches({
   );
 }
 
-// pequeño helper para el degradado de la barra según tema
+// degradado de la barra según tema
 function getOverlayGradient(theme: CoverTheme): string {
   switch (theme) {
     case "sunset":
@@ -121,6 +127,32 @@ function getOverlayGradient(theme: CoverTheme): string {
   }
 }
 
+function themeLabel(value: CoverTheme): string {
+  switch (value) {
+    case "purple":
+      return "Canalibertario (violeta)";
+    case "sunset":
+      return "Sunset / Urgente (naranja)";
+    case "wine":
+      return "Wine / Impacto (bordó)";
+    default:
+      return value;
+  }
+}
+
+function alertAlignLabel(value: AlertAlign): string {
+  switch (value) {
+    case "left":
+      return "Izquierda";
+    case "center":
+      return "Centro";
+    case "right":
+      return "Derecha";
+    default:
+      return value;
+  }
+}
+
 export default function ImageEditorEmbedPage() {
   const searchParams = useSearchParams();
 
@@ -130,12 +162,10 @@ export default function ImageEditorEmbedPage() {
 
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
-  // footer apagado por defecto
   const [footer, setFooter] = useState("");
   const [alertTag, setAlertTag] = useState<AlertTag>("");
 
   const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
-  // nuevo: ajuste fino vertical extra
   const [textOffsetPct, setTextOffsetPct] = useState(0);
   const [theme, setTheme] = useState<CoverTheme>("purple");
 
@@ -143,13 +173,16 @@ export default function ImageEditorEmbedPage() {
   const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
   const [handleColor, setHandleColor] = useState("#e5e7eb");
 
+  // posición horizontal de la etiqueta
+  const [alertAlign, setAlertAlign] = useState<AlertAlign>("left");
+
   // Cabecera tipo "La Derecha Diario"
   const [useHeaderStrip, setUseHeaderStrip] = useState(false);
   const [headerDate, setHeaderDate] = useState("");
   const [headerLabel, setHeaderLabel] = useState("");
 
-  // Fondo / degradado agrandable
-  const [overlayHeight, setOverlayHeight] = useState(38); // % de alto
+  // Fondo / degradado
+  const [overlayHeight, setOverlayHeight] = useState(38); // %
   const [overlayOpacity, setOverlayOpacity] = useState(0.92); // 0–1
 
   const [loading, setLoading] = useState(false);
@@ -164,24 +197,87 @@ export default function ImageEditorEmbedPage() {
   const [typeFilter, setTypeFilter] = useState<"all" | "raw" | "cover">("all");
   const [page, setPage] = useState(1);
 
-  const [initializedFromQuery, setInitializedFromQuery] =
-    useState(false);
+  const [initializedFromQuery, setInitializedFromQuery] = useState(false);
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
+  // input para screenshot (texto/URL)
+  const [screenshotInput, setScreenshotInput] = useState("");
+
+  // helper para aplicar File como base
+  const applyBaseFile = (f: File, previewSrc: string) => {
     setFile(f);
     setResultUrl(null);
     setErrorMsg(null);
     setSuccessMsg(null);
+    setPreviewUrl(previewSrc);
+  };
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
     const objectUrl = URL.createObjectURL(f);
-    setPreviewUrl(objectUrl);
+    applyBaseFile(f, objectUrl);
+  };
+
+  // pegar screenshot desde portapapeles (imagen o URL)
+  const handleScreenshotPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (items) {
+      let foundImage = false;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const pastedFile = item.getAsFile();
+          if (pastedFile) {
+            e.preventDefault();
+            const objectUrl = URL.createObjectURL(pastedFile);
+            applyBaseFile(pastedFile, objectUrl);
+            setScreenshotInput("");
+            foundImage = true;
+            break;
+          }
+        }
+      }
+      if (foundImage) return;
+    }
+
+    const text = e.clipboardData.getData("text");
+    if (text) {
+      e.preventDefault();
+      setScreenshotInput(text);
+    }
+  };
+
+  // cargar captura desde URL pegada
+  const handleLoadScreenshotUrl = async () => {
+    const url = screenshotInput.trim();
+    if (!url) return;
+
+    try {
+      setErrorMsg(null);
+      setSuccessMsg(null);
+      setResultUrl(null);
+
+      const res = await fetch(url);
+      if (!res.ok)
+        throw new Error("No se pudo descargar la imagen desde esa URL.");
+
+      const blob = await res.blob();
+      const mime = blob.type || "image/jpeg";
+      let ext = "jpg";
+      if (mime === "image/png") ext = "png";
+      else if (mime === "image/webp") ext = "webp";
+
+      const f = new File([blob], `screenshot.${ext}`, { type: mime });
+      applyBaseFile(f, url);
+    } catch (err: any) {
+      console.error("handleLoadScreenshotUrl error:", err);
+      setErrorMsg(err.message ?? "No se pudo usar la captura desde URL.");
+    }
   };
 
   const handleEnhance = async () => {
     if (!file) {
       setErrorMsg(
-        "Primero seleccioná una imagen base (subí una o elegí un RAW de la biblioteca).",
+        "Primero seleccioná una imagen base (subí una, pegá una captura o elegí un RAW de la biblioteca).",
       );
       return;
     }
@@ -213,7 +309,6 @@ export default function ImageEditorEmbedPage() {
         socialIcons: ["x", "facebook", "instagram"] as const,
       };
 
-      // mapeamos fecha + texto extra al footerLabel/footerDate para el renderer
       const footerLabel = useHeaderStrip ? headerLabel.trim() || null : null;
       const footerDate = useHeaderStrip ? headerDate.trim() || null : null;
 
@@ -228,7 +323,7 @@ export default function ImageEditorEmbedPage() {
         useSocialIcons: true,
         layout: {
           textPosition,
-          textOffsetPct, // nuevo campo para el renderer
+          textOffsetPct,
           overlayHeightPct: overlayHeight,
           overlayOpacity,
           headerStrip: useHeaderStrip
@@ -237,14 +332,14 @@ export default function ImageEditorEmbedPage() {
                 label: headerLabel.trim() || null,
               }
             : null,
+          alertAlign, // NUEVO
         },
         colors: {
           theme,
           bottomBar: "rgba(0,0,0,0.85)",
           title: titleColor,
           subtitle: subtitleColor,
-          // color del handle se manda como "footer" para el backend
-          footer: handleColor,
+          footer: handleColor, // color del handle
         },
       };
 
@@ -354,7 +449,6 @@ export default function ImageEditorEmbedPage() {
     const overlayFooter =
       searchParams.get("overlayFooter") ?? searchParams.get("footer") ?? "";
 
-    // NUEVO: colores sugeridos por IA (coinciden con CoverOverlaySuggestion)
     const overlayPrimaryColor =
       searchParams.get("overlayPrimaryColor") ??
       searchParams.get("primaryColor") ??
@@ -379,7 +473,6 @@ export default function ImageEditorEmbedPage() {
     if (overlaySubtitle) setSubtitle(overlaySubtitle);
     if (overlayFooter) setFooter(overlayFooter);
 
-    // Aplicar colores sugeridos si vienen en la URL
     if (overlayPrimaryColor) {
       setTitleColor(overlayPrimaryColor);
     }
@@ -388,9 +481,7 @@ export default function ImageEditorEmbedPage() {
       setHandleColor(overlaySecondaryColor);
     }
 
-    // Si querés usar el "tone" para algo (p.ej. ajustar opacidad o tema)
     if (overlayTone === "light") {
-      // Podés suavizar un poco el overlay si viene "light"
       setOverlayOpacity(0.85);
     } else if (overlayTone === "dark") {
       setOverlayOpacity(0.95);
@@ -413,8 +504,7 @@ export default function ImageEditorEmbedPage() {
             type: mime,
           });
 
-          setFile(f);
-          setPreviewUrl(imageUrl);
+          applyBaseFile(f, imageUrl);
         } catch (err) {
           console.error("init error:", err);
         } finally {
@@ -446,8 +536,7 @@ export default function ImageEditorEmbedPage() {
       const name = img.filename || `image-from-library.${ext}`;
       const f = new File([blob], name, { type: mime });
 
-      setFile(f);
-      setPreviewUrl(img.url);
+      applyBaseFile(f, img.url);
 
       if (typeof window !== "undefined") {
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -490,20 +579,7 @@ export default function ImageEditorEmbedPage() {
     startIndex + PAGE_SIZE,
   );
 
-  function themeLabel(value: CoverTheme): string {
-    switch (value) {
-      case "purple":
-        return "Canalibertario (violeta)";
-      case "sunset":
-        return "Sunset / Urgente (naranja)";
-      case "wine":
-        return "Wine / Impacto (bordó)";
-      default:
-        return value;
-    }
-  }
-
-  // URL principal para la vista previa: portada procesada o, si no, la base
+  // URL principal para la vista previa
   const mainPreviewUrl = resultUrl || previewUrl;
   const hasBaseImage = !!mainPreviewUrl;
 
@@ -515,7 +591,15 @@ export default function ImageEditorEmbedPage() {
       ? "top-1/2 -translate-y-1/2 justify-center"
       : "bottom-0 justify-end";
 
-  // líneas del título para respetar saltos de línea
+  // clases para alinear la etiqueta
+  const alertAlignClass =
+    alertAlign === "left"
+      ? "justify-start"
+      : alertAlign === "center"
+      ? "justify-center"
+      : "justify-end";
+
+  // líneas del título
   const displayTitle = title || "Título de la portada";
   const titleLines = displayTitle.split(/\r?\n/);
 
@@ -531,13 +615,13 @@ export default function ImageEditorEmbedPage() {
               Editor de imágenes · IA
             </div>
             <h1 className="text-2xl font-semibold leading-tight md:text-3xl">
-              Preparar imagen de portada con IA
+              Ajustá textos y vista previa antes de generar la cover
             </h1>
             <p className="max-w-2xl text-sm text-slate-300">
-              Subí una imagen o elegí una RAW de la biblioteca. Después definí
-              el título, la bajada, la etiqueta y la firma CANALIBERTARIO. La
-              salida es una cover horizontal 1280×720 pensada para X/Twitter,
-              Facebook e Instagram (post clásico).
+              Subí una imagen, pegá una captura o elegí una RAW de la biblioteca.
+              Después definí el título, la bajada, la etiqueta y la firma
+              CANALIBERTARIO. La salida es una cover horizontal 1280×720 pensada
+              para X/Twitter, Facebook e Instagram (post clásico).
             </p>
           </header>
 
@@ -558,12 +642,41 @@ export default function ImageEditorEmbedPage() {
                 />
               </label>
 
+              {/* Campo para pegar screenshot */}
+              <div className="space-y-2 rounded-xl border border-slate-800/80 bg-slate-950/70 p-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Pegá una captura (screenshot)
+                </div>
+                <textarea
+                  rows={2}
+                  value={screenshotInput}
+                  onChange={(e) => setScreenshotInput(e.target.value)}
+                  onPaste={handleScreenshotPaste}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                  placeholder="Ctrl+V para pegar la imagen desde el portapapeles o pegá acá la URL de la captura..."
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] text-slate-400">
+                    Si pegás una imagen desde el portapapeles se usa como RAW.
+                    Si pegás una URL, hacé clic en &quot;Usar captura&quot;.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleLoadScreenshotUrl}
+                    disabled={!screenshotInput.trim()}
+                    className="whitespace-nowrap rounded-full border border-sky-400/80 bg-sky-500/10 px-3 py-1 text-[10px] font-semibold text-sky-200 hover:bg-sky-500/20 disabled:opacity-40"
+                  >
+                    Usar captura
+                  </button>
+                </div>
+              </div>
+
               <div className="mt-3 space-y-3 rounded-xl border border-slate-800/80 bg-slate-950/70 p-3">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                   Textos de la portada
                 </div>
 
-                {/* TÍTULO CON SALTOS DE LÍNEA */}
+                {/* TÍTULO */}
                 <div className="space-y-1">
                   <label className="text-[11px] text-slate-300">
                     Título principal
@@ -610,6 +723,29 @@ export default function ImageEditorEmbedPage() {
                   </select>
                 </div>
 
+                {/* Posición de la etiqueta */}
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-300">
+                    Posición de la etiqueta
+                  </label>
+                  <div className="flex flex-wrap gap-2 text-[11px]">
+                    {(["left", "center", "right"] as AlertAlign[]).map((a) => (
+                      <button
+                        key={a}
+                        type="button"
+                        onClick={() => setAlertAlign(a)}
+                        className={`rounded-full border px-3 py-1 font-semibold ${
+                          alertAlign === a
+                            ? "border-sky-400 bg-sky-500/10 text-sky-200"
+                            : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400 hover:bg-slate-800"
+                        }`}
+                      >
+                        {alertAlignLabel(a)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="space-y-2 rounded-lg border border-slate-800/70 bg-slate-900/60 p-2">
                   <label className="flex items-center gap-2 text-[11px] text-slate-200">
                     <input
@@ -632,7 +768,7 @@ export default function ImageEditorEmbedPage() {
                           value={headerDate}
                           onChange={(e) => setHeaderDate(e.target.value)}
                           className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                          placeholder="Ej: 05 de diciembre 2025 · 04:30 PM"
+                          placeholder="Ej: 07/12/2025 · 20:17"
                         />
                       </div>
 
@@ -645,7 +781,7 @@ export default function ImageEditorEmbedPage() {
                           value={headerLabel}
                           onChange={(e) => setHeaderLabel(e.target.value)}
                           className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                          placeholder="Ej: Cobertura especial · Elecciones Honduras"
+                          placeholder="Ej: Cobertura especial · Acto Fuerza Aérea"
                         />
                       </div>
                     </div>
@@ -682,7 +818,7 @@ export default function ImageEditorEmbedPage() {
                   </select>
                 </div>
 
-                {/* NUEVO: ajuste fino vertical del bloque de texto */}
+                {/* ajuste fino vertical */}
                 <div className="space-y-1">
                   <label className="text-[11px] text-slate-300">
                     Ajuste fino vertical del texto
@@ -724,7 +860,7 @@ export default function ImageEditorEmbedPage() {
                   </div>
                 </div>
 
-                {/* Controles de fondo / degradado */}
+                {/* Controles de fondo */}
                 <div className="mt-2 grid gap-3 md:grid-cols-2">
                   <div className="space-y-1">
                     <label className="text-[11px] text-slate-300">
@@ -800,7 +936,7 @@ export default function ImageEditorEmbedPage() {
               <div className="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3">
                 {hasBaseImage ? (
                   <div className="space-y-3">
-                    {/* Vista previa “en vivo”: overlay aprox. de lo que hará el backend */}
+                    {/* preview en vivo */}
                     <div className="relative mx-auto w-full max-w-2xl overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
                       <div className="relative aspect-video w-full">
                         {mainPreviewUrl && (
@@ -811,7 +947,7 @@ export default function ImageEditorEmbedPage() {
                           />
                         )}
 
-                        {/* Franja superior (header strip) */}
+                        {/* Franja superior */}
                         {useHeaderStrip && (
                           <div
                             className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-6 py-2 text-[11px] font-semibold uppercase tracking-[0.16em]"
@@ -861,10 +997,14 @@ export default function ImageEditorEmbedPage() {
                                 <div className="space-y-1">
                                   {alertTag && (
                                     <div
-                                      className="inline-flex items-center rounded-full bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]"
-                                      style={{ color: titleColor }}
+                                      className={`mb-1 flex ${alertAlignClass}`}
                                     >
-                                      {alertTag}
+                                      <div
+                                        className="inline-flex items-center rounded-full bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]"
+                                        style={{ color: titleColor }}
+                                      >
+                                        {alertTag}
+                                      </div>
                                     </div>
                                   )}
                                   <h2
@@ -919,7 +1059,8 @@ export default function ImageEditorEmbedPage() {
                   </div>
                 ) : (
                   <p className="text-xs text-slate-300">
-                    Subí una imagen o elegí una RAW para ver la vista previa.
+                    Subí una imagen, pegá una captura o elegí una RAW para ver
+                    la vista previa.
                   </p>
                 )}
               </div>
@@ -949,6 +1090,7 @@ export default function ImageEditorEmbedPage() {
                   </div>
                   <div>
                     <b>Etiqueta:</b> {alertTag || "(sin)"}{" "}
+                    {alertTag && `· ${alertAlignLabel(alertAlign)}`}
                   </div>
                   <div>
                     <b>Cabecera:</b>{" "}

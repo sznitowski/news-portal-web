@@ -15,7 +15,8 @@ type CoverTheme = "purple" | "sunset" | "wine";
 const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
 type AlertTag = (typeof ALERT_TAGS)[number];
 
-type DragTarget = "block" | "title" | "subtitle" | "resize" | null;
+// ahora también soporta arrastrar la etiqueta
+type DragTarget = "block" | "title" | "subtitle" | "alert" | "resize" | null;
 
 type DragState = {
   target: DragTarget;
@@ -27,6 +28,8 @@ type DragState = {
   titleOffsetY: number;
   subtitleOffsetX: number;
   subtitleOffsetY: number;
+  alertOffsetX: number;
+  alertOffsetY: number;
 } | null;
 
 const TITLE_COLORS = ["#ffffff", "#22c55e", "#0ea5e9", "#f97316", "#ef4444"];
@@ -41,7 +44,7 @@ const BRAND_COLORS = ["#ffffff", "#22c55e", "#0ea5e9", "#f97316", "#ef4444"];
 
 const DEFAULT_BLOCK_HEIGHT = 130;
 const FOOTER_HEIGHT = 46;
-// alto “lógico” del área 16:9 del preview (coincide con el cálculo que ya usabas)
+// alto “lógico” del área 16:9 del preview
 const PREVIEW_HEIGHT = 360;
 
 function themeLabel(value: CoverTheme): string {
@@ -127,12 +130,15 @@ export default function ImageEditorFullPage() {
   // Opacidad del fondo (0.4 – 1)
   const [overlayOpacity, setOverlayOpacity] = useState(0.92);
 
-  // Offsets internos para título y bajada (solo afectan el preview, el backend
-  // sigue centrado “lógico”)
+  // Offsets internos
   const [titleOffsetX, setTitleOffsetX] = useState(40);
   const [titleOffsetY, setTitleOffsetY] = useState(30);
   const [subtitleOffsetX, setSubtitleOffsetX] = useState(40);
   const [subtitleOffsetY, setSubtitleOffsetY] = useState(80);
+
+  // NUEVO: offsets de la etiqueta
+  const [alertOffsetX, setAlertOffsetX] = useState(40);
+  const [alertOffsetY, setAlertOffsetY] = useState(12);
 
   // Drag
   const [drag, setDrag] = useState<DragState>(null);
@@ -156,7 +162,7 @@ export default function ImageEditorFullPage() {
       (searchParams.get("alertTag") as AlertTag | null) ?? "";
     const qpTheme = searchParams.get("theme") as CoverTheme | null;
 
-    // opcionales para franja superior si algún día los pasás por query
+    // opcionales para franja superior
     const qpHeaderEnabled = searchParams.get("headerEnabled") === "1";
     const qpHeaderDate = searchParams.get("headerDate") ?? "";
     const qpHeaderLabel = searchParams.get("headerLabel") ?? "";
@@ -196,10 +202,14 @@ export default function ImageEditorFullPage() {
     setBlockTop(startTop);
     setInitialBlockTop(startTop);
     setBlockHeight(DEFAULT_BLOCK_HEIGHT);
+
+    // posiciones iniciales
     setTitleOffsetX(40);
     setTitleOffsetY(30);
     setSubtitleOffsetX(40);
     setSubtitleOffsetY(80);
+    setAlertOffsetX(40);
+    setAlertOffsetY(12);
 
     if (!imageUrl) return;
 
@@ -262,6 +272,8 @@ export default function ImageEditorFullPage() {
       titleOffsetY,
       subtitleOffsetX,
       subtitleOffsetY,
+      alertOffsetX,
+      alertOffsetY,
     });
   };
 
@@ -276,7 +288,7 @@ export default function ImageEditorFullPage() {
       switch (drag.target) {
         case "block": {
           const minTop = 40;
-          const maxTop = PREVIEW_HEIGHT - drag.blockHeight; // 360px aprox parte visible útil
+          const maxTop = PREVIEW_HEIGHT - drag.blockHeight;
           const newTop = drag.blockTop + dy;
           setBlockTop(Math.min(maxTop, Math.max(minTop, newTop)));
           break;
@@ -296,6 +308,11 @@ export default function ImageEditorFullPage() {
         case "subtitle": {
           setSubtitleOffsetX(drag.subtitleOffsetX + dx);
           setSubtitleOffsetY(drag.subtitleOffsetY + dy);
+          break;
+        }
+        case "alert": {
+          setAlertOffsetX(drag.alertOffsetX + dx);
+          setAlertOffsetY(drag.alertOffsetY + dy);
           break;
         }
         default:
@@ -326,6 +343,8 @@ export default function ImageEditorFullPage() {
     setTitleOffsetY(30);
     setSubtitleOffsetX(40);
     setSubtitleOffsetY(80);
+    setAlertOffsetX(40);
+    setAlertOffsetY(12);
   }
 
   // ==========================
@@ -364,14 +383,13 @@ export default function ImageEditorFullPage() {
         socialIcons: ["x", "facebook", "instagram"] as const,
       };
 
-      // porcentaje real de altura del fondo respecto a la imagen final
       const overlayHeightPct = Math.round(
         (blockHeight / PREVIEW_HEIGHT) * 100,
       );
 
       const layout = {
         textPosition,
-        textOffsetY: blockTop - initialBlockTop, // mismo criterio que antes
+        textOffsetY: blockTop - initialBlockTop,
         titleFontPx: titleSize,
         subtitleFontPx: subtitleSize,
         overlayHeightPct,
@@ -382,6 +400,8 @@ export default function ImageEditorFullPage() {
               label: headerLabel || null,
             }
           : null,
+        // las posiciones de título / bajada / etiqueta solo afectan el preview,
+        // el backend sigue centrando en base a layout “lógico”.
       };
 
       const colors = {
@@ -423,7 +443,6 @@ export default function ImageEditorFullPage() {
           "Imagen procesada correctamente. Se generó una portada (cover) lista para usar.",
       );
 
-      // Copiar al portapapeles
       if (coverUrl && typeof navigator !== "undefined" && navigator.clipboard) {
         try {
           await navigator.clipboard.writeText(coverUrl);
@@ -432,11 +451,10 @@ export default function ImageEditorFullPage() {
               (prev ?? "") + " La URL de la portada se copió al portapapeles.",
           );
         } catch {
-          // ignorar error de clipboard
+          // ignore
         }
       }
 
-      // Avisar a la ventana que abrió este editor (from-image-ai)
       if (
         coverUrl &&
         typeof window !== "undefined" &&
@@ -452,7 +470,7 @@ export default function ImageEditorFullPage() {
             window.location.origin,
           );
         } catch {
-          // ignorar si el opener no acepta el mensaje
+          // ignore
         }
       }
     } catch (err: any) {
@@ -490,7 +508,9 @@ export default function ImageEditorFullPage() {
           >
             <div className="flex items-center justify-between px-6 pt-4 text-[11px] uppercase tracking-[0.18em] text-slate-400">
               <span>Vista previa 16:9</span>
-              <span>Recomendado para X / Facebook / Instagram (1280x720 aprox.)</span>
+              <span>
+                Recomendado para X / Facebook / Instagram (1280x720 aprox.)
+              </span>
             </div>
 
             <div className="relative mt-3 aspect-[16/9] w-full overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
@@ -536,10 +556,15 @@ export default function ImageEditorFullPage() {
                     onMouseDown={(e) => startDrag("block", e)}
                   >
                     <div className="relative h-full w-full">
-                      {/* ETIQUETA */}
+                      {/* ETIQUETA (arrastrable) */}
                       {alertTag && (
                         <div
-                          className="absolute left-10 top-3 inline-flex cursor-default select-none items-center rounded-full bg-rose-500 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
+                          className="absolute inline-flex cursor-move select-none items-center rounded-full bg-rose-500 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
+                          style={{
+                            left: alertOffsetX,
+                            top: alertOffsetY,
+                          }}
+                          onMouseDown={(e) => startDrag("alert", e)}
                         >
                           {alertTag}
                         </div>
@@ -732,9 +757,9 @@ export default function ImageEditorFullPage() {
                 </button>
 
                 <p className="mt-1 text-[10px] text-slate-400">
-                  Tip: arrastrá el bloque degradado directamente sobre la imagen
-                  para moverlo arriba o abajo. El borde inferior del bloque
-                  ajusta la altura. El footer se mantiene fijo al borde inferior.
+                  Tip: arrastrá el bloque degradado, el título, la bajada o la
+                  etiqueta directamente sobre la imagen para acomodarlos. El
+                  footer se mantiene fijo al borde inferior.
                 </p>
               </div>
             </div>
@@ -897,7 +922,7 @@ export default function ImageEditorFullPage() {
                 </div>
 
                 {/* Altura del fondo */}
-                <div className="pt-2 border-t border-slate-800">
+                <div className="border-t border-slate-800 pt-2">
                   <div className="mb-1 flex items-center justify-between">
                     <span>Altura del fondo (barra)</span>
                     <span className="text-slate-400">
