@@ -31,23 +31,22 @@ type DragState = {
   alertOffsetY: number;
 } | null;
 
-const TITLE_COLORS = ["#ffffff", "#22c55e", "#0ea5e9", "#f97316", "#ef4444"];
-const SUBTITLE_COLORS = [
-  "#e5e7eb",
-  "#bae6fd",
-  "#fef9c3",
-  "#e5e5e5",
-  "#93c5fd",
-];
-const BRAND_COLORS = ["#ffffff", "#22c55e", "#0ea5e9", "#f97316", "#ef4444"];
-const TAG_COLORS = [
-  "#f97316",
-  "#ef4444",
-  "#22c55e",
-  "#0ea5e9",
-  "#f97316",
-  "#000000",
-];
+// Paleta unificada: blanco, negro, púrpura, naranja, rojo, azul
+const BASE_COLORS = [
+  "#ffffff", // blanco
+  "#000000", // negro
+  "#6d28d9", // púrpura
+  "#f97316", // naranja
+  "#ef4444", // rojo
+  "#0ea5e9", // azul
+] as const;
+
+
+const TITLE_COLORS = [...BASE_COLORS];
+const SUBTITLE_COLORS = [...BASE_COLORS];
+const BRAND_COLORS = [...BASE_COLORS];
+const TAG_COLORS = [...BASE_COLORS];
+
 
 const DEFAULT_BLOCK_HEIGHT = 130;
 const FOOTER_HEIGHT = 46;
@@ -145,12 +144,12 @@ export default function ImageEditorFullPage() {
   const [brandColor, setBrandColor] = useState("#ffffff");
   const [alertColor, setAlertColor] = useState("#f97316");
 
-  // Tema de color
-  const [theme, setTheme] = useState<CoverTheme>("purple");
+  // Tema de color – por defecto negro
+  const [theme, setTheme] = useState<CoverTheme>("black");
 
-  // Tamaños de fuente
-  const [titleSize, setTitleSize] = useState(40);
-  const [subtitleSize, setSubtitleSize] = useState(22);
+  // Tamaños de fuente (título más chico por defecto)
+  const [titleSize, setTitleSize] = useState(32);
+  const [subtitleSize, setSubtitleSize] = useState(20);
 
   // Posición del bloque
   const [blockTop, setBlockTop] = useState(260);
@@ -158,8 +157,8 @@ export default function ImageEditorFullPage() {
   const [initialBlockTop, setInitialBlockTop] = useState(260);
   const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
 
-  // Opacidad del fondo (0.4 – 1)
-  const [overlayOpacity, setOverlayOpacity] = useState(0.92);
+  // Opacidad del fondo (0.4 – 1) – por defecto 100%
+  const [overlayOpacity, setOverlayOpacity] = useState(1);
 
   // Offsets internos para título y bajada
   const [titleOffsetX, setTitleOffsetX] = useState(40);
@@ -454,9 +453,9 @@ export default function ImageEditorFullPage() {
         overlayOpacity,
         headerStrip: showHeaderStrip
           ? {
-              date: headerDate || null,
-              label: headerLabel || null,
-            }
+            date: headerDate || null,
+            label: headerLabel || null,
+          }
           : null,
       };
 
@@ -497,7 +496,7 @@ export default function ImageEditorFullPage() {
 
       setStatusMsg(
         data?.message ??
-          "Imagen procesada correctamente. Se generó una portada (cover) lista para usar.",
+        "Imagen procesada correctamente. Se generó una portada (cover) lista para usar.",
       );
 
       if (coverUrl && typeof navigator !== "undefined" && navigator.clipboard) {
@@ -622,17 +621,20 @@ export default function ImageEditorFullPage() {
                       {/* ETIQUETA */}
                       {alertTag && (
                         <div
-                          className="absolute inline-flex cursor-move select-none items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
+                          className="absolute inline-flex cursor-move select-none items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
                           style={{
                             left: alertOffsetX,
                             top: alertOffsetY,
                             backgroundColor: alertColor,
+                            color:
+                              alertColor.toLowerCase() === "#ffffff" ? "#000000" : "#ffffff",
                           }}
                           onMouseDown={(e) => startDrag("alert", e)}
                         >
                           {alertTag}
                         </div>
                       )}
+
 
                       {/* TÍTULO */}
                       {title && (
@@ -734,17 +736,16 @@ export default function ImageEditorFullPage() {
                   </span>
                   <div className="flex flex-wrap gap-2">
                     {(
-                      ["purple", "sunset", "wine", "blue", "black"] as CoverTheme[]
+                      ["purple", "sunset", "wine", "blue", "black", "white"] as CoverTheme[]
                     ).map((t) => (
                       <button
                         key={t}
                         type="button"
                         onClick={() => setTheme(t)}
-                        className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
-                          theme === t
-                            ? "border-sky-400 bg-sky-500/10 text-sky-100"
-                            : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400/70"
-                        }`}
+                        className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${theme === t
+                          ? "border-sky-400 bg-sky-500/10 text-sky-100"
+                          : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400/70"
+                          }`}
                       >
                         {themeLabel(t)}
                       </button>
@@ -761,11 +762,10 @@ export default function ImageEditorFullPage() {
                         key={c}
                         type="button"
                         onClick={() => setTitleColor(c)}
-                        className={`h-5 w-5 rounded-full border ${
-                          titleColor === c
-                            ? "border-sky-400 ring-2 ring-sky-400/60"
-                            : "border-slate-600"
-                        }`}
+                        className={`h-5 w-5 rounded-full border ${titleColor === c
+                          ? "border-sky-400 ring-2 ring-sky-400/60"
+                          : "border-slate-600"
+                          }`}
                         style={{ backgroundColor: c }}
                       />
                     ))}
@@ -782,11 +782,10 @@ export default function ImageEditorFullPage() {
                         key={c}
                         type="button"
                         onClick={() => setSubtitleColor(c)}
-                        className={`h-5 w-5 rounded-full border ${
-                          subtitleColor === c
-                            ? "border-sky-400 ring-2 ring-sky-400/60"
-                            : "border-slate-600"
-                        }`}
+                        className={`h-5 w-5 rounded-full border ${subtitleColor === c
+                          ? "border-sky-400 ring-2 ring-sky-400/60"
+                          : "border-slate-600"
+                          }`}
                         style={{ backgroundColor: c }}
                       />
                     ))}
@@ -805,11 +804,10 @@ export default function ImageEditorFullPage() {
                         key={c}
                         type="button"
                         onClick={() => setBrandColor(c)}
-                        className={`h-5 w-5 rounded-full border ${
-                          brandColor === c
-                            ? "border-sky-400 ring-2 ring-sky-400/60"
-                            : "border-slate-600"
-                        }`}
+                        className={`h-5 w-5 rounded-full border ${brandColor === c
+                          ? "border-sky-400 ring-2 ring-sky-400/60"
+                          : "border-slate-600"
+                          }`}
                         style={{ backgroundColor: c }}
                       />
                     ))}
@@ -826,11 +824,10 @@ export default function ImageEditorFullPage() {
                         key={c}
                         type="button"
                         onClick={() => setAlertColor(c)}
-                        className={`h-5 w-5 rounded-full border ${
-                          alertColor === c
-                            ? "border-sky-400 ring-2 ring-sky-400/60"
-                            : "border-slate-600"
-                        }`}
+                        className={`h-5 w-5 rounded-full border ${alertColor === c
+                          ? "border-sky-400 ring-2 ring-sky-400/60"
+                          : "border-slate-600"
+                          }`}
                         style={{ backgroundColor: c }}
                       />
                     ))}
@@ -987,8 +984,8 @@ export default function ImageEditorFullPage() {
                   </div>
                   <input
                     type="range"
-                    min={28}
-                    max={54}
+                    min={24}
+                    max={48}
                     value={titleSize}
                     onChange={(e) => setTitleSize(Number(e.target.value))}
                     className="w-full"
@@ -1058,8 +1055,8 @@ export default function ImageEditorFullPage() {
                     className="w-full"
                   />
                   <p className="mt-0.5 text-[10px] text-slate-500">
-                    92% ≈ tipo “glass”: desde semi-transparente hasta casi
-                    sólido.
+                    100% = fondo sólido. Bajá el valor si querés más efecto
+                    “glass” dejando ver más la foto.
                   </p>
                 </div>
               </div>
@@ -1086,9 +1083,8 @@ export default function ImageEditorFullPage() {
               <div>
                 <b>Franja superior:</b>{" "}
                 {showHeaderStrip
-                  ? `${headerDate || "sin fecha"} · ${
-                      headerLabel || "sin etiqueta"
-                    }`
+                  ? `${headerDate || "sin fecha"} · ${headerLabel || "sin etiqueta"
+                  }`
                   : "desactivada"}
               </div>
               <div>
