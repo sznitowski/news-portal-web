@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { publishArticleToFacebook } from "../../lib/facebook";
+import { publishArticleToInstagram } from "../../lib/instagram";
 
 type FormState = {
   title: string;
@@ -64,6 +65,13 @@ function stripHtml(html: string): string {
 
   // recorte suave para no pasarse del límite de Facebook
   return plain.slice(0, 4500);
+}
+
+// 🔹 Caption para Instagram (máx ~2200 caracteres)
+function buildInstagramCaption(title: string, bodyHtml: string): string {
+  const plain = stripHtml(bodyHtml);
+  const base = `${title || ""}\n\n${plain}`.trim();
+  return base.slice(0, 2200);
 }
 
 // 🔹 Formatear publishedAt para usarlo como footer/fecha en la portada
@@ -127,6 +135,10 @@ export default function EditorFromImagePage() {
   // 🔹 flag para publicar en Facebook al crear
   const [publishToFacebook, setPublishToFacebook] = useState(true);
   const [fbErrorMsg, setFbErrorMsg] = useState<string | null>(null);
+
+  // 🔹 flag para publicar en Instagram al crear
+  const [publishToInstagram, setPublishToInstagram] = useState(true);
+  const [igErrorMsg, setIgErrorMsg] = useState<string | null>(null);
 
   // limpiar URL de objeto cuando cambie la captura
   useEffect(() => {
@@ -319,6 +331,7 @@ export default function EditorFromImagePage() {
     setErrorMsg(null);
     setSuccessMsg(null);
     setFbErrorMsg(null);
+    setIgErrorMsg(null);
 
     try {
       const payload = {
@@ -366,6 +379,51 @@ export default function EditorFromImagePage() {
           );
         }
       }
+
+      // 🔹 Si está en "published" y el toggle de IG está activo → publicamos en Instagram
+      if (publishToInstagram && payload.status === "published") {
+        try {
+          // Usamos la URL del form si existe, si no, usamos la que devolvió el backend
+          const imageUrlForIg =
+            (form.imageUrl && form.imageUrl.trim()) ||
+            (article.coverImageUrl && String(article.coverImageUrl).trim()) ||
+            "";
+
+          if (!imageUrlForIg) {
+            // Solo avisamos, NO tiramos Error para no romper la pantalla
+            setIgErrorMsg(
+              "La nota se creó, pero no se pudo publicar en Instagram porque no hay URL de portada.",
+            );
+          } else {
+            const captionParts: string[] = [];
+            if (form.title?.trim()) captionParts.push(form.title.trim());
+
+            const plainBody = stripHtml(form.bodyHtml);
+            if (plainBody) {
+              captionParts.push("");
+              captionParts.push(plainBody.slice(0, 1800)); // recorte más corto para IG
+            }
+
+            const caption = captionParts.join("\n");
+
+            const igRes = await publishArticleToInstagram(article.id, {
+              caption,
+              imageUrl: imageUrlForIg,
+            });
+
+            okMsg += ` · Enviada a Instagram, estado=${igRes.status}`;
+          }
+        } catch (err: any) {
+          console.error("Error al publicar en Instagram", err);
+          setIgErrorMsg(
+            err?.message ||
+            "La nota se creó, pero falló la publicación en Instagram.",
+          );
+        }
+      }
+
+
+
 
       setSuccessMsg(okMsg);
 
@@ -688,32 +746,61 @@ export default function EditorFromImagePage() {
               </div>
 
               {/* Publicación en redes */}
-              <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/80 p-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
+              <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/80 p-3 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
                   Publicación en redes
                 </p>
-                <label className="inline-flex items-center gap-2 text-xs text-zinc-200">
-                  <input
-                    type="checkbox"
-                    className="h-3.5 w-3.5 rounded border-zinc-500 bg-zinc-900 text-fuchsia-500 focus:ring-fuchsia-500"
-                    checked={publishToFacebook}
-                    onChange={(e) =>
-                      setPublishToFacebook(e.target.checked)
-                    }
-                  />
-                  <span>
-                    Publicar en Facebook al crear{" "}
-                    <span className="text-[10px] text-zinc-400">
-                      (si el estado es <code>published</code>)
+
+                {/* Facebook */}
+                <div>
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-200">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 rounded border-zinc-500 bg-zinc-900 text-fuchsia-500 focus:ring-fuchsia-500"
+                      checked={publishToFacebook}
+                      onChange={(e) =>
+                        setPublishToFacebook(e.target.checked)
+                      }
+                    />
+                    <span>
+                      Publicar en Facebook al crear{" "}
+                      <span className="text-[10px] text-zinc-400">
+                        (si el estado es <code>published</code>)
+                      </span>
                     </span>
-                  </span>
-                </label>
-                <p className="mt-1 text-[11px] text-zinc-500">
-                  Se enviará el título y el cuerpo (en texto plano) como
-                  contenido del post. La publicación se hace en la página de
-                  Facebook configurada en el backend.
-                </p>
+                  </label>
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    Se enviará el título y el cuerpo (en texto plano) como
+                    contenido del post. La publicación se hace en la página de
+                    Facebook configurada en el backend.
+                  </p>
+                </div>
+
+                {/* Instagram */}
+                <div className="border-t border-zinc-800 pt-3">
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-200">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 rounded border-zinc-500 bg-zinc-900 text-pink-500 focus:ring-pink-500"
+                      checked={publishToInstagram}
+                      onChange={(e) =>
+                        setPublishToInstagram(e.target.checked)
+                      }
+                    />
+                    <span>
+                      Publicar en Instagram al crear{" "}
+                      <span className="text-[10px] text-zinc-400">
+                        (usa la URL de portada y el cuerpo limpio)
+                      </span>
+                    </span>
+                  </label>
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    Se usará la portada indicada arriba como imagen del post y
+                    se enviará un caption con el título y un resumen del texto.
+                  </p>
+                </div>
               </div>
+
 
               <div>
                 <label htmlFor="publishedAt" className={labelClass}>
@@ -774,6 +861,12 @@ export default function EditorFromImagePage() {
               {fbErrorMsg && (
                 <div className="rounded-xl border border-amber-400/60 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-100">
                   {fbErrorMsg}
+                </div>
+              )}
+
+              {igErrorMsg && (
+                <div className="rounded-xl border border-amber-400/60 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-100">
+                  {igErrorMsg}
                 </div>
               )}
 
