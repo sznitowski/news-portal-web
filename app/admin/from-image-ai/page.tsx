@@ -10,7 +10,11 @@ import {
 } from "react";
 
 import { publishArticleToFacebook } from "../../lib/facebook";
-import { publishArticleToInstagram } from "../../lib/instagram";
+import {
+  publishArticleToInstagram,
+  buildInstagramCaption,
+} from "../../lib/instagram";
+import { stripHtml } from "../../lib/text";
 
 type FormState = {
   title: string;
@@ -51,27 +55,6 @@ function getAuthHeaders(): Record<string, string> {
   const token = window.localStorage.getItem("news_access_token");
   if (!token) return {};
   return { Authorization: `Bearer ${token}` };
-}
-
-// 🔹 Helper: limpiar HTML a texto plano para redes
-function stripHtml(html: string): string {
-  if (!html) return "";
-  const plain = html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  // recorte suave para no pasarse del límite de Facebook
-  return plain.slice(0, 4500);
-}
-
-// 🔹 Caption para Instagram (máx ~2200 caracteres)
-function buildInstagramCaption(title: string, bodyHtml: string): string {
-  const plain = stripHtml(bodyHtml);
-  const base = `${title || ""}\n\n${plain}`.trim();
-  return base.slice(0, 2200);
 }
 
 // 🔹 Formatear publishedAt para usarlo como footer/fecha en la portada
@@ -294,9 +277,6 @@ export default function EditorFromImagePage() {
       });
 
       // 3) Sincronizar con el editor de la derecha.
-      //    El editor arranca con:
-      //    - la captura cruda (screenshotPreviewUrl)
-      //    - título y resumen sugeridos
       const defaultFooterFromDate =
         formatPublishedAtForFooter(form.publishedAt) || DEFAULT_SITE_FOOTER;
 
@@ -337,9 +317,7 @@ export default function EditorFromImagePage() {
       const payload = {
         ...form,
         ideology:
-          form.ideology && form.ideology.trim().length > 0
-            ? form.ideology
-            : null,
+          form.ideology && form.ideology.trim().length > 0 ? form.ideology : null,
       };
 
       const res = await fetch("/api/editor-articles", {
@@ -363,7 +341,7 @@ export default function EditorFromImagePage() {
       // 🔹 Si está en "published" y el toggle está activo → publicamos en Facebook
       if (publishToFacebook && payload.status === "published") {
         try {
-          const fbText = stripHtml(form.bodyHtml);
+          const fbText = stripHtml(form.bodyHtml, 4500);
           const fbRes = await publishArticleToFacebook(article.id, {
             customTitle: form.title,
             customSummary: fbText,
@@ -375,7 +353,7 @@ export default function EditorFromImagePage() {
           console.error("Error al publicar en Facebook", err);
           setFbErrorMsg(
             err?.message ||
-            "La nota se creó, pero falló la publicación en Facebook.",
+              "La nota se creó, pero falló la publicación en Facebook.",
           );
         }
       }
@@ -390,21 +368,11 @@ export default function EditorFromImagePage() {
             "";
 
           if (!imageUrlForIg) {
-            // Solo avisamos, NO tiramos Error para no romper la pantalla
             setIgErrorMsg(
               "La nota se creó, pero no se pudo publicar en Instagram porque no hay URL de portada.",
             );
           } else {
-            const captionParts: string[] = [];
-            if (form.title?.trim()) captionParts.push(form.title.trim());
-
-            const plainBody = stripHtml(form.bodyHtml);
-            if (plainBody) {
-              captionParts.push("");
-              captionParts.push(plainBody.slice(0, 1800)); // recorte más corto para IG
-            }
-
-            const caption = captionParts.join("\n");
+            const caption = buildInstagramCaption(form.title, form.bodyHtml, 2200);
 
             const igRes = await publishArticleToInstagram(article.id, {
               caption,
@@ -417,13 +385,10 @@ export default function EditorFromImagePage() {
           console.error("Error al publicar en Instagram", err);
           setIgErrorMsg(
             err?.message ||
-            "La nota se creó, pero falló la publicación en Instagram.",
+              "La nota se creó, pero falló la publicación en Instagram.",
           );
         }
       }
-
-
-
 
       setSuccessMsg(okMsg);
 
@@ -465,11 +430,7 @@ export default function EditorFromImagePage() {
   const handleRemoveOriginalImageFromBody = () => {
     if (!form.bodyHtml) return;
 
-    let cleaned = form.bodyHtml.replace(
-      /<p[^>]*>\s*<img[^>]*>\s*<\/p>/i,
-      "",
-    );
-
+    let cleaned = form.bodyHtml.replace(/<p[^>]*>\s*<img[^>]*>\s*<\/p>/i, "");
     cleaned = cleaned.replace(/<img[^>]*>\s*/i, "");
 
     setForm((prev) => ({
@@ -483,18 +444,12 @@ export default function EditorFromImagePage() {
   // =========================
   const editorParams = new URLSearchParams();
   editorParams.set("tick", String(editorReloadTick));
-  if (editorSyncData.title) {
-    editorParams.set("title", editorSyncData.title);
-  }
-  if (editorSyncData.subtitle) {
+  if (editorSyncData.title) editorParams.set("title", editorSyncData.title);
+  if (editorSyncData.subtitle)
     editorParams.set("subtitle", editorSyncData.subtitle);
-  }
-  if (editorSyncData.imageUrl) {
+  if (editorSyncData.imageUrl)
     editorParams.set("imageUrl", editorSyncData.imageUrl);
-  }
-  if (editorSyncData.footer) {
-    editorParams.set("footer", editorSyncData.footer);
-  }
+  if (editorSyncData.footer) editorParams.set("footer", editorSyncData.footer);
 
   const editorIframeSrc = `/admin/image-editor-embed?${editorParams.toString()}`;
   const editorPageUrl = `/admin/image-editor?${editorParams.toString()}`;
@@ -555,18 +510,14 @@ export default function EditorFromImagePage() {
                   disabled={imageLoading || !imageFile}
                   className="inline-flex items-center justify-center rounded-full bg-purple-500 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_18px_35px_rgba(139,92,246,0.45)] transition hover:bg-purple-400 disabled:cursor-default disabled:bg-zinc-600 disabled:shadow-none"
                 >
-                  {imageLoading
-                    ? "Procesando captura..."
-                    : "Procesar captura con IA"}
+                  {imageLoading ? "Procesando captura..." : "Procesar captura con IA"}
                 </button>
               </div>
 
               <div
                 onPaste={handlePasteImage}
                 tabIndex={0}
-                onClick={(e) =>
-                  (e.currentTarget as HTMLDivElement).focus()
-                }
+                onClick={(e) => (e.currentTarget as HTMLDivElement).focus()}
                 className="mt-2 rounded-xl border-2 border-dashed border-zinc-600 bg-zinc-900/80 p-4 text-center text-xs text-zinc-300 outline-none"
               >
                 <p className="mb-1">
@@ -746,7 +697,7 @@ export default function EditorFromImagePage() {
               </div>
 
               {/* Publicación en redes */}
-              <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/80 p-3 space-y-3">
+              <div className="space-y-3 rounded-2xl border border-zinc-700/80 bg-zinc-900/80 p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
                   Publicación en redes
                 </p>
@@ -758,9 +709,7 @@ export default function EditorFromImagePage() {
                       type="checkbox"
                       className="h-3.5 w-3.5 rounded border-zinc-500 bg-zinc-900 text-fuchsia-500 focus:ring-fuchsia-500"
                       checked={publishToFacebook}
-                      onChange={(e) =>
-                        setPublishToFacebook(e.target.checked)
-                      }
+                      onChange={(e) => setPublishToFacebook(e.target.checked)}
                     />
                     <span>
                       Publicar en Facebook al crear{" "}
@@ -783,9 +732,7 @@ export default function EditorFromImagePage() {
                       type="checkbox"
                       className="h-3.5 w-3.5 rounded border-zinc-500 bg-zinc-900 text-pink-500 focus:ring-pink-500"
                       checked={publishToInstagram}
-                      onChange={(e) =>
-                        setPublishToInstagram(e.target.checked)
-                      }
+                      onChange={(e) => setPublishToInstagram(e.target.checked)}
                     />
                     <span>
                       Publicar en Instagram al crear{" "}
@@ -800,7 +747,6 @@ export default function EditorFromImagePage() {
                   </p>
                 </div>
               </div>
-
 
               <div>
                 <label htmlFor="publishedAt" className={labelClass}>
@@ -911,7 +857,8 @@ export default function EditorFromImagePage() {
                   type="button"
                   onClick={() => setShowFullEditorModal(true)}
                   className="rounded-full border border-sky-400/70 bg-sky-500/15 px-3 py-1 text-[11px] font-semibold text-sky-100 hover:bg-sky-500/25"
-                >Ver en modal, Editor completo de imagen.
+                >
+                  Ver en modal, Editor completo de imagen.
                 </button>
               </div>
             </div>
@@ -995,6 +942,7 @@ export default function EditorFromImagePage() {
           </div>
         </div>
       )}
+
       {/* 🔹 Modal flotante con el editor FULL (pantalla completa 16:9) */}
       {showFullEditorModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4">
@@ -1005,8 +953,8 @@ export default function EditorFromImagePage() {
                   Editor de portadas · pantalla completa
                 </h2>
                 <p className="text-[11px] text-zinc-400">
-                  Esta vista usa el editor full 16:9. Los cambios de portada se siguen
-                  enviando a este formulario cuando copiás la URL.
+                  Esta vista usa el editor full 16:9. Los cambios de portada se
+                  siguen enviando a este formulario cuando copiás la URL.
                 </p>
               </div>
               <button

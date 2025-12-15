@@ -1,4 +1,5 @@
 import { buildApiUrl } from "./api";
+import { stripHtml } from "./text";
 
 export type InstagramPublishPayload = {
   caption: string;
@@ -21,6 +22,16 @@ function getAuthHeaders(): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
 
+export function buildInstagramCaption(
+  title: string,
+  bodyHtml: string,
+  max = 2200,
+): string {
+  const plain = stripHtml(bodyHtml, 4500);
+  const base = `${(title || "").trim()}\n\n${plain}`.trim();
+  return base.slice(0, max);
+}
+
 export async function publishArticleToInstagram(
   articleId: number,
   payload: InstagramPublishPayload,
@@ -41,9 +52,7 @@ export async function publishArticleToInstagram(
     try {
       const data = await res.json();
       if (data?.message) msg = data.message;
-    } catch {
-      // ignoramos errores al parsear
-    }
+    } catch {}
     throw new Error(msg);
   }
 

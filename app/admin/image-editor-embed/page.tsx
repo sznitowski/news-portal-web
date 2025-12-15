@@ -847,7 +847,7 @@ export default function ImageEditorEmbedPage() {
                     Tema de color de la barra
                   </label>
                   <div className="flex flex-wrap gap-2 text-[11px]">
-                    {(["purple", "sunset", "wine"] as CoverTheme[]).map((t) => (
+                    {(["purple", "sunset", "black"] as CoverTheme[]).map((t) => (
                       <button
                         key={t}
                         type="button"
