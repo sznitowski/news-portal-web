@@ -1,7 +1,11 @@
+//app/components/admin/InstagramPublishButton.tsx
 "use client";
 
 import { useState } from "react";
-import { publishArticleToInstagram } from "../../lib/instagram";
+import {
+  publishArticleToInstagram,
+  buildInstagramCaptionFromSummary,
+} from "../../lib/instagram";
 
 type Props = {
   articleId: number;
@@ -25,13 +29,11 @@ export function InstagramPublishButton(props: Props) {
         throw new Error("No hay imagen de portada para Instagram");
       }
 
-      const captionParts: string[] = [];
-      if (props.title?.trim()) captionParts.push(props.title.trim());
-      if (props.summary?.trim()) {
-        captionParts.push("");
-        captionParts.push(props.summary.trim());
-      }
-      const caption = captionParts.join("\n");
+      const caption = buildInstagramCaptionFromSummary(
+        props.title,
+        props.summary,
+        2200,
+      );
 
       const res = await publishArticleToInstagram(props.articleId, {
         caption,
@@ -56,22 +58,12 @@ export function InstagramPublishButton(props: Props) {
         disabled={loading}
         className="inline-flex items-center justify-center rounded-lg bg-pink-600 px-3 py-2 text-sm font-semibold text-white hover:bg-pink-700 disabled:opacity-60"
       >
-        {loading
-          ? "Publicando en Instagram..."
-          : "Publicar en Instagram (simulado)"}
+        {loading ? "Publicando en Instagram..." : "Publicar en Instagram (simulado)"}
       </button>
 
-      {error && (
-        <p className="text-xs text-red-400">
-          {error}
-        </p>
-      )}
+      {error && <p className="text-xs text-red-400">{error}</p>}
 
-      {lastResult && (
-        <p className="text-xs text-emerald-400">
-          {lastResult}
-        </p>
-      )}
+      {lastResult && <p className="text-xs text-emerald-400">{lastResult}</p>}
     </div>
   );
 }

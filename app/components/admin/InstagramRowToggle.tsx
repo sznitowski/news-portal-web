@@ -1,7 +1,11 @@
+//app/components/admin/InstagramRowToggle.tsx
 "use client";
 
 import { useState } from "react";
-import { publishArticleToInstagram } from "../../lib/instagram";
+import {
+  publishArticleToInstagram,
+  buildInstagramCaptionFromSummary,
+} from "../../lib/instagram";
 
 type Props = {
   articleId: number;
@@ -34,18 +38,17 @@ export function InstagramRowToggle(props: Props) {
 
     setLoading(true);
     try {
-      const captionParts: string[] = [];
-      if (props.title?.trim()) captionParts.push(props.title.trim());
-      if (props.summary?.trim()) {
-        captionParts.push("");
-        captionParts.push(props.summary.trim());
-      }
-      const caption = captionParts.join("\n");
+      const caption = buildInstagramCaptionFromSummary(
+        props.title,
+        props.summary,
+        2200,
+      );
 
       await publishArticleToInstagram(props.articleId, {
         caption,
         imageUrl: props.coverImageUrl,
       });
+
       setChecked(true);
     } catch (err) {
       console.error("Error al publicar en Instagram", err);
@@ -64,9 +67,7 @@ export function InstagramRowToggle(props: Props) {
         disabled={isDisabled}
         onChange={handleChange}
       />
-      <span className="select-none">
-        IG{loading ? "…" : ""}
-      </span>
+      <span className="select-none">IG{loading ? "…" : ""}</span>
     </label>
   );
 }

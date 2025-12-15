@@ -1,3 +1,4 @@
+// app/lib/instagram.ts
 import { buildApiUrl } from "./api";
 import { stripHtml } from "./text";
 
@@ -22,6 +23,7 @@ function getAuthHeaders(): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
 
+// Para cuando tenés HTML (editor/from-image-ai)
 export function buildInstagramCaption(
   title: string,
   bodyHtml: string,
@@ -30,6 +32,25 @@ export function buildInstagramCaption(
   const plain = stripHtml(bodyHtml, 4500);
   const base = `${(title || "").trim()}\n\n${plain}`.trim();
   return base.slice(0, max);
+}
+
+// ✅ NUEVO: para componentes que sólo tienen title + summary (sin bodyHtml)
+export function buildInstagramCaptionFromSummary(
+  title: string,
+  summary?: string | null,
+  max = 2200,
+): string {
+  const t = (title || "").trim();
+  const s = (summary || "").trim();
+
+  const parts: string[] = [];
+  if (t) parts.push(t);
+  if (s) {
+    if (parts.length) parts.push("");
+    parts.push(s);
+  }
+
+  return parts.join("\n").trim().slice(0, max);
 }
 
 export async function publishArticleToInstagram(
