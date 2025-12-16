@@ -2,29 +2,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildApiUrl, getPublicUrl } from "../../../lib/api";
 
-// misma key que usás para /internal/articles
 const INTERNAL_KEY =
   process.env.INTERNAL_INGEST_KEY ?? process.env.INGEST_KEY ?? "supersecreto123";
 
-/**
- * Construye los headers de auth para hablar con el backend Nest:
- * - Intenta usar un accessToken que vino en el formData (enviado desde el front).
- * - Si no hay, intenta leer la cookie HTTP-only "editor_auth".
- * - Siempre agrega el x-ingest-key si está configurado.
- */
 function buildAuthHeaders(req: NextRequest, tokenFromForm?: string | null) {
   const headers: Record<string, string> = {};
 
   const tokenFromCookie = req.cookies.get("editor_auth")?.value;
   const token = (tokenFromForm && tokenFromForm.trim()) || tokenFromCookie;
 
-  if (token) {
-    headers["authorization"] = `Bearer ${token}`;
-  }
-
-  if (INTERNAL_KEY) {
-    headers["x-ingest-key"] = INTERNAL_KEY;
-  }
+  if (token) headers["authorization"] = `Bearer ${token}`;
+  if (INTERNAL_KEY) headers["x-ingest-key"] = INTERNAL_KEY;
 
   return headers;
 }
@@ -33,39 +21,39 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
 
-    const file = formData.get("image");
-    const optionsJson = formData.get("optionsJson") as string | null;
+    // ✅ aceptar ambos nombres (compat)
+    const file = (formData.get("file") ?? formData.get("image")) as unknown;
+    const optionsJsonRaw = formData.get("optionsJson") as string | null;
     const accessToken = formData.get("accessToken") as string | null;
+    const kind = formData.get("kind") as string | null;
 
-    // ya no necesitamos que llegue al backend
-    if (accessToken) {
-      formData.delete("accessToken");
-    }
+    if (accessToken) formData.delete("accessToken");
 
     if (!(file instanceof File)) {
       return NextResponse.json(
-        { message: "Falta la imagen en el campo 'image'." },
+        { message: "Falta la imagen en el campo 'file' (o 'image')." },
         { status: 400 },
       );
     }
 
+    // (Opcional) parse para overlay de respuesta
     let options: any = null;
-    if (optionsJson) {
+    if (optionsJsonRaw) {
       try {
-        options = JSON.parse(optionsJson);
+        options = JSON.parse(optionsJsonRaw);
       } catch (e) {
-        console.error("[enhance] optionsJson inválido en el front:", e);
+        console.error("[enhance] optionsJson inválido:", e);
       }
     }
 
     // 1) Subir imagen al backend (/internal/uploads/image)
     const uploadBody = new FormData();
+
+    // ✅ backend Nest espera FileInterceptor('file')
     uploadBody.set("file", file);
 
-    // reenviamos las opciones para que el backend pinte los textos
-    if (options) {
-      uploadBody.set("optionsJson", JSON.stringify(options));
-    }
+    if (optionsJsonRaw) uploadBody.set("optionsJson", optionsJsonRaw);
+    if (kind) uploadBody.set("kind", kind);
 
     const headers = buildAuthHeaders(req, accessToken);
 
@@ -73,49 +61,41 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers,
       body: uploadBody,
-      // necesario en Node/undici para cuerpos tipo FormData grandes
       // @ts-ignore
       duplex: "half",
     });
 
+    const rawText = await uploadRes.text().catch(() => "");
+
     if (!uploadRes.ok) {
-      const text = await uploadRes.text().catch(() => "");
       console.error(
-        "[enhance] Error al subir imagen:",
+        "[enhance] Error backend uploads:",
         uploadRes.status,
         uploadRes.statusText,
-        text,
+        rawText,
       );
       return NextResponse.json(
         {
-          message: "Error al subir la imagen al backend",
+          message: "Error al subir/procesar la imagen en el backend",
           statusCode: uploadRes.status,
-          backend: text,
+          backend: rawText,
         },
         { status: 502 },
       );
     }
 
-    const uploadJson = (await uploadRes.json()) as {
-      success?: boolean;
-      filename?: string;
-      rawUrl?: string | null;
-      coverUrl?: string | null;
-      url?: string | null;
-      type?: "raw" | "cover" | string;
-      message?: string;
-    };
+    const uploadJson = rawText ? (JSON.parse(rawText) as any) : {};
 
-    // Preferimos la cover; si algo falló, usamos el URL genérico o el raw
     const finalBackendUrl =
-      uploadJson.coverUrl || uploadJson.url || uploadJson.rawUrl;
+      uploadJson.coverUrl ?? uploadJson.url ?? uploadJson.rawUrl ?? null;
 
     if (!finalBackendUrl) {
-      console.error("[enhance] Backend no devolvió ninguna URL usable:", uploadJson);
+      console.error("[enhance] Backend no devolvió URL usable:", uploadJson);
       return NextResponse.json(
         {
           message:
             "La imagen se subió, pero el backend no devolvió una URL válida.",
+          backend: uploadJson,
         },
         { status: 500 },
       );
@@ -123,7 +103,6 @@ export async function POST(req: NextRequest) {
 
     const enhancedImageUrl = getPublicUrl(finalBackendUrl);
 
-    // Armamos overlay de respuesta para que el front sepa qué se usó
     const overlay =
       options && typeof options === "object"
         ? {
@@ -133,26 +112,28 @@ export async function POST(req: NextRequest) {
           }
         : undefined;
 
-    const message =
-      uploadJson.message ??
-      (uploadJson.type === "cover"
-        ? "Imagen procesada y lista para usar como portada."
-        : "Imagen subida correctamente.");
-
     return NextResponse.json(
       {
         enhancedImageUrl,
-        message,
+        message:
+          uploadJson.message ??
+          (uploadJson.type === "cover"
+            ? "Imagen procesada y lista para usar como portada."
+            : "Imagen subida como RAW, sin procesamiento."),
         overlay,
+        type: uploadJson.type ?? null,
+        coverUrl: uploadJson.coverUrl ? getPublicUrl(uploadJson.coverUrl) : null,
+        rawUrl: uploadJson.rawUrl ? getPublicUrl(uploadJson.rawUrl) : null,
+
+        // ✅ clave para debug cuando vuelve RAW
+        coverError: uploadJson.coverError ?? null,
       },
       { status: 200 },
     );
   } catch (err) {
     console.error("[enhance] Error inesperado:", err);
     return NextResponse.json(
-      {
-        message: "Error inesperado procesando la imagen.",
-      },
+      { message: "Error inesperado procesando la imagen." },
       { status: 500 },
     );
   }

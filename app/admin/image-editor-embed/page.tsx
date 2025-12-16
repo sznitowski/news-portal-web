@@ -332,9 +332,9 @@ export default function ImageEditorEmbedPage() {
           overlayOpacity,
           headerStrip: useHeaderStrip
             ? {
-                date: headerDate.trim() || null,
-                label: headerLabel.trim() || null,
-              }
+              date: headerDate.trim() || null,
+              label: headerLabel.trim() || null,
+            }
             : null,
           alertAlign,
         },
@@ -365,12 +365,23 @@ export default function ImageEditorEmbedPage() {
 
       if (data.enhancedImageUrl) {
         setResultUrl(data.enhancedImageUrl);
+
+        const urlLower = data.enhancedImageUrl.toLowerCase();
+        const isCover =
+          urlLower.includes("/covers/") ||
+          urlLower.includes("/cover/") ||
+          /[-_/]covers?[-_/]/.test(urlLower);
+
         setSuccessMsg(
           data.message ??
-            "Imagen procesada correctamente. Se generó una portada (cover) lista para usar.",
+          (isCover
+            ? "Imagen procesada correctamente. Se generó una portada (cover) lista para usar."
+            : "Imagen subida como RAW (no se pudo generar cover)."),
         );
+
         void loadImages();
-      } else {
+      }
+      else {
         setErrorMsg("La respuesta no contiene una URL de imagen procesada.");
       }
     } catch (err: any) {
@@ -569,8 +580,8 @@ export default function ImageEditorEmbedPage() {
       typeFilter === "all"
         ? true
         : typeFilter === "raw"
-        ? imgType === "raw"
-        : imgType === "cover";
+          ? imgType === "raw"
+          : imgType === "cover";
 
     return nameMatch && typeMatch;
   });
@@ -592,16 +603,16 @@ export default function ImageEditorEmbedPage() {
     textPosition === "top"
       ? "top-0 justify-start"
       : textPosition === "middle"
-      ? "top-1/2 -translate-y-1/2 justify-center"
-      : "bottom-0 justify-end";
+        ? "top-1/2 -translate-y-1/2 justify-center"
+        : "bottom-0 justify-end";
 
   // clases para alinear la etiqueta
   const alertAlignClass =
     alertAlign === "left"
       ? "justify-start"
       : alertAlign === "center"
-      ? "justify-center"
-      : "justify-end";
+        ? "justify-center"
+        : "justify-end";
 
   // líneas del título
   const displayTitle = title || "Título de la portada";
@@ -738,11 +749,10 @@ export default function ImageEditorEmbedPage() {
                         key={a}
                         type="button"
                         onClick={() => setAlertAlign(a)}
-                        className={`rounded-full border px-3 py-1 font-semibold ${
-                          alertAlign === a
+                        className={`rounded-full border px-3 py-1 font-semibold ${alertAlign === a
                             ? "border-sky-400 bg-sky-500/10 text-sky-200"
                             : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400 hover:bg-slate-800"
-                        }`}
+                          }`}
                       >
                         {alertAlignLabel(a)}
                       </button>
@@ -852,11 +862,10 @@ export default function ImageEditorEmbedPage() {
                         key={t}
                         type="button"
                         onClick={() => setTheme(t)}
-                        className={`rounded-full border px-3 py-1 font-semibold ${
-                          theme === t
+                        className={`rounded-full border px-3 py-1 font-semibold ${theme === t
                             ? "border-sky-400 bg-sky-500/10 text-sky-200"
                             : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400 hover:bg-slate-800"
-                        }`}
+                          }`}
                       >
                         {themeLabel(t)}
                       </button>
@@ -991,8 +1000,8 @@ export default function ImageEditorEmbedPage() {
                                   textPosition === "top"
                                     ? "flex-start"
                                     : textPosition === "middle"
-                                    ? "center"
-                                    : "flex-end",
+                                      ? "center"
+                                      : "flex-end",
                                 boxShadow:
                                   "0 26px 80px rgba(15,23,42,0.95)",
                               }}
@@ -1099,9 +1108,8 @@ export default function ImageEditorEmbedPage() {
                   <div>
                     <b>Cabecera:</b>{" "}
                     {useHeaderStrip
-                      ? `${headerDate || "—"} · ${
-                          headerLabel || "sin texto extra"
-                        }`
+                      ? `${headerDate || "—"} · ${headerLabel || "sin texto extra"
+                      }`
                       : "desactivada"}
                   </div>
                   <div>
@@ -1114,8 +1122,8 @@ export default function ImageEditorEmbedPage() {
                     {textPosition === "bottom"
                       ? "Inferior"
                       : textPosition === "middle"
-                      ? "Centro"
-                      : "Superior"}
+                        ? "Centro"
+                        : "Superior"}
                     {textOffsetPct !== 0
                       ? ` · offset ${textOffsetPct}%`
                       : ""}
@@ -1253,11 +1261,10 @@ export default function ImageEditorEmbedPage() {
                       </span>
 
                       <span
-                        className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${
-                          imgType === "raw"
+                        className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${imgType === "raw"
                             ? "border border-amber-400/70 bg-amber-500/10 text-amber-200"
                             : "border border-sky-400/70 bg-sky-500/10 text-sky-200"
-                        }`}
+                          }`}
                       >
                         {imgType === "raw" ? "RAW" : "COVER"}
                       </span>
