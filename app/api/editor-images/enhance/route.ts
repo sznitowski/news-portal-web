@@ -112,18 +112,34 @@ export async function POST(req: NextRequest) {
           }
         : undefined;
 
+    // ✅ normalizamos URLs específicas (si vienen)
+    const type = uploadJson.type ?? null;
+    const coverUrl = uploadJson.coverUrl ? getPublicUrl(uploadJson.coverUrl) : null;
+    const rawUrl = uploadJson.rawUrl ? getPublicUrl(uploadJson.rawUrl) : null;
+
+    // ✅ NUEVO: URL “canónica” para el front según el tipo
+    // - si el backend dijo RAW, queremos RAW como base
+    // - si dijo COVER, queremos COVER como base
+    const imageUrl =
+      type === "raw"
+        ? rawUrl || enhancedImageUrl
+        : type === "cover"
+        ? coverUrl || enhancedImageUrl
+        : enhancedImageUrl;
+
     return NextResponse.json(
       {
-        enhancedImageUrl,
+        enhancedImageUrl, // se mantiene (compat)
+        imageUrl, // ✅ NUEVO: usá esto en full/embed
         message:
           uploadJson.message ??
-          (uploadJson.type === "cover"
+          (type === "cover"
             ? "Imagen procesada y lista para usar como portada."
             : "Imagen subida como RAW, sin procesamiento."),
         overlay,
-        type: uploadJson.type ?? null,
-        coverUrl: uploadJson.coverUrl ? getPublicUrl(uploadJson.coverUrl) : null,
-        rawUrl: uploadJson.rawUrl ? getPublicUrl(uploadJson.rawUrl) : null,
+        type,
+        coverUrl,
+        rawUrl,
 
         // ✅ clave para debug cuando vuelve RAW
         coverError: uploadJson.coverError ?? null,
