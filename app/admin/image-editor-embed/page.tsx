@@ -3,6 +3,7 @@
 
 import { useState, useEffect, ChangeEvent, ClipboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
+import { getBrandUrl } from "@/app/lib/api";
 
 type EnhanceResponse = {
   enhancedImageUrl: string;
@@ -67,7 +68,7 @@ const PAGE_SIZE = 10;
 const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
 type AlertTag = (typeof ALERT_TAGS)[number];
 
-// === PALETA AJUSTADA: blanco, negro, púrpura, naranja, rojo, azul ===
+// Paleta
 const PALETTE = [
   "#ffffff", // blanco
   "#000000", // negro
@@ -115,7 +116,6 @@ function getOverlayGradient(theme: CoverTheme): string {
     case "sunset":
       return "linear-gradient(135deg, rgba(248,113,113,1) 0%, rgba(249,115,22,1) 40%, rgba(30,64,175,1) 100%)";
     case "black":
-      // negro / máximo contraste: barra totalmente opaca
       return "linear-gradient(180deg, rgba(15,23,42,1) 0%, rgba(0,0,0,1) 45%, rgba(0,0,0,1) 100%)";
     case "purple":
     default:
@@ -149,36 +149,56 @@ function alertAlignLabel(value: AlertAlign): string {
   }
 }
 
-function isLikelyRemoteUrl(u: string) {
-  const s = (u ?? "").trim().toLowerCase();
-  if (!s) return false;
-  if (s.startsWith("blob:")) return false;
-  if (s.startsWith("data:")) return false;
-  if (s.startsWith("/uploads/")) return true;
-  if (s.startsWith("http://") || s.startsWith("https://")) return true;
-  // algunos casos te pueden quedar como "uploads/..."
-  if (s.startsWith("uploads/")) return true;
-  return false;
+// === ICONOS SVG (alineados) ===
+function IconX({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="currentColor"
+    >
+      <path d="M18.901 2H22l-6.77 7.735L23.5 22h-6.6l-5.167-6.769L5.8 22H2.7l7.26-8.296L1 2h6.76l4.668 6.167L18.901 2Zm-1.157 18h1.72L6.83 3.93H4.99L17.744 20Z" />
+    </svg>
+  );
 }
 
-async function urlToFile(url: string, filename: string) {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error("No se pudo descargar la imagen preprocesada.");
-  const blob = await res.blob();
-  const mime = blob.type || "image/png";
-  return new File([blob], filename, { type: mime });
+function IconFacebook({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="currentColor"
+    >
+      <path d="M13.5 22v-8h2.65l.35-3H13.5V9.25c0-.87.26-1.47 1.55-1.47H16.6V5.1c-.27-.04-1.2-.1-2.27-.1-2.25 0-3.83 1.37-3.83 3.9V11H8v3h2.5v8h3Z" />
+    </svg>
+  );
+}
+
+function IconInstagram({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="currentColor"
+    >
+      <path d="M7.5 2h9A5.5 5.5 0 0 1 22 7.5v9A5.5 5.5 0 0 1 16.5 22h-9A5.5 5.5 0 0 1 2 16.5v-9A5.5 5.5 0 0 1 7.5 2Zm9 2h-9A3.5 3.5 0 0 0 4 7.5v9A3.5 3.5 0 0 0 7.5 20h9a3.5 3.5 0 0 0 3.5-3.5v-9A3.5 3.5 0 0 0 16.5 4ZM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm5.75-2.25a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Z" />
+    </svg>
+  );
 }
 
 export default function ImageEditorEmbedPage() {
   const searchParams = useSearchParams();
 
+  // ✅ URLs ABSOLUTAS al backend (evita 404 en :3001)
+  const BRAND_LOGO_HORIZONTAL = getBrandUrl("/brand/logo-horizontal.png");
+  const BRAND_LOGO_CIRCULAR = getBrandUrl("/brand/logo-circular.png");
+
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
-
-  // ✅ NUEVO: URL del RAW limpio (preprocesado)
-  const [cleanUrl, setCleanUrl] = useState<string | null>(null);
-  const [isPreprocessing, setIsPreprocessing] = useState(false);
 
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
@@ -188,14 +208,12 @@ export default function ImageEditorEmbedPage() {
   const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
   const [textOffsetPct, setTextOffsetPct] = useState(0);
 
-  // === TEMA POR DEFECTO: NEGRO ===
   const [theme, setTheme] = useState<CoverTheme>("black");
 
   const [titleColor, setTitleColor] = useState("#ffffff");
   const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
   const [handleColor, setHandleColor] = useState("#ffffff");
 
-  // posición horizontal de la etiqueta
   const [alertAlign, setAlertAlign] = useState<AlertAlign>("left");
 
   // Cabecera tipo "La Derecha Diario"
@@ -203,9 +221,7 @@ export default function ImageEditorEmbedPage() {
   const [headerDate, setHeaderDate] = useState("");
   const [headerLabel, setHeaderLabel] = useState("");
 
-  // Fondo / degradado
   const [overlayHeight, setOverlayHeight] = useState(38); // %
-  // === OPACIDAD POR DEFECTO: 100% ===
   const [overlayOpacity, setOverlayOpacity] = useState(1); // 0–1
 
   const [loading, setLoading] = useState(false);
@@ -232,9 +248,6 @@ export default function ImageEditorEmbedPage() {
     setErrorMsg(null);
     setSuccessMsg(null);
     setPreviewUrl(previewSrc);
-
-    // ✅ reset preprocess cuando cambiás base
-    setCleanUrl(null);
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -299,63 +312,6 @@ export default function ImageEditorEmbedPage() {
     }
   };
 
-  // ✅ NUEVO: Preprocesar (RAW -> clean) usando endpoint Next route
-  const handlePreprocess = async () => {
-    const baseUrl = previewUrl;
-    if (!baseUrl) {
-      setErrorMsg("Primero cargá una imagen base.");
-      return;
-    }
-
-    // Si el preview es blob: (subida local/clipboard), no hay URL estable para el backend.
-    if (!isLikelyRemoteUrl(baseUrl)) {
-      setErrorMsg(
-        "Para preprocesar con IA necesitás una imagen con URL real (ej /uploads/raw/... o https://...). " +
-          "Si subiste desde tu PC/portapapeles, primero generá una cover/RAW y después preprocesás desde la biblioteca.",
-      );
-      return;
-    }
-
-    setIsPreprocessing(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    try {
-      const res = await fetch("/api/internal/ai-image/preprocess", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rawUrl: baseUrl }),
-      });
-
-      const json = await res.json().catch(() => ({} as any));
-
-      if (!res.ok) {
-        const msg =
-          json?.message ||
-          `Error preprocess (HTTP ${res.status})` +
-            (json?.backend ? `: ${String(json.backend).slice(0, 300)}` : "");
-        throw new Error(msg);
-      }
-
-      const newCleanUrl = (json?.cleanUrl ?? "").toString().trim();
-      if (!newCleanUrl) throw new Error("El preprocess no devolvió cleanUrl.");
-
-      // Guardamos cleanUrl y lo usamos como nueva base descargándolo como File
-      setCleanUrl(newCleanUrl);
-
-      const f = await urlToFile(newCleanUrl, `clean-${Date.now()}.png`);
-      applyBaseFile(f, newCleanUrl);
-
-      setSuccessMsg("RAW preprocesado con IA. Ahora podés generar la cover.");
-      void loadImages();
-    } catch (err: any) {
-      console.error("[preprocess] error:", err);
-      setErrorMsg(err?.message ?? "Error al preprocesar la imagen con IA.");
-    } finally {
-      setIsPreprocessing(false);
-    }
-  };
-
   const handleEnhance = async () => {
     if (!file) {
       setErrorMsg(
@@ -381,6 +337,8 @@ export default function ImageEditorEmbedPage() {
 
       const safeFooter = footer.trim() || null;
 
+      // Si tu backend ya soporta leer estos paths, los usa.
+      // Si no, los ignora y no rompe.
       const brandConfig = {
         brandName: "CANALIBERTARIO",
         claim: "NOTICIAS Y ANÁLISIS ECONÓMICOS Y POLÍTICOS DESDE UNA MIRADA LIBERTARIA",
@@ -388,6 +346,15 @@ export default function ImageEditorEmbedPage() {
         siteUrl: safeFooter,
         socialHandle: "@canallibertario",
         socialIcons: ["x", "facebook", "instagram"] as const,
+        assets: {
+          // ✅ Para FORZAR que el footer use horizontal (tu pedido),
+          // mandamos el horizontal en ambos campos.
+          // El circular lo dejás para usar "opcionalmente en la imagen" más adelante (backend).
+          logoCirclePath: BRAND_LOGO_HORIZONTAL,
+          logoHorizontalPath: BRAND_LOGO_HORIZONTAL,
+          // Si querés mantener el circular disponible para el futuro:
+          // logoCirclePath: BRAND_LOGO_CIRCULAR,
+        },
       };
 
       const footerLabel = useHeaderStrip ? headerLabel.trim() || null : null;
@@ -491,9 +458,7 @@ export default function ImageEditorEmbedPage() {
     setListLoading(true);
     setListError(null);
     try {
-      const headers: HeadersInit = {
-        Accept: "application/json",
-      };
+      const headers: HeadersInit = { Accept: "application/json" };
 
       if (typeof window !== "undefined") {
         const token = window.localStorage.getItem("news_access_token");
@@ -634,8 +599,8 @@ export default function ImageEditorEmbedPage() {
       typeFilter === "all"
         ? true
         : typeFilter === "raw"
-        ? imgType === "raw"
-        : imgType === "cover";
+          ? imgType === "raw"
+          : imgType === "cover";
 
     return nameMatch && typeMatch;
   });
@@ -645,49 +610,43 @@ export default function ImageEditorEmbedPage() {
   const startIndex = (currentPage - 1) * PAGE_SIZE;
   const pagedImages = filteredImages.slice(startIndex, startIndex + PAGE_SIZE);
 
-  // URL principal para la vista previa
   const mainPreviewUrl = resultUrl || previewUrl;
   const hasBaseImage = !!mainPreviewUrl;
 
-  // clases para posición vertical del bloque de texto
   const textPositionClass =
     textPosition === "top"
       ? "top-0 justify-start"
       : textPosition === "middle"
-      ? "top-1/2 -translate-y-1/2 justify-center"
-      : "bottom-0 justify-end";
+        ? "top-1/2 -translate-y-1/2 justify-center"
+        : "bottom-0 justify-end";
 
-  // clases para alinear la etiqueta
   const alertAlignClass =
     alertAlign === "left"
       ? "justify-start"
       : alertAlign === "center"
-      ? "justify-center"
-      : "justify-end";
+        ? "justify-center"
+        : "justify-end";
 
-  // líneas del título
   const displayTitle = title || "Título de la portada";
   const titleLines = displayTitle.split(/\r?\n/);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-6 md:py-8">
-      {/* PANEL PRINCIPAL */}
       <div className="relative overflow-hidden rounded-3xl border border-slate-900/80 bg-slate-950/95 text-slate-50 shadow-[0_32px_90px_rgba(15,23,42,0.95)]">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),transparent_60%)] opacity-80" />
 
         <section className="relative z-10 space-y-6 p-4 md:p-8">
           <header className="space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
-              Editor de imágenes · IA
+              Editor de imágenes · Covers
             </div>
             <h1 className="text-2xl font-semibold leading-tight md:text-3xl">
               Ajustá textos y vista previa antes de generar la cover
             </h1>
             <p className="max-w-2xl text-sm text-slate-300">
               Subí una imagen, pegá una captura o elegí una RAW de la biblioteca.
-              Después definí el título, la bajada, la etiqueta y la firma
-              CANALIBERTARIO. La salida es una cover horizontal 1280×720 pensada
-              para X/Twitter, Facebook e Instagram (post clásico).
+              Después definí el título, la bajada, la etiqueta y la firma.
+              La salida es una cover horizontal 1280×720.
             </p>
           </header>
 
@@ -700,15 +659,9 @@ export default function ImageEditorEmbedPage() {
 
               <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-700/80 bg-slate-800/80 px-4 py-2 text-xs font-medium text-slate-50 hover:border-sky-400/80 hover:bg-slate-800">
                 Seleccionar imagen de portada
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
+                <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
               </label>
 
-              {/* Campo para pegar screenshot */}
               <div className="space-y-2 rounded-xl border border-slate-800/80 bg-slate-950/70 p-3">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                   Pegá una captura (screenshot)
@@ -742,7 +695,6 @@ export default function ImageEditorEmbedPage() {
                   Textos de la portada
                 </div>
 
-                {/* TÍTULO */}
                 <div className="space-y-1">
                   <label className="text-[11px] text-slate-300">Título principal</label>
                   <textarea
@@ -753,15 +705,12 @@ export default function ImageEditorEmbedPage() {
                     placeholder="Ej: Milei anuncia medidas"
                   />
                   <p className="text-[10px] text-slate-400">
-                    Podés usar <strong>Enter</strong> para forzar saltos de línea
-                    en la portada.
+                    Podés usar <strong>Enter</strong> para forzar saltos de línea.
                   </p>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">
-                    Bajada / descripción corta
-                  </label>
+                  <label className="text-[11px] text-slate-300">Bajada / descripción corta</label>
                   <input
                     type="text"
                     value={subtitle}
@@ -772,9 +721,7 @@ export default function ImageEditorEmbedPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">
-                    Etiqueta (opcional)
-                  </label>
+                  <label className="text-[11px] text-slate-300">Etiqueta (opcional)</label>
                   <select
                     value={alertTag}
                     onChange={(e) => setAlertTag(e.target.value as AlertTag)}
@@ -787,11 +734,8 @@ export default function ImageEditorEmbedPage() {
                   </select>
                 </div>
 
-                {/* Posición de la etiqueta */}
                 <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">
-                    Posición de la etiqueta
-                  </label>
+                  <label className="text-[11px] text-slate-300">Posición de la etiqueta</label>
                   <div className="flex flex-wrap gap-2 text-[11px]">
                     {(["left", "center", "right"] as AlertAlign[]).map((a) => (
                       <button
@@ -818,34 +762,30 @@ export default function ImageEditorEmbedPage() {
                       onChange={(e) => setUseHeaderStrip(e.target.checked)}
                       className="h-3 w-3 rounded border-slate-600 bg-slate-900"
                     />
-                    Mostrar franja superior (fecha / contexto)
+                    Mostrar franja superior (fecha / contexto + logo horizontal)
                   </label>
 
                   {useHeaderStrip && (
                     <div className="space-y-2">
                       <div className="space-y-1">
-                        <label className="text-[11px] text-slate-300">
-                          Fecha / momento
-                        </label>
+                        <label className="text-[11px] text-slate-300">Fecha / momento</label>
                         <input
                           type="text"
                           value={headerDate}
                           onChange={(e) => setHeaderDate(e.target.value)}
                           className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                          placeholder="Ej: 07/12/2025 · 20:17"
+                          placeholder="Ej: 20/12/2025 · 20:17"
                         />
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[11px] text-slate-300">
-                          Texto extra (opcional)
-                        </label>
+                        <label className="text-[11px] text-slate-300">Texto extra (opcional)</label>
                         <input
                           type="text"
                           value={headerLabel}
                           onChange={(e) => setHeaderLabel(e.target.value)}
                           className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                          placeholder="Ej: Cobertura especial · Acto Fuerza Aérea"
+                          placeholder="Ej: Cobertura especial · Economía"
                         />
                       </div>
                     </div>
@@ -864,9 +804,7 @@ export default function ImageEditorEmbedPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">
-                    Posición del bloque de texto
-                  </label>
+                  <label className="text-[11px] text-slate-300">Posición del bloque de texto</label>
                   <select
                     value={textPosition}
                     onChange={(e) => setTextPosition(e.target.value as TextPosition)}
@@ -878,11 +816,8 @@ export default function ImageEditorEmbedPage() {
                   </select>
                 </div>
 
-                {/* ajuste fino vertical */}
                 <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">
-                    Ajuste fino vertical del texto
-                  </label>
+                  <label className="text-[11px] text-slate-300">Ajuste fino vertical del texto</label>
                   <input
                     type="range"
                     min={-20}
@@ -897,9 +832,7 @@ export default function ImageEditorEmbedPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">
-                    Tema de color de la barra
-                  </label>
+                  <label className="text-[11px] text-slate-300">Tema de color de la barra</label>
                   <div className="flex flex-wrap gap-2 text-[11px]">
                     {(["purple", "sunset", "black"] as CoverTheme[]).map((t) => (
                       <button
@@ -918,12 +851,9 @@ export default function ImageEditorEmbedPage() {
                   </div>
                 </div>
 
-                {/* Controles de fondo */}
                 <div className="mt-2 grid gap-3 md:grid-cols-2">
                   <div className="space-y-1">
-                    <label className="text-[11px] text-slate-300">
-                      Altura del fondo (barra)
-                    </label>
+                    <label className="text-[11px] text-slate-300">Altura del fondo (barra)</label>
                     <input
                       type="range"
                       min={25}
@@ -932,15 +862,11 @@ export default function ImageEditorEmbedPage() {
                       onChange={(e) => setOverlayHeight(Number(e.target.value) || 25)}
                       className="w-full"
                     />
-                    <div className="text-[10px] text-slate-400">
-                      {overlayHeight}% de la altura de la imagen.
-                    </div>
+                    <div className="text-[10px] text-slate-400">{overlayHeight}% de altura.</div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[11px] text-slate-300">
-                      Opacidad del fondo
-                    </label>
+                    <label className="text-[11px] text-slate-300">Opacidad del fondo</label>
                     <input
                       type="range"
                       min={40}
@@ -954,19 +880,14 @@ export default function ImageEditorEmbedPage() {
                       className="w-full"
                     />
                     <div className="text-[10px] text-slate-400">
-                      {Math.round(overlayOpacity * 100)}% — tipo “glass”: desde
-                      semi-transparente hasta casi sólido.
+                      {Math.round(overlayOpacity * 100)}%
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-2 grid gap-3 md:grid-cols-3">
                   <ColorSwatches label="Color título" value={titleColor} onChange={setTitleColor} />
-                  <ColorSwatches
-                    label="Color bajada"
-                    value={subtitleColor}
-                    onChange={setSubtitleColor}
-                  />
+                  <ColorSwatches label="Color bajada" value={subtitleColor} onChange={setSubtitleColor} />
                   <ColorSwatches
                     label="Color @canallibertario"
                     value={handleColor}
@@ -985,144 +906,130 @@ export default function ImageEditorEmbedPage() {
               <div className="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3">
                 {hasBaseImage ? (
                   <div className="space-y-3">
-                    {/* preview en vivo */}
                     <div className="relative mx-auto w-full max-w-2xl overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
                       <div className="relative aspect-video w-full">
                         {mainPreviewUrl && (
-                          <img
-                            src={mainPreviewUrl}
-                            alt="Preview portada"
-                            className="h-full w-full object-cover"
-                          />
+                          <img src={mainPreviewUrl} alt="Preview portada" className="h-full w-full object-cover" />
                         )}
 
                         {/* Franja superior */}
                         {useHeaderStrip && (
                           <div
-                            className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-6 py-2 text-[11px] font-semibold uppercase tracking-[0.16em]"
+                            className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center justify-between gap-4 px-5 py-2"
                             style={{
                               background:
                                 "linear-gradient(to right, rgba(15,23,42,0.96), rgba(15,23,42,0.9))",
                             }}
                           >
-                            <span className="text-slate-200">
-                              {headerDate || "Fecha no definida"}
-                            </span>
-                            <span className="text-slate-300">
-                              {headerLabel || "Cobertura especial"}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Overlay principal */}
-                        {hasBaseImage && (
-                          <div
-                            className={`pointer-events-none absolute inset-x-0 z-10 flex px-8 pb-6 pt-6 ${textPositionClass}`}
-                            style={{
-                              height: "100%",
-                              transform:
-                                textOffsetPct !== 0
-                                  ? `translateY(${textOffsetPct}%)`
-                                  : undefined,
-                            }}
-                          >
-                            <div
-                              className="relative w-full rounded-[26px] border border-slate-900/70 px-7 py-5"
-                              style={{
-                                backgroundImage: getOverlayGradient(theme),
-                                opacity: overlayOpacity,
-                                height: `${overlayHeight}%`,
-                                alignSelf:
-                                  textPosition === "top"
-                                    ? "flex-start"
-                                    : textPosition === "middle"
-                                    ? "center"
-                                    : "flex-end",
-                                boxShadow: "0 26px 80px rgba(15,23,42,0.95)",
-                              }}
-                            >
-                              <div className="flex h-full flex-col justify-between">
-                                <div className="space-y-1">
-                                  {alertTag && (
-                                    <div className={`mb-1 flex ${alertAlignClass}`}>
-                                      <div
-                                        className="inline-flex items-center rounded-full bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]"
-                                        style={{ color: titleColor }}
-                                      >
-                                        {alertTag}
-                                      </div>
-                                    </div>
-                                  )}
-                                  <h2
-                                    className="text-lg font-semibold leading-tight md:text-xl lg:text-2xl"
-                                    style={{ color: titleColor }}
-                                  >
-                                    {titleLines.map((line, idx) => (
-                                      <span key={idx} className={idx > 0 ? "block" : ""}>
-                                        {line}
-                                      </span>
-                                    ))}
-                                  </h2>
-                                  {subtitle && (
-                                    <p
-                                      className="mt-1 text-[12px] leading-snug md:text-[13px]"
-                                      style={{ color: subtitleColor }}
-                                    >
-                                      {subtitle}
-                                    </p>
-                                  )}
+                            <div className="flex min-w-0 items-center gap-3">
+                              <img
+                                src={BRAND_LOGO_HORIZONTAL}
+                                alt="Canalibertario"
+                                className="h-5 w-auto opacity-95"
+                              />
+                              <div className="min-w-0">
+                                <div className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-200">
+                                  {headerDate || "Fecha no definida"}
                                 </div>
-
-                                <div className="mt-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.18em]">
-                                  <span className="text-xs" style={{ color: handleColor }}>
-                                    @canallibertario
-                                  </span>
-                                  <span className="flex items-center gap-2 text-[10px] text-slate-100">
-                                    {footer && <span className="hidden md:inline">{footer}</span>}
-                                    <span className="flex items-center gap-1 opacity-90">
-                                      <span>𝕏</span>
-                                      <span>f</span>
-                                      <span>◎</span>
-                                    </span>
-                                  </span>
+                                <div className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">
+                                  {headerLabel || "Cobertura especial"}
                                 </div>
                               </div>
                             </div>
                           </div>
                         )}
-                      </div>
-                    </div>
 
-                    {/* ✅ Barra de acciones de IA (preprocess) */}
-                    <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-3 text-[11px]">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <div className="font-semibold text-slate-200">
-                          Preprocesado (opcional)
+                        {/* Overlay principal */}
+                        <div
+                          className={`pointer-events-none absolute inset-x-0 z-10 flex px-8 pb-6 pt-6 ${textPositionClass}`}
+                          style={{
+                            height: "100%",
+                            transform: textOffsetPct !== 0 ? `translateY(${textOffsetPct}%)` : undefined,
+                          }}
+                        >
+                          <div
+                            className="relative w-full rounded-[26px] border border-slate-900/70 px-7 py-5"
+                            style={{
+                              backgroundImage: getOverlayGradient(theme),
+                              opacity: overlayOpacity,
+                              height: `${overlayHeight}%`,
+                              alignSelf:
+                                textPosition === "top"
+                                  ? "flex-start"
+                                  : textPosition === "middle"
+                                    ? "center"
+                                    : "flex-end",
+                              boxShadow: "0 26px 80px rgba(15,23,42,0.95)",
+                            }}
+                          >
+                            <div className="flex h-full flex-col justify-between">
+                              <div className="space-y-1">
+                                {alertTag && (
+                                  <div className={`mb-1 flex ${alertAlignClass}`}>
+                                    <div
+                                      className="inline-flex items-center rounded-full bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]"
+                                      style={{ color: titleColor }}
+                                    >
+                                      {alertTag}
+                                    </div>
+                                  </div>
+                                )}
+
+                                <h2
+                                  className="text-lg font-semibold leading-tight md:text-xl lg:text-2xl"
+                                  style={{ color: titleColor }}
+                                >
+                                  {titleLines.map((line, idx) => (
+                                    <span key={idx} className={idx > 0 ? "block" : ""}>
+                                      {line}
+                                    </span>
+                                  ))}
+                                </h2>
+
+                                {subtitle && (
+                                  <p
+                                    className="mt-1 text-[12px] leading-snug md:text-[13px]"
+                                    style={{ color: subtitleColor }}
+                                  >
+                                    {subtitle}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Footer dentro de la barra:
+                                  ✅ logo HORIZONTAL + handle + redes
+                                  (circular NO en footer) */}
+                              <div className="mt-3 flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.18em]">
+                                <div className="flex items-center gap-3">
+                                  <img
+                                    src={BRAND_LOGO_HORIZONTAL}
+                                    alt="Canalibertario"
+                                    className="h-5 w-auto opacity-95"
+                                  />
+                                  <span className="text-xs" style={{ color: handleColor }}>
+                                    @canallibertario
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  {footer && (
+                                    <span className="hidden max-w-[220px] truncate text-[10px] text-slate-100 md:inline">
+                                      {footer}
+                                    </span>
+                                  )}
+
+                                  <span className="flex items-center gap-2 text-slate-100 opacity-95">
+                                    <IconX className="h-[14px] w-[14px]" />
+                                    <IconFacebook className="h-[14px] w-[14px]" />
+                                    <IconInstagram className="h-[14px] w-[14px]" />
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        {cleanUrl ? (
-                          <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
-                            activo
-                          </span>
-                        ) : (
-                          <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
-                            inactivo
-                          </span>
-                        )}
+
                       </div>
-
-                      <p className="mb-2 text-[10px] text-slate-400">
-                        Esto “limpia” la foto base (contraste/ruido/marcas leves)
-                        y después generás la cover normal con tu renderer.
-                      </p>
-
-                      <button
-                        type="button"
-                        onClick={handlePreprocess}
-                        disabled={isPreprocessing || !previewUrl}
-                        className="inline-flex w-full items-center justify-center rounded-full border border-violet-400/80 bg-violet-500/10 px-4 py-2 text-xs font-semibold text-violet-200 hover:bg-violet-500/20 disabled:opacity-50"
-                      >
-                        {isPreprocessing ? "Preprocesando..." : "Preprocesar foto con IA"}
-                      </button>
                     </div>
                   </div>
                 ) : (
@@ -1154,33 +1061,25 @@ export default function ImageEditorEmbedPage() {
                     <b>Bajada:</b> {subtitle || "—"}
                   </div>
                   <div>
-                    <b>Etiqueta:</b> {alertTag || "(sin)"}{" "}
-                    {alertTag && `· ${alertAlignLabel(alertAlign)}`}
+                    <b>Etiqueta:</b> {alertTag || "(sin)"} {alertTag && `· ${alertAlignLabel(alertAlign)}`}
                   </div>
                   <div>
                     <b>Cabecera:</b>{" "}
-                    {useHeaderStrip
-                      ? `${headerDate || "—"} · ${headerLabel || "sin texto extra"}`
-                      : "desactivada"}
+                    {useHeaderStrip ? `${headerDate || "—"} · ${headerLabel || "sin texto extra"}` : "desactivada"}
                   </div>
                   <div>
                     <b>Firma:</b> {(footer || "(sin sitio)") + " + X / Facebook / Instagram"}
                   </div>
                   <div>
                     <b>Posición texto:</b>{" "}
-                    {textPosition === "bottom"
-                      ? "Inferior"
-                      : textPosition === "middle"
-                      ? "Centro"
-                      : "Superior"}
+                    {textPosition === "bottom" ? "Inferior" : textPosition === "middle" ? "Centro" : "Superior"}
                     {textOffsetPct !== 0 ? ` · offset ${textOffsetPct}%` : ""}
                   </div>
                   <div>
                     <b>Tema de color:</b> {themeLabel(theme)}
                   </div>
                   <div>
-                    <b>Fondo:</b> altura {overlayHeight}% · opacidad{" "}
-                    {Math.round(overlayOpacity * 100)}%
+                    <b>Fondo:</b> altura {overlayHeight}% · opacidad {Math.round(overlayOpacity * 100)}%
                   </div>
                 </div>
               </div>
@@ -1191,7 +1090,7 @@ export default function ImageEditorEmbedPage() {
                 disabled={loading || !file}
                 className="inline-flex w-full items-center justify-center rounded-full bg-sky-500 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_18px_35px_rgba(56,189,248,0.45)] hover:bg-sky-400 disabled:bg-slate-700 disabled:text-slate-300"
               >
-                {loading ? "Procesando..." : "Mejorar imagen con IA"}
+                {loading ? "Procesando..." : "Generar cover (renderer)"}
               </button>
 
               <button
@@ -1205,10 +1104,10 @@ export default function ImageEditorEmbedPage() {
 
               {resultUrl && (
                 <div className="space-y-2">
-                  <div className="text-[11px] text-emerald-200">Resultado procesado:</div>
+                  <div className="text-[11px] text-emerald-200">Resultado:</div>
                   <img
                     src={resultUrl}
-                    alt="Imagen mejorada"
+                    alt="Imagen generada"
                     className="max-h-72 w-full rounded-lg border border-emerald-500/70 object-cover"
                   />
                 </div>

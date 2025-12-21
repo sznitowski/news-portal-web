@@ -14,15 +14,32 @@ type FormSnapshot = {
   sourceIdeology?: string;
   publishedAt?: string;
   imageUrl?: string;
+
+  // (opcional) si ya estás guardando algo del overlay en el form del front
+  coverOverlay?: unknown;
 };
 
-type AiSuggestion = {
+type CoverOverlaySuggestion = {
+  overlayTitle?: string | null;
+  overlaySubtitle?: string | null;
+  tone?: string | null;
+  primaryColor?: string | null;
+  secondaryColor?: string | null;
+
+  // si tu back devuelve más cosas, se preservan igual
+  [k: string]: unknown;
+};
+
+type AiCombinedResponse = {
   title?: string;
   summary?: string;
   bodyHtml?: string;
   category?: string;
   ideology?: string;
   sourceIdeology?: string;
+
+  imageUrl: string; // raw (puede ser /uploads/... o url absoluta)
+  coverOverlay: CoverOverlaySuggestion;
 };
 
 // Helper: escapa comillas y & para usar en atributos HTML (alt="")
@@ -34,18 +51,14 @@ function escapeHtmlAttr(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
-// Si el valor existente tiene texto, se respeta;
-// si está vacío, se usa el de la IA.
-function preferExisting(
-  existing?: unknown,
-  ai?: unknown,
-): string | undefined {
+// Si el valor existente tiene texto, se respeta; si está vacío, se usa el de la IA.
+function preferExisting(existing?: unknown, ai?: unknown): string | undefined {
   const ex =
     typeof existing === "string"
       ? existing.trim()
       : existing == null
-      ? ""
-      : String(existing).trim();
+        ? ""
+        : String(existing).trim();
 
   if (ex.length > 0) {
     return typeof existing === "string" ? existing : String(existing);
@@ -55,14 +68,12 @@ function preferExisting(
     typeof ai === "string"
       ? ai.trim()
       : ai == null
-      ? ""
-      : String(ai).trim();
+        ? ""
+        : String(ai).trim();
 
   return aiStr.length > 0 ? aiStr : undefined;
 }
 
-// Si el usuario dejó la categoría vacía o en el default,
-// usamos la sugerida por la IA. Si eligió algo distinto, lo respetamos.
 function mergeCategory(userCat?: string, aiCat?: string): string {
   const u = (userCat ?? "").trim();
   const a = (aiCat ?? "").trim();
@@ -73,7 +84,6 @@ function mergeCategory(userCat?: string, aiCat?: string): string {
   return u;
 }
 
-// Igual que arriba pero para ideología.
 function mergeIdeology(userIde?: string, aiIde?: string): string {
   const u = (userIde ?? "").trim();
   const a = (aiIde ?? "").trim();
@@ -92,7 +102,6 @@ const INTERNAL_KEY =
 
 export async function POST(req: NextRequest) {
   try {
-    // Token que viene del front (handleProcessImage le manda Authorization: Bearer xxx)
     const authHeader = req.headers.get("authorization") ?? undefined;
 
     const formData = await req.formData();
@@ -116,38 +125,23 @@ export async function POST(req: NextRequest) {
     }
 
     // 1) Subir imagen al backend (/internal/uploads/image)
-    const uploadBody = new FormData(); // el backend espera el campo "file", no "image"
+    const uploadBody = new FormData();
     uploadBody.set("file", file);
-    // 🔹 marcamos que esto viene del flujo de captura
     uploadBody.set("kind", "screenshot");
 
     const uploadHeaders: Record<string, string> = {};
-    if (authHeader) {
-      // para guards JWT
-      uploadHeaders["authorization"] = authHeader;
-    }
-    if (INTERNAL_KEY) {
-      // por si también usa ingest key
-      uploadHeaders["x-ingest-key"] = INTERNAL_KEY;
-    }
+    if (authHeader) uploadHeaders["authorization"] = authHeader;
+    if (INTERNAL_KEY) uploadHeaders["x-ingest-key"] = INTERNAL_KEY;
 
-    const uploadRes = await fetch(
-      buildApiUrl("/internal/uploads/image"),
-      {
-        method: "POST",
-        headers: uploadHeaders,
-        body: uploadBody,
-      },
-    );
+    const uploadRes = await fetch(buildApiUrl("/internal/uploads/image"), {
+      method: "POST",
+      headers: uploadHeaders,
+      body: uploadBody,
+    });
 
     if (!uploadRes.ok) {
       const text = await uploadRes.text().catch(() => "");
-      console.error(
-        "Error al subir imagen:",
-        uploadRes.status,
-        uploadRes.statusText,
-        text,
-      );
+      console.error("Error al subir imagen:", uploadRes.status, uploadRes.statusText, text);
       return NextResponse.json(
         {
           message: "Error al subir la imagen al backend",
@@ -164,9 +158,7 @@ export async function POST(req: NextRequest) {
       path?: string;
     };
 
-    // Puede venir como /uploads/... o como http://.../uploads/...
-    const rawImageUrl =
-      uploadJson.url ?? uploadJson.imageUrl ?? uploadJson.path;
+    const rawImageUrl = uploadJson.url ?? uploadJson.imageUrl ?? uploadJson.path;
 
     if (!rawImageUrl) {
       return NextResponse.json(
@@ -178,52 +170,32 @@ export async function POST(req: NextRequest) {
     // URL pública para mostrar en el editor
     const publicImageUrl = getPublicUrl(rawImageUrl);
 
-    // 2) Pedir sugerencias a la IA (/internal/articles/from-image-ai)
+    // 2) Pedir TODO JUNTO: nota + overlay (tu endpoint magia)
     const aiHeaders: Record<string, string> = {
       "Content-Type": "application/json",
     };
-    if (INTERNAL_KEY) {
-      aiHeaders["x-ingest-key"] = INTERNAL_KEY;
-    }
-    if (authHeader) {
-      aiHeaders["authorization"] = authHeader;
-    }
+    if (INTERNAL_KEY) aiHeaders["x-ingest-key"] = INTERNAL_KEY;
+    if (authHeader) aiHeaders["authorization"] = authHeader;
 
-    // sacamos imageUrl de form para que NO pise el valor real
-    const { imageUrl: _formImageUrl, ...formSinImagen } = form;
+    console.log("[from-image-ai] rawImageUrl:", rawImageUrl);
 
-    const aiPayload = {
-      ...formSinImagen,
-      imageUrl: rawImageUrl,
-    };
-
-    console.log(
-      "[from-image-ai] rawImageUrl:",
-      rawImageUrl,
-      "aiPayload:",
-      JSON.stringify(aiPayload),
-    );
-
-    const aiRes = await fetch(
-      buildApiUrl("/internal/articles/from-image-ai"),
-      {
-        method: "POST",
-        headers: aiHeaders,
-        body: JSON.stringify(aiPayload),
-      },
-    );
+    const aiRes = await fetch(buildApiUrl("/internal/ai/article-and-overlay-from-image"), {
+      method: "POST",
+      headers: aiHeaders,
+      body: JSON.stringify({ imageUrl: rawImageUrl }),
+    });
 
     if (!aiRes.ok) {
       const text = await aiRes.text().catch(() => "");
       console.error(
-        "Error al llamar a /internal/articles/from-image-ai:",
+        "Error al llamar a /internal/ai/article-and-overlay-from-image:",
         aiRes.status,
         aiRes.statusText,
         text,
       );
       return NextResponse.json(
         {
-          message: "Error al procesar la captura con IA",
+          message: "Error al procesar la captura con IA (nota + overlay).",
           statusCode: aiRes.status,
           backend: text,
         },
@@ -231,9 +203,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const ai = (await aiRes.json()) as AiSuggestion;
+    const ai = (await aiRes.json()) as AiCombinedResponse;
 
-    // 3) Merge de campos de texto
+    // 3) Merge de campos de texto (respetar lo que el usuario ya escribió)
     const finalTitle = preferExisting(form.title, ai.title);
     const finalSummary = preferExisting(form.summary, ai.summary);
     const baseBodyHtml = preferExisting(form.bodyHtml, ai.bodyHtml);
@@ -243,38 +215,30 @@ export async function POST(req: NextRequest) {
     const shouldInjectImage = !form.bodyHtml && !!baseBodyHtml;
 
     if (shouldInjectImage) {
-      const altText =
-        finalTitle ??
-        "Captura de pantalla de la publicación original";
-      const imgTag = `<p><img src="${publicImageUrl}" alt="${escapeHtmlAttr(
-        altText,
-      )}" /></p>\n`;
+      const altText = finalTitle ?? "Captura de pantalla de la publicación original";
+      const imgTag = `<p><img src="${publicImageUrl}" alt="${escapeHtmlAttr(altText)}" /></p>\n`;
       finalBodyHtml = imgTag + (baseBodyHtml ?? "");
     }
 
+    // 5) Devolvemos TODO: texto + overlay + imageUrl pública
     const merged = {
       title: finalTitle ?? "",
       summary: finalSummary ?? "",
       bodyHtml: finalBodyHtml ?? "",
       category: mergeCategory(form.category, ai.category),
       ideology: mergeIdeology(form.ideology, ai.ideology),
-      sourceIdeology: preferExisting(
-        form.sourceIdeology,
-        ai.sourceIdeology,
-      ),
+      sourceIdeology: preferExisting(form.sourceIdeology, ai.sourceIdeology),
       imageUrl: publicImageUrl,
+
+      // CLAVE: esto lo vas a usar para precargar el editor de portada
+      coverOverlay: ai.coverOverlay ?? null,
     };
 
     return NextResponse.json(merged);
   } catch (err) {
-    console.error(
-      "Error inesperado en /api/editor-articles/from-image-ai:",
-      err,
-    );
+    console.error("Error inesperado en /api/editor-articles/from-image-ai:", err);
     return NextResponse.json(
-      {
-        message: "Error inesperado al procesar la captura con IA",
-      },
+      { message: "Error inesperado al procesar la captura con IA" },
       { status: 500 },
     );
   }
