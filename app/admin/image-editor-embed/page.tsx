@@ -1,12 +1,7 @@
 // app/admin/image-editor-embed/page.tsx
 "use client";
 
-import {
-  useState,
-  useEffect,
-  ChangeEvent,
-  ClipboardEvent,
-} from "react";
+import { useState, useEffect, ChangeEvent, ClipboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 
 type EnhanceResponse = {
@@ -154,12 +149,36 @@ function alertAlignLabel(value: AlertAlign): string {
   }
 }
 
+function isLikelyRemoteUrl(u: string) {
+  const s = (u ?? "").trim().toLowerCase();
+  if (!s) return false;
+  if (s.startsWith("blob:")) return false;
+  if (s.startsWith("data:")) return false;
+  if (s.startsWith("/uploads/")) return true;
+  if (s.startsWith("http://") || s.startsWith("https://")) return true;
+  // algunos casos te pueden quedar como "uploads/..."
+  if (s.startsWith("uploads/")) return true;
+  return false;
+}
+
+async function urlToFile(url: string, filename: string) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error("No se pudo descargar la imagen preprocesada.");
+  const blob = await res.blob();
+  const mime = blob.type || "image/png";
+  return new File([blob], filename, { type: mime });
+}
+
 export default function ImageEditorEmbedPage() {
   const searchParams = useSearchParams();
 
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
+
+  // ✅ NUEVO: URL del RAW limpio (preprocesado)
+  const [cleanUrl, setCleanUrl] = useState<string | null>(null);
+  const [isPreprocessing, setIsPreprocessing] = useState(false);
 
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
@@ -213,6 +232,9 @@ export default function ImageEditorEmbedPage() {
     setErrorMsg(null);
     setSuccessMsg(null);
     setPreviewUrl(previewSrc);
+
+    // ✅ reset preprocess cuando cambiás base
+    setCleanUrl(null);
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -261,8 +283,7 @@ export default function ImageEditorEmbedPage() {
       setResultUrl(null);
 
       const res = await fetch(url);
-      if (!res.ok)
-        throw new Error("No se pudo descargar la imagen desde esa URL.");
+      if (!res.ok) throw new Error("No se pudo descargar la imagen desde esa URL.");
 
       const blob = await res.blob();
       const mime = blob.type || "image/jpeg";
@@ -275,6 +296,63 @@ export default function ImageEditorEmbedPage() {
     } catch (err: any) {
       console.error("handleLoadScreenshotUrl error:", err);
       setErrorMsg(err.message ?? "No se pudo usar la captura desde URL.");
+    }
+  };
+
+  // ✅ NUEVO: Preprocesar (RAW -> clean) usando endpoint Next route
+  const handlePreprocess = async () => {
+    const baseUrl = previewUrl;
+    if (!baseUrl) {
+      setErrorMsg("Primero cargá una imagen base.");
+      return;
+    }
+
+    // Si el preview es blob: (subida local/clipboard), no hay URL estable para el backend.
+    if (!isLikelyRemoteUrl(baseUrl)) {
+      setErrorMsg(
+        "Para preprocesar con IA necesitás una imagen con URL real (ej /uploads/raw/... o https://...). " +
+          "Si subiste desde tu PC/portapapeles, primero generá una cover/RAW y después preprocesás desde la biblioteca.",
+      );
+      return;
+    }
+
+    setIsPreprocessing(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const res = await fetch("/api/internal/ai-image/preprocess", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rawUrl: baseUrl }),
+      });
+
+      const json = await res.json().catch(() => ({} as any));
+
+      if (!res.ok) {
+        const msg =
+          json?.message ||
+          `Error preprocess (HTTP ${res.status})` +
+            (json?.backend ? `: ${String(json.backend).slice(0, 300)}` : "");
+        throw new Error(msg);
+      }
+
+      const newCleanUrl = (json?.cleanUrl ?? "").toString().trim();
+      if (!newCleanUrl) throw new Error("El preprocess no devolvió cleanUrl.");
+
+      // Guardamos cleanUrl y lo usamos como nueva base descargándolo como File
+      setCleanUrl(newCleanUrl);
+
+      const f = await urlToFile(newCleanUrl, `clean-${Date.now()}.png`);
+      applyBaseFile(f, newCleanUrl);
+
+      setSuccessMsg("RAW preprocesado con IA. Ahora podés generar la cover.");
+      void loadImages();
+    } catch (err: any) {
+      console.error("[preprocess] error:", err);
+      setErrorMsg(err?.message ?? "Error al preprocesar la imagen con IA.");
+    } finally {
+      setIsPreprocessing(false);
     }
   };
 
@@ -305,8 +383,7 @@ export default function ImageEditorEmbedPage() {
 
       const brandConfig = {
         brandName: "CANALIBERTARIO",
-        claim:
-          "NOTICIAS Y ANÁLISIS ECONÓMICOS Y POLÍTICOS DESDE UNA MIRADA LIBERTARIA",
+        claim: "NOTICIAS Y ANÁLISIS ECONÓMICOS Y POLÍTICOS DESDE UNA MIRADA LIBERTARIA",
         useHeaderWordmark: true,
         siteUrl: safeFooter,
         socialHandle: "@canallibertario",
@@ -332,9 +409,9 @@ export default function ImageEditorEmbedPage() {
           overlayOpacity,
           headerStrip: useHeaderStrip
             ? {
-              date: headerDate.trim() || null,
-              label: headerLabel.trim() || null,
-            }
+                date: headerDate.trim() || null,
+                label: headerLabel.trim() || null,
+              }
             : null,
           alertAlign,
         },
@@ -356,9 +433,7 @@ export default function ImageEditorEmbedPage() {
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        throw new Error(
-          text || `Error HTTP ${res.status} al procesar la imagen`,
-        );
+        throw new Error(text || `Error HTTP ${res.status} al procesar la imagen`);
       }
 
       const data = (await res.json()) as EnhanceResponse;
@@ -374,14 +449,13 @@ export default function ImageEditorEmbedPage() {
 
         setSuccessMsg(
           data.message ??
-          (isCover
-            ? "Imagen procesada correctamente. Se generó una portada (cover) lista para usar."
-            : "Imagen subida como RAW (no se pudo generar cover)."),
+            (isCover
+              ? "Imagen procesada correctamente. Se generó una portada (cover) lista para usar."
+              : "Imagen subida como RAW (no se pudo generar cover)."),
         );
 
         void loadImages();
-      }
-      else {
+      } else {
         setErrorMsg("La respuesta no contiene una URL de imagen procesada.");
       }
     } catch (err: any) {
@@ -435,9 +509,7 @@ export default function ImageEditorEmbedPage() {
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        throw new Error(
-          text || `Error HTTP ${res.status} al obtener la lista de imágenes`,
-        );
+        throw new Error(text || `Error HTTP ${res.status} al obtener la lista de imágenes`);
       }
 
       const data = (await res.json()) as { items: ImageItem[] };
@@ -455,32 +527,19 @@ export default function ImageEditorEmbedPage() {
 
     const imageUrl = searchParams.get("imageUrl");
 
-    const overlayTitle =
-      searchParams.get("overlayTitle") ?? searchParams.get("title") ?? "";
+    const overlayTitle = searchParams.get("overlayTitle") ?? searchParams.get("title") ?? "";
     const overlaySubtitle =
-      searchParams.get("overlaySubtitle") ??
-      searchParams.get("subtitle") ??
-      "";
-    const overlayFooter =
-      searchParams.get("overlayFooter") ?? searchParams.get("footer") ?? "";
+      searchParams.get("overlaySubtitle") ?? searchParams.get("subtitle") ?? "";
+    const overlayFooter = searchParams.get("overlayFooter") ?? searchParams.get("footer") ?? "";
 
     const overlayPrimaryColor =
-      searchParams.get("overlayPrimaryColor") ??
-      searchParams.get("primaryColor") ??
-      "";
+      searchParams.get("overlayPrimaryColor") ?? searchParams.get("primaryColor") ?? "";
     const overlaySecondaryColor =
-      searchParams.get("overlaySecondaryColor") ??
-      searchParams.get("secondaryColor") ??
-      "";
-    const overlayTone =
-      searchParams.get("overlayTone") ?? searchParams.get("tone") ?? "";
+      searchParams.get("overlaySecondaryColor") ?? searchParams.get("secondaryColor") ?? "";
+    const overlayTone = searchParams.get("overlayTone") ?? searchParams.get("tone") ?? "";
 
     const qpTextPos = searchParams.get("textPosition");
-    if (
-      qpTextPos === "top" ||
-      qpTextPos === "middle" ||
-      qpTextPos === "bottom"
-    ) {
+    if (qpTextPos === "top" || qpTextPos === "middle" || qpTextPos === "bottom") {
       setTextPosition(qpTextPos);
     }
 
@@ -506,8 +565,7 @@ export default function ImageEditorEmbedPage() {
       (async () => {
         try {
           const res = await fetch(imageUrl);
-          if (!res.ok)
-            throw new Error("No se pudo descargar la imagen inicial.");
+          if (!res.ok) throw new Error("No se pudo descargar la imagen inicial.");
 
           const blob = await res.blob();
           const mime = blob.type || "image/jpeg";
@@ -515,9 +573,7 @@ export default function ImageEditorEmbedPage() {
           if (mime === "image/png") ext = "png";
           else if (mime === "image/webp") ext = "webp";
 
-          const f = new File([blob], `image-from-article.${ext}`, {
-            type: mime,
-          });
+          const f = new File([blob], `image-from-article.${ext}`, { type: mime });
 
           applyBaseFile(f, imageUrl);
         } catch (err) {
@@ -538,8 +594,7 @@ export default function ImageEditorEmbedPage() {
       setResultUrl(null);
 
       const res = await fetch(img.url);
-      if (!res.ok)
-        throw new Error("No se pudo descargar la imagen seleccionada.");
+      if (!res.ok) throw new Error("No se pudo descargar la imagen seleccionada.");
 
       const blob = await res.blob();
       const mime = blob.type || "image/jpeg";
@@ -572,16 +627,15 @@ export default function ImageEditorEmbedPage() {
 
   const filteredImages = images.filter((img) => {
     const nameMatch =
-      !searchTerm ||
-      img.filename.toLowerCase().includes(searchTerm.toLowerCase());
+      !searchTerm || img.filename.toLowerCase().includes(searchTerm.toLowerCase());
 
     const imgType = resolveImageType(img);
     const typeMatch =
       typeFilter === "all"
         ? true
         : typeFilter === "raw"
-          ? imgType === "raw"
-          : imgType === "cover";
+        ? imgType === "raw"
+        : imgType === "cover";
 
     return nameMatch && typeMatch;
   });
@@ -589,10 +643,7 @@ export default function ImageEditorEmbedPage() {
   const totalPages = Math.max(1, Math.ceil(filteredImages.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const pagedImages = filteredImages.slice(
-    startIndex,
-    startIndex + PAGE_SIZE,
-  );
+  const pagedImages = filteredImages.slice(startIndex, startIndex + PAGE_SIZE);
 
   // URL principal para la vista previa
   const mainPreviewUrl = resultUrl || previewUrl;
@@ -603,16 +654,16 @@ export default function ImageEditorEmbedPage() {
     textPosition === "top"
       ? "top-0 justify-start"
       : textPosition === "middle"
-        ? "top-1/2 -translate-y-1/2 justify-center"
-        : "bottom-0 justify-end";
+      ? "top-1/2 -translate-y-1/2 justify-center"
+      : "bottom-0 justify-end";
 
   // clases para alinear la etiqueta
   const alertAlignClass =
     alertAlign === "left"
       ? "justify-start"
       : alertAlign === "center"
-        ? "justify-center"
-        : "justify-end";
+      ? "justify-center"
+      : "justify-end";
 
   // líneas del título
   const displayTitle = title || "Título de la portada";
@@ -693,9 +744,7 @@ export default function ImageEditorEmbedPage() {
 
                 {/* TÍTULO */}
                 <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">
-                    Título principal
-                  </label>
+                  <label className="text-[11px] text-slate-300">Título principal</label>
                   <textarea
                     rows={2}
                     value={title}
@@ -704,8 +753,8 @@ export default function ImageEditorEmbedPage() {
                     placeholder="Ej: Milei anuncia medidas"
                   />
                   <p className="text-[10px] text-slate-400">
-                    Podés usar <strong>Enter</strong> para forzar saltos de
-                    línea en la portada.
+                    Podés usar <strong>Enter</strong> para forzar saltos de línea
+                    en la portada.
                   </p>
                 </div>
 
@@ -749,10 +798,11 @@ export default function ImageEditorEmbedPage() {
                         key={a}
                         type="button"
                         onClick={() => setAlertAlign(a)}
-                        className={`rounded-full border px-3 py-1 font-semibold ${alertAlign === a
+                        className={`rounded-full border px-3 py-1 font-semibold ${
+                          alertAlign === a
                             ? "border-sky-400 bg-sky-500/10 text-sky-200"
                             : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400 hover:bg-slate-800"
-                          }`}
+                        }`}
                       >
                         {alertAlignLabel(a)}
                       </button>
@@ -803,9 +853,7 @@ export default function ImageEditorEmbedPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">
-                    Sitio del canal
-                  </label>
+                  <label className="text-[11px] text-slate-300">Sitio del canal</label>
                   <input
                     type="text"
                     value={footer}
@@ -821,9 +869,7 @@ export default function ImageEditorEmbedPage() {
                   </label>
                   <select
                     value={textPosition}
-                    onChange={(e) =>
-                      setTextPosition(e.target.value as TextPosition)
-                    }
+                    onChange={(e) => setTextPosition(e.target.value as TextPosition)}
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
                   >
                     <option value="bottom">Inferior (clásico)</option>
@@ -842,9 +888,7 @@ export default function ImageEditorEmbedPage() {
                     min={-20}
                     max={20}
                     value={textOffsetPct}
-                    onChange={(e) =>
-                      setTextOffsetPct(Number(e.target.value) || 0)
-                    }
+                    onChange={(e) => setTextOffsetPct(Number(e.target.value) || 0)}
                     className="w-full"
                   />
                   <div className="text-[10px] text-slate-400">
@@ -862,10 +906,11 @@ export default function ImageEditorEmbedPage() {
                         key={t}
                         type="button"
                         onClick={() => setTheme(t)}
-                        className={`rounded-full border px-3 py-1 font-semibold ${theme === t
+                        className={`rounded-full border px-3 py-1 font-semibold ${
+                          theme === t
                             ? "border-sky-400 bg-sky-500/10 text-sky-200"
                             : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400 hover:bg-slate-800"
-                          }`}
+                        }`}
                       >
                         {themeLabel(t)}
                       </button>
@@ -884,9 +929,7 @@ export default function ImageEditorEmbedPage() {
                       min={25}
                       max={60}
                       value={overlayHeight}
-                      onChange={(e) =>
-                        setOverlayHeight(Number(e.target.value) || 25)
-                      }
+                      onChange={(e) => setOverlayHeight(Number(e.target.value) || 25)}
                       className="w-full"
                     />
                     <div className="text-[10px] text-slate-400">
@@ -905,27 +948,20 @@ export default function ImageEditorEmbedPage() {
                       value={Math.round(overlayOpacity * 100)}
                       onChange={(e) =>
                         setOverlayOpacity(
-                          Math.max(
-                            0.4,
-                            Math.min(1, Number(e.target.value) / 100),
-                          ),
+                          Math.max(0.4, Math.min(1, Number(e.target.value) / 100)),
                         )
                       }
                       className="w-full"
                     />
                     <div className="text-[10px] text-slate-400">
-                      {Math.round(overlayOpacity * 100)}% — tipo “glass”:
-                      desde semi-transparente hasta casi sólido.
+                      {Math.round(overlayOpacity * 100)}% — tipo “glass”: desde
+                      semi-transparente hasta casi sólido.
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-2 grid gap-3 md:grid-cols-3">
-                  <ColorSwatches
-                    label="Color título"
-                    value={titleColor}
-                    onChange={setTitleColor}
-                  />
+                  <ColorSwatches label="Color título" value={titleColor} onChange={setTitleColor} />
                   <ColorSwatches
                     label="Color bajada"
                     value={subtitleColor}
@@ -1000,18 +1036,15 @@ export default function ImageEditorEmbedPage() {
                                   textPosition === "top"
                                     ? "flex-start"
                                     : textPosition === "middle"
-                                      ? "center"
-                                      : "flex-end",
-                                boxShadow:
-                                  "0 26px 80px rgba(15,23,42,0.95)",
+                                    ? "center"
+                                    : "flex-end",
+                                boxShadow: "0 26px 80px rgba(15,23,42,0.95)",
                               }}
                             >
                               <div className="flex h-full flex-col justify-between">
                                 <div className="space-y-1">
                                   {alertTag && (
-                                    <div
-                                      className={`mb-1 flex ${alertAlignClass}`}
-                                    >
+                                    <div className={`mb-1 flex ${alertAlignClass}`}>
                                       <div
                                         className="inline-flex items-center rounded-full bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]"
                                         style={{ color: titleColor }}
@@ -1025,10 +1058,7 @@ export default function ImageEditorEmbedPage() {
                                     style={{ color: titleColor }}
                                   >
                                     {titleLines.map((line, idx) => (
-                                      <span
-                                        key={idx}
-                                        className={idx > 0 ? "block" : ""}
-                                      >
+                                      <span key={idx} className={idx > 0 ? "block" : ""}>
                                         {line}
                                       </span>
                                     ))}
@@ -1044,18 +1074,11 @@ export default function ImageEditorEmbedPage() {
                                 </div>
 
                                 <div className="mt-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.18em]">
-                                  <span
-                                    className="text-xs"
-                                    style={{ color: handleColor }}
-                                  >
+                                  <span className="text-xs" style={{ color: handleColor }}>
                                     @canallibertario
                                   </span>
                                   <span className="flex items-center gap-2 text-[10px] text-slate-100">
-                                    {footer && (
-                                      <span className="hidden md:inline">
-                                        {footer}
-                                      </span>
-                                    )}
+                                    {footer && <span className="hidden md:inline">{footer}</span>}
                                     <span className="flex items-center gap-1 opacity-90">
                                       <span>𝕏</span>
                                       <span>f</span>
@@ -1069,19 +1092,48 @@ export default function ImageEditorEmbedPage() {
                         )}
                       </div>
                     </div>
+
+                    {/* ✅ Barra de acciones de IA (preprocess) */}
+                    <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-3 text-[11px]">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="font-semibold text-slate-200">
+                          Preprocesado (opcional)
+                        </div>
+                        {cleanUrl ? (
+                          <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
+                            activo
+                          </span>
+                        ) : (
+                          <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                            inactivo
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="mb-2 text-[10px] text-slate-400">
+                        Esto “limpia” la foto base (contraste/ruido/marcas leves)
+                        y después generás la cover normal con tu renderer.
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={handlePreprocess}
+                        disabled={isPreprocessing || !previewUrl}
+                        className="inline-flex w-full items-center justify-center rounded-full border border-violet-400/80 bg-violet-500/10 px-4 py-2 text-xs font-semibold text-violet-200 hover:bg-violet-500/20 disabled:opacity-50"
+                      >
+                        {isPreprocessing ? "Preprocesando..." : "Preprocesar foto con IA"}
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <p className="text-xs text-slate-300">
-                    Subí una imagen, pegá una captura o elegí una RAW para ver
-                    la vista previa.
+                    Subí una imagen, pegá una captura o elegí una RAW para ver la vista previa.
                   </p>
                 )}
               </div>
 
               <div className="rounded-xl border border-slate-800/80 bg-slate-950/70 p-3 text-[11px]">
-                <div className="mb-1 font-semibold text-slate-200">
-                  Textos que se enviarán:
-                </div>
+                <div className="mb-1 font-semibold text-slate-200">Textos que se enviarán:</div>
                 <div className="space-y-1 text-slate-300">
                   <div>
                     <b>Título:</b>{" "}
@@ -1108,25 +1160,20 @@ export default function ImageEditorEmbedPage() {
                   <div>
                     <b>Cabecera:</b>{" "}
                     {useHeaderStrip
-                      ? `${headerDate || "—"} · ${headerLabel || "sin texto extra"
-                      }`
+                      ? `${headerDate || "—"} · ${headerLabel || "sin texto extra"}`
                       : "desactivada"}
                   </div>
                   <div>
-                    <b>Firma:</b>{" "}
-                    {(footer || "(sin sitio)") +
-                      " + X / Facebook / Instagram"}
+                    <b>Firma:</b> {(footer || "(sin sitio)") + " + X / Facebook / Instagram"}
                   </div>
                   <div>
                     <b>Posición texto:</b>{" "}
                     {textPosition === "bottom"
                       ? "Inferior"
                       : textPosition === "middle"
-                        ? "Centro"
-                        : "Superior"}
-                    {textOffsetPct !== 0
-                      ? ` · offset ${textOffsetPct}%`
-                      : ""}
+                      ? "Centro"
+                      : "Superior"}
+                    {textOffsetPct !== 0 ? ` · offset ${textOffsetPct}%` : ""}
                   </div>
                   <div>
                     <b>Tema de color:</b> {themeLabel(theme)}
@@ -1158,9 +1205,7 @@ export default function ImageEditorEmbedPage() {
 
               {resultUrl && (
                 <div className="space-y-2">
-                  <div className="text-[11px] text-emerald-200">
-                    Resultado procesado:
-                  </div>
+                  <div className="text-[11px] text-emerald-200">Resultado procesado:</div>
                   <img
                     src={resultUrl}
                     alt="Imagen mejorada"
@@ -1189,9 +1234,7 @@ export default function ImageEditorEmbedPage() {
         <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-sm font-semibold">Biblioteca de imágenes</h2>
-            <p className="text-xs text-slate-400">
-              RAW + covers generadas automáticamente.
-            </p>
+            <p className="text-xs text-slate-400">RAW + covers generadas automáticamente.</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -1205,9 +1248,7 @@ export default function ImageEditorEmbedPage() {
 
             <select
               value={typeFilter}
-              onChange={(e) =>
-                setTypeFilter(e.target.value as "all" | "raw" | "cover")
-              }
+              onChange={(e) => setTypeFilter(e.target.value as "all" | "raw" | "cover")}
               className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px]"
             >
               <option value="all">Todas</option>
@@ -1248,31 +1289,24 @@ export default function ImageEditorEmbedPage() {
                     className="flex flex-col rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-[11px]"
                   >
                     <div className="mb-2 aspect-video overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
-                      <img
-                        src={img.url}
-                        alt={img.filename}
-                        className="h-full w-full object-cover"
-                      />
+                      <img src={img.url} alt={img.filename} className="h-full w-full object-cover" />
                     </div>
 
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="truncate text-slate-100">
-                        {img.filename}
-                      </span>
+                      <span className="truncate text-slate-100">{img.filename}</span>
 
                       <span
-                        className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${imgType === "raw"
+                        className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${
+                          imgType === "raw"
                             ? "border border-amber-400/70 bg-amber-500/10 text-amber-200"
                             : "border border-sky-400/70 bg-sky-500/10 text-sky-200"
-                          }`}
+                        }`}
                       >
                         {imgType === "raw" ? "RAW" : "COVER"}
                       </span>
                     </div>
 
-                    <div className="mb-2 truncate text-[10px] text-slate-400">
-                      {img.url}
-                    </div>
+                    <div className="mb-2 truncate text-[10px] text-slate-400">{img.url}</div>
 
                     <div className="mt-auto flex flex-col gap-1">
                       <button
@@ -1319,10 +1353,7 @@ export default function ImageEditorEmbedPage() {
                 <span className="font-semibold">
                   {startIndex + 1}-{startIndex + pagedImages.length}
                 </span>{" "}
-                de{" "}
-                <span className="font-semibold">
-                  {filteredImages.length}
-                </span>
+                de <span className="font-semibold">{filteredImages.length}</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1341,9 +1372,7 @@ export default function ImageEditorEmbedPage() {
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setPage((prev) => Math.min(totalPages, prev + 1))
-                  }
+                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
                   disabled={currentPage === totalPages}
                   className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold hover:border-sky-400 hover:bg-slate-800 disabled:opacity-50"
                 >
