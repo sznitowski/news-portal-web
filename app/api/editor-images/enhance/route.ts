@@ -25,7 +25,14 @@ export async function POST(req: NextRequest) {
     const file = (formData.get("file") ?? formData.get("image")) as unknown;
     const optionsJsonRaw = formData.get("optionsJson") as string | null;
     const accessToken = formData.get("accessToken") as string | null;
-    const kind = formData.get("kind") as string | null;
+
+    // 👇 kind puede venir vacío / null
+    const kindFromForm = (formData.get("kind") as string | null)?.trim() || null;
+
+    // ✅ IMPORTANTÍSIMO:
+    // enhance = "procesar" => si no me pasás kind explícito, asumo COVER.
+    // Si desde algún lugar querés subir RAW, mandás kind=raw.
+    const finalKind = (kindFromForm?.length ? kindFromForm : "cover") as string;
 
     if (accessToken) formData.delete("accessToken");
 
@@ -53,7 +60,9 @@ export async function POST(req: NextRequest) {
     uploadBody.set("file", file);
 
     if (optionsJsonRaw) uploadBody.set("optionsJson", optionsJsonRaw);
-    if (kind) uploadBody.set("kind", kind);
+
+    // ✅ siempre mandamos kind (cover por defecto)
+    uploadBody.set("kind", finalKind);
 
     const headers = buildAuthHeaders(req, accessToken);
 
@@ -93,8 +102,7 @@ export async function POST(req: NextRequest) {
       console.error("[enhance] Backend no devolvió URL usable:", uploadJson);
       return NextResponse.json(
         {
-          message:
-            "La imagen se subió, pero el backend no devolvió una URL válida.",
+          message: "La imagen se subió, pero el backend no devolvió una URL válida.",
           backend: uploadJson,
         },
         { status: 500 },
@@ -117,20 +125,18 @@ export async function POST(req: NextRequest) {
     const coverUrl = uploadJson.coverUrl ? getPublicUrl(uploadJson.coverUrl) : null;
     const rawUrl = uploadJson.rawUrl ? getPublicUrl(uploadJson.rawUrl) : null;
 
-    // ✅ NUEVO: URL “canónica” para el front según el tipo
-    // - si el backend dijo RAW, queremos RAW como base
-    // - si dijo COVER, queremos COVER como base
+    // ✅ URL canónica para el front según el tipo
     const imageUrl =
       type === "raw"
         ? rawUrl || enhancedImageUrl
         : type === "cover"
-        ? coverUrl || enhancedImageUrl
-        : enhancedImageUrl;
+          ? coverUrl || enhancedImageUrl
+          : enhancedImageUrl;
 
     return NextResponse.json(
       {
-        enhancedImageUrl, // se mantiene (compat)
-        imageUrl, // ✅ NUEVO: usá esto en full/embed
+        enhancedImageUrl, // compat
+        imageUrl, // ✅ usar esto en full/embed
         message:
           uploadJson.message ??
           (type === "cover"
@@ -141,8 +147,11 @@ export async function POST(req: NextRequest) {
         coverUrl,
         rawUrl,
 
-        // ✅ clave para debug cuando vuelve RAW
+        // ✅ debug
         coverError: uploadJson.coverError ?? null,
+
+        // ✅ extra: para confirmar qué mandó el front
+        requestedKind: finalKind,
       },
       { status: 200 },
     );

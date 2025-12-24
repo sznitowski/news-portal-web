@@ -1,4 +1,4 @@
-// app/api/editor-images/auto-from-raw/route.ts
+// app/api/editor-images/auto-from-screen/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { buildApiUrl, getPublicUrl } from "../../../lib/api";
 
@@ -31,15 +31,10 @@ function buildAuthHeaders(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => null)) as
-      | {
-          keyword?: string;
-          options?: any; // 👈 NUEVO: mandar todo junto
-        }
+      | { keyword?: string; options?: any }
       | null;
 
-    if (!body) {
-      return NextResponse.json({ message: "JSON inválido" }, { status: 400 });
-    }
+    if (!body) return NextResponse.json({ message: "JSON inválido" }, { status: 400 });
 
     const options = body.options ?? {};
     const title = options.title ?? "";
@@ -47,21 +42,19 @@ export async function POST(req: NextRequest) {
 
     const headers = buildAuthHeaders(req);
 
-    const res = await fetch(buildApiUrl("/internal/uploads/auto-cover-from-raw"), {
+    // 👇 CAMBIO CLAVE: endpoint para SCREEN
+    const res = await fetch(buildApiUrl("/internal/uploads/auto-cover-from-screen"), {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        keyword,
-        options,
-      }),
+      body: JSON.stringify({ keyword, options }),
     });
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      console.error("[auto-from-raw] Error backend:", res.status, res.statusText, text);
+      console.error("[auto-from-screen] Error backend:", res.status, res.statusText, text);
       return NextResponse.json(
         {
-          message: "Error al generar portada desde imagen RAW en el backend",
+          message: "Error al generar portada desde SCREEN en el backend",
           statusCode: res.status,
           backend: text,
         },
@@ -72,14 +65,14 @@ export async function POST(req: NextRequest) {
     const json = (await res.json()) as {
       coverUrl?: string | null;
       url?: string | null;
-      rawUrl?: string | null;
+      screenUrl?: string | null;
       message?: string;
     };
 
     const backendUrl = json.coverUrl ?? json.url;
     if (!backendUrl) {
       return NextResponse.json(
-        { message: "El backend no devolvió una URL de cover válida desde RAW." },
+        { message: "El backend no devolvió una URL de cover válida desde SCREEN." },
         { status: 500 },
       );
     }
@@ -87,7 +80,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         enhancedImageUrl: getPublicUrl(backendUrl),
-        message: json.message ?? "Portada generada automáticamente desde una imagen RAW.",
+        message: json.message ?? "Portada generada automáticamente desde una imagen SCREEN.",
         overlay: {
           title: options.title ?? null,
           subtitle: options.subtitle ?? null,
@@ -97,9 +90,9 @@ export async function POST(req: NextRequest) {
       { status: 200 },
     );
   } catch (err) {
-    console.error("[auto-from-raw] Error inesperado:", err);
+    console.error("[auto-from-screen] Error inesperado:", err);
     return NextResponse.json(
-      { message: "Error inesperado al generar portada desde RAW." },
+      { message: "Error inesperado al generar portada desde SCREEN." },
       { status: 500 },
     );
   }

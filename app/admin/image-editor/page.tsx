@@ -1,18 +1,13 @@
 // app/admin/image-editor/page.tsx
 "use client";
 
-import { useState, useEffect, ChangeEvent, ClipboardEvent } from "react";
+import { useEffect, useMemo, useState, ChangeEvent, ClipboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { getBrandUrl } from "@/app/lib/api";
 
 type EnhanceResponse = {
   enhancedImageUrl: string;
   message?: string;
-  overlay?: {
-    title?: string | null;
-    subtitle?: string | null;
-    footer?: string | null;
-  };
 };
 
 type ImageKind = "raw" | "cover";
@@ -24,14 +19,12 @@ type ImageItem = {
   kind?: "raw" | "cover" | "other";
 };
 
-type TextPosition = "top" | "middle" | "bottom";
 type CoverTheme = "purple" | "sunset" | "black";
-type AlertAlign = "left" | "center" | "right";
 
-type CoverVariant = "classic" | "full";
+const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
+type AlertTag = (typeof ALERT_TAGS)[number];
 
-// ✅ NUEVO: presets de look (solo editor)
-type CoverPreset = "custom" | "classic" | "full" | "institutional" | "breaking";
+const PAGE_SIZE = 10;
 
 function getImageTypeFromUrl(url: string): ImageKind {
   let path = url.toLowerCase();
@@ -68,144 +61,17 @@ function resolveImageType(img: ImageItem): ImageKind {
   return getImageTypeFromUrl(img.url);
 }
 
-const PAGE_SIZE = 10;
-
-const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
-type AlertTag = (typeof ALERT_TAGS)[number];
-
-// Paleta
-const PALETTE = [
-  "#ffffff", // blanco
-  "#000000", // negro
-  "#7c3aed", // púrpura
-  "#f97316", // naranja
-  "#ef4444", // rojo
-  "#0ea5e9", // azul
-] as const;
-
-function ColorSwatches({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (c: string) => void;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="text-[11px] text-slate-300">{label}</label>
-      <div className="flex flex-wrap gap-2">
-        {PALETTE.map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => onChange(c)}
-            className="h-6 w-6 rounded-full border border-slate-700"
-            style={{
-              backgroundColor: c,
-              outline: value === c ? "2px solid #e5e7eb" : "none",
-              boxShadow:
-                value === c ? "0 0 0 1px rgba(15,23,42,0.9)" : "none",
-            }}
-            aria-label={`Color ${c}`}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Overlay inferior: 0% arriba -> (final) abajo
- * Recomendado: rgba(0,0,0,0) -> rgba(0,0,0,0.60~0.75)
- */
-function getBottomOverlay(theme: CoverTheme, opacity: number): string {
-  const a = Math.max(0, Math.min(1, opacity));
-
-  switch (theme) {
-    case "sunset":
-      return `linear-gradient(to bottom,
-        rgba(0,0,0,0) 0%,
-        rgba(0,0,0,${0.30 * a}) 40%,
-        rgba(0,0,0,${0.75 * a}) 100%)`;
-    case "purple":
-      return `linear-gradient(to bottom,
-        rgba(0,0,0,0) 0%,
-        rgba(2,6,23,${0.32 * a}) 40%,
-        rgba(2,6,23,${0.78 * a}) 100%)`;
-    case "black":
-    default:
-      return `linear-gradient(to bottom,
-        rgba(0,0,0,0) 0%,
-        rgba(0,0,0,${0.30 * a}) 40%,
-        rgba(0,0,0,${0.75 * a}) 100%)`;
-  }
-}
-
-function themeLabel(value: CoverTheme): string {
-  switch (value) {
-    case "purple":
-      return "Canalibertario (violeta)";
-    case "sunset":
-      return "Sunset / Urgente (naranja)";
-    case "black":
-      return "Negro / Luto / Máximo contraste";
-    default:
-      return value;
-  }
-}
-
-function alertAlignLabel(value: AlertAlign): string {
-  switch (value) {
-    case "left":
-      return "Izquierda";
-    case "center":
-      return "Centro";
-    case "right":
-      return "Derecha";
-    default:
-      return value;
-  }
-}
-
-function variantLabel(v: CoverVariant): string {
-  return v === "full" ? "Full (más aire + tipografía grande)" : "Clásica";
-}
-
-function presetLabel(p: CoverPreset): string {
-  switch (p) {
-    case "custom":
-      return "Custom";
-    case "classic":
-      return "Preset: Clásica";
-    case "full":
-      return "Preset: Full";
-    case "institutional":
-      return "Preset: Institucional (más sutil)";
-    case "breaking":
-      return "Preset: Breaking (más punch)";
-    default:
-      return p;
-  }
-}
-
-// ISO yyyy-mm-dd (para enviar al backend)
 function toISODateOnly(input?: string | null): string {
   try {
-    if (input && /^\d{4}-\d{2}-\d{2}$/.test(input)) return input; // ya ISO
+    if (input && /^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
     const d = input ? new Date(input) : new Date();
-    if (Number.isNaN(d.getTime())) {
-      const now = new Date();
-      return now.toISOString().slice(0, 10);
-    }
+    if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
     return d.toISOString().slice(0, 10);
   } catch {
     return new Date().toISOString().slice(0, 10);
   }
 }
 
-// mostrar dd/mm/aaaa (AR) desde ISO
 function formatDateARFromISO(iso: string): string {
   try {
     const parts = iso.split("-");
@@ -216,168 +82,125 @@ function formatDateARFromISO(iso: string): string {
   }
 }
 
+function themeLabel(value: CoverTheme): string {
+  switch (value) {
+    case "purple":
+      return "Violeta";
+    case "sunset":
+      return "Naranja";
+    case "black":
+      return "Negro";
+    default:
+      return value;
+  }
+}
+
 function getPillBg(alertTag: string): string {
   if (!alertTag) return "rgba(255,255,255,0.14)";
-  if (alertTag === "ÚLTIMA HORA") return "rgba(220,38,38,0.95)"; // #DC2626
-  // URGENTE / ALERTA
-  return "rgba(55,65,81,0.92)"; // #374151
+  if (alertTag === "ÚLTIMA HORA") return "rgba(220,38,38,0.95)";
+  return "rgba(55,65,81,0.92)";
+}
+
+/**
+ * Overlay inferior fijo (simple, sale bien casi siempre)
+ */
+function getBottomOverlay(theme: CoverTheme): string {
+  const a = 0.9;
+
+  switch (theme) {
+    case "sunset":
+      return `linear-gradient(to bottom,
+        rgba(0,0,0,0) 0%,
+        rgba(0,0,0,${0.30 * a}) 40%,
+        rgba(0,0,0,${0.78 * a}) 100%)`;
+    case "purple":
+      return `linear-gradient(to bottom,
+        rgba(0,0,0,0) 0%,
+        rgba(2,6,23,${0.34 * a}) 40%,
+        rgba(2,6,23,${0.82 * a}) 100%)`;
+    case "black":
+    default:
+      return `linear-gradient(to bottom,
+        rgba(0,0,0,0) 0%,
+        rgba(0,0,0,${0.32 * a}) 40%,
+        rgba(0,0,0,${0.82 * a}) 100%)`;
+  }
 }
 
 export default function ImageEditorEmbedPage() {
   const searchParams = useSearchParams();
 
-  // ✅ URLs ABSOLUTAS al backend
+  // Assets
   const BRAND_LOGO_HORIZONTAL = getBrandUrl("/brand/logo-horizontal.png");
-  const BRAND_LOCKUP = getBrandUrl("/brand/canalibertario.png"); // PNG con redes + nombre
+  const BRAND_LOCKUP = getBrandUrl("/brand/canalibertario.png");
 
+  // Base image
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
 
+  // Minimal inputs
   const [title, setTitle] = useState("");
+  const [useSubtitle, setUseSubtitle] = useState(false);
   const [subtitle, setSubtitle] = useState("");
-  const [footer, setFooter] = useState(""); // compat (sitio), no se dibuja como texto
   const [alertTag, setAlertTag] = useState<AlertTag>("");
-
-  const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
-  const [textOffsetPct, setTextOffsetPct] = useState(0);
-
   const [theme, setTheme] = useState<CoverTheme>("black");
 
-  const [titleColor, setTitleColor] = useState("#ffffff");
-  const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
-  const [handleColor, setHandleColor] = useState("#ffffff");
+  // Publish date
+  const [publishDateIso, setPublishDateIso] = useState<string>(() =>
+    toISODateOnly(null),
+  );
+  const publishDateAR = formatDateARFromISO(publishDateIso);
 
-  const [alertAlign, setAlertAlign] = useState<AlertAlign>("left");
-
-  // Cabecera tipo "La Derecha Diario"
-  const [useHeaderStrip, setUseHeaderStrip] = useState(false);
-  const [headerDate, setHeaderDate] = useState("");
-  const [headerLabel, setHeaderLabel] = useState("");
-
-  // ✅ overlay recomendado 25–30%
-  const [overlayHeight, setOverlayHeight] = useState(30);
-  // ✅ CAMBIO: default más sutil (aprox 65% de negro final)
-  const [overlayOpacity, setOverlayOpacity] = useState(0.85);
-
+  // UX
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Screenshot input
+  const [screenshotInput, setScreenshotInput] = useState("");
+
+  // Advanced
+  const [showSafeArea, setShowSafeArea] = useState(false);
+
+  // Library
   const [images, setImages] = useState<ImageItem[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
-
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "raw" | "cover">("all");
   const [page, setPage] = useState(1);
 
-  const [initializedFromQuery, setInitializedFromQuery] = useState(false);
+  const DEFAULT_LOOK = useMemo(
+    () => ({
+      overlayHeightPct: 30,
+      titleFontPx: 42,
+      subtitleFontPx: 16,
+      pillFontPx: 12,
+      footerFontPx: 12,
 
-  // input para screenshot (texto/URL)
-  const [screenshotInput, setScreenshotInput] = useState("");
+      titleColor: "#ffffff",
+      subtitleColor: "#e5e7eb",
+      dateColor: "#ffffff",
 
-  // ✅ usar lockup en el footer del preview
-  const [useBrandLockup, setUseBrandLockup] = useState(true);
+      line2Opacity: 0.86,
+      line2Weight: 750,
+      footerOpacity: 0.92,
 
-  // ✅ overlay visual de zona segura
-  const [showSafeArea, setShowSafeArea] = useState(true);
+      textPosition: "bottom" as const,
+      textOffsetPct: 0,
+      alertAlign: "left" as const,
+      coverVariant: "classic" as const,
 
-  // ✅ fecha ISO (yyyy-mm-dd) para enviar al backend
-  const [publishDateIso, setPublishDateIso] = useState<string>(() =>
-    toISODateOnly(null),
+      useBrandLockup: true,
+
+      SAFE_X: "5%",
+      SAFE_TOP: "6.5%",
+      SAFE_BOTTOM: "10%",
+    }),
+    [],
   );
 
-  // ✅ mostrar fecha en preview (opcional)
-  const [showFooterDatePreview, setShowFooterDatePreview] = useState(false);
-
-  // ✅ selector de variante de cover (impacta preview + se envía al backend)
-  const [coverVariant, setCoverVariant] = useState<CoverVariant>("classic");
-
-  // ✅ tamaños tipográficos (preview + se envía al backend)
-  const [titleFontPx, setTitleFontPx] = useState(40);
-  const [subtitleFontPx, setSubtitleFontPx] = useState(16);
-  const [pillFontPx, setPillFontPx] = useState(12);
-  const [footerFontPx, setFooterFontPx] = useState(12);
-
-  // ✅ NUEVO: jerarquía line 2 (más liviana)
-  const [line2Opacity, setLine2Opacity] = useState(0.86); // 80–90%
-  const [line2Weight, setLine2Weight] = useState(750); // 700–800
-
-  // ✅ NUEVO: footer más sutil (solo preview)
-  const [footerOpacity, setFooterOpacity] = useState(0.9);
-
-  // ✅ NUEVO: preset selector (para setear rápido “sensibilidad visual”)
-  const [preset, setPreset] = useState<CoverPreset>("custom");
-
-  const publishDateAR = formatDateARFromISO(publishDateIso);
-
-  const applyPreset = (p: CoverPreset) => {
-    setPreset(p);
-
-    // No tocamos textos del usuario (title/subtitle), solo look.
-    if (p === "classic") {
-      setCoverVariant("classic");
-      setOverlayHeight(30);
-      setOverlayOpacity(0.9);
-      setTextOffsetPct(0);
-      setPillFontPx(12);
-      setTitleFontPx(40);
-      setSubtitleFontPx(16);
-      setFooterOpacity(0.92);
-      setLine2Opacity(0.86);
-      setLine2Weight(750);
-      return;
-    }
-
-    if (p === "full") {
-      setCoverVariant("full");
-      setOverlayHeight(30);
-      setOverlayOpacity(0.9);
-      setTextOffsetPct(0);
-      setPillFontPx(12);
-      setTitleFontPx(44);
-      setSubtitleFontPx(17);
-      setFooterOpacity(0.92);
-      setLine2Opacity(0.86);
-      setLine2Weight(750);
-      return;
-    }
-
-    // Institucional: lo que te marcó el UI expert (menos overlay, pill sutil, bloque un poco más arriba, footer menos protagonista)
-    if (p === "institutional") {
-      setCoverVariant("classic");
-      setOverlayHeight(28);
-      setOverlayOpacity(0.85); // ~65% final
-      setTextOffsetPct(-4); // sube el bloque levemente
-      setPillFontPx(12);
-      setTitleFontPx(40);
-      setSubtitleFontPx(16);
-      setFooterOpacity(0.85);
-      setLine2Opacity(0.84);
-      setLine2Weight(730);
-      return;
-    }
-
-    // Breaking: un poquito más agresivo
-    if (p === "breaking") {
-      setCoverVariant("full");
-      setOverlayHeight(32);
-      setOverlayOpacity(1);
-      setTextOffsetPct(-2);
-      setPillFontPx(13);
-      setTitleFontPx(46);
-      setSubtitleFontPx(18);
-      setFooterOpacity(0.9);
-      setLine2Opacity(0.88);
-      setLine2Weight(780);
-      return;
-    }
-
-    // custom = no toca nada
-  };
-
-  // helper para aplicar File como base
   const applyBaseFile = (f: File, previewSrc: string) => {
     setFile(f);
     setResultUrl(null);
@@ -393,11 +216,10 @@ export default function ImageEditorEmbedPage() {
     applyBaseFile(f, objectUrl);
   };
 
-  // pegar screenshot desde portapapeles (imagen o URL)
+  // paste screenshot (image or url)
   const handleScreenshotPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;
     if (items) {
-      let foundImage = false;
       for (const item of items) {
         if (item.type.startsWith("image/")) {
           const pastedFile = item.getAsFile();
@@ -406,12 +228,10 @@ export default function ImageEditorEmbedPage() {
             const objectUrl = URL.createObjectURL(pastedFile);
             applyBaseFile(pastedFile, objectUrl);
             setScreenshotInput("");
-            foundImage = true;
-            break;
+            return;
           }
         }
       }
-      if (foundImage) return;
     }
 
     const text = e.clipboardData.getData("text");
@@ -421,7 +241,6 @@ export default function ImageEditorEmbedPage() {
     }
   };
 
-  // cargar captura desde URL pegada
   const handleLoadScreenshotUrl = async () => {
     const url = screenshotInput.trim();
     if (!url) return;
@@ -448,162 +267,47 @@ export default function ImageEditorEmbedPage() {
     }
   };
 
-  const handleEnhance = async () => {
-    if (!file) {
-      setErrorMsg(
-        "Primero seleccioná una imagen base (subí una, pegá una captura o elegí un RAW de la biblioteca).",
-      );
-      return;
+  // Init from query (si venís desde from-image-ai)
+  useEffect(() => {
+    const imageUrl = searchParams.get("imageUrl");
+    const qTitle = searchParams.get("title") ?? "";
+    const qSubtitle = searchParams.get("subtitle") ?? "";
+    const qAlert = (searchParams.get("alertTag") ?? "") as AlertTag;
+
+    if (qTitle) setTitle(qTitle);
+    if (qSubtitle) {
+      setUseSubtitle(true);
+      setSubtitle(qSubtitle);
     }
+    if (qAlert && ALERT_TAGS.includes(qAlert)) setAlertTag(qAlert);
 
-    setLoading(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
+    const qpPublishDate =
+      searchParams.get("publishDate") ?? searchParams.get("publishedAt");
+    if (qpPublishDate) setPublishDateIso(toISODateOnly(qpPublishDate));
 
-    try {
-      const fd = new FormData();
-      fd.append("image", file);
+    if (!imageUrl) return;
 
-      if (typeof window !== "undefined") {
-        const token = window.localStorage.getItem("news_access_token");
-        if (token) {
-          fd.append("accessToken", token);
-        }
+    (async () => {
+      try {
+        const res = await fetch(imageUrl);
+        if (!res.ok) throw new Error("No se pudo descargar la imagen inicial.");
+
+        const blob = await res.blob();
+        const mime = blob.type || "image/jpeg";
+        let ext = "jpg";
+        if (mime === "image/png") ext = "png";
+        else if (mime === "image/webp") ext = "webp";
+
+        const f = new File([blob], `image-from-article.${ext}`, { type: mime });
+        applyBaseFile(f, imageUrl);
+      } catch (err) {
+        console.error("init error:", err);
       }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      const safeFooter = footer.trim() || null;
-
-      const brandConfig = {
-        brandName: "CANALIBERTARIO",
-        claim: "NOTICIAS Y ANÁLISIS ECONÓMICOS Y POLÍTICOS DESDE UNA MIRADA LIBERTARIA",
-        useHeaderWordmark: true,
-        siteUrl: safeFooter,
-        socialHandle: "@canallibertario",
-        socialIcons: ["x", "facebook", "instagram"] as const,
-        assets: {
-          logoHorizontalPath: BRAND_LOGO_HORIZONTAL,
-          lockupPath: BRAND_LOCKUP,
-        },
-      };
-
-      const footerDateISO = publishDateIso || toISODateOnly(null);
-
-      const optionsJson: any = {
-        title: title.trim() || null,
-        subtitle: subtitle.trim() || null,
-        footer: safeFooter,
-        footerDate: footerDateISO,
-        publishDateIso: footerDateISO,
-        brand: brandConfig,
-        alertTag: alertTag || null,
-        useSocialIcons: true,
-        layout: {
-          textPosition,
-          textOffsetPct,
-          overlayHeightPct: overlayHeight,
-          overlayOpacity,
-          headerStrip: useHeaderStrip
-            ? {
-                date: headerDate.trim() || null,
-                label: headerLabel.trim() || null,
-              }
-            : null,
-          alertAlign,
-          coverVariant,
-          // ✅ opcional para que el backend lo use si querés:
-          footerOpacity,
-          line2Opacity,
-          line2Weight,
-        },
-        colors: {
-          theme,
-          bottomBar: "rgba(0,0,0,0.85)",
-          title: titleColor,
-          subtitle: subtitleColor,
-          footer: handleColor,
-        },
-        typography: {
-          titleFontPx,
-          subtitleFontPx,
-          pillFontPx,
-          footerFontPx,
-        },
-      };
-
-      fd.append("optionsJson", JSON.stringify(optionsJson));
-
-      const res = await fetch("/api/editor-images/enhance", {
-        method: "POST",
-        body: fd,
-      });
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `Error HTTP ${res.status} al procesar la imagen`);
-      }
-
-      const data = (await res.json()) as EnhanceResponse;
-
-      if (data.enhancedImageUrl) {
-        setResultUrl(data.enhancedImageUrl);
-
-        const urlLower = data.enhancedImageUrl.toLowerCase();
-        const isCover =
-          urlLower.includes("/covers/") ||
-          urlLower.includes("/cover/") ||
-          /[-_/]covers?[-_/]/.test(urlLower);
-
-        setSuccessMsg(
-          data.message ??
-            (isCover
-              ? "Imagen procesada correctamente. Se generó una portada (cover) lista para usar."
-              : "Imagen subida como RAW (no se pudo generar cover)."),
-        );
-
-        void loadImages();
-      } else {
-        setErrorMsg("La respuesta no contiene una URL de imagen procesada.");
-      }
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message ?? "Error al procesar la imagen con IA.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOpenFullEditor = () => {
-    if (typeof window === "undefined") return;
-
-    const baseImageUrl = resultUrl || previewUrl;
-    if (!baseImageUrl) {
-      alert("Primero cargá una imagen o generá una cover.");
-      return;
-    }
-
-    const q = new URLSearchParams({
-      imageUrl: baseImageUrl,
-      title,
-      subtitle,
-      footer,
-      alertTag: alertTag || "",
-      textPosition,
-      publishDate: publishDateIso || "",
-      coverVariant,
-      titleFontPx: String(titleFontPx),
-      subtitleFontPx: String(subtitleFontPx),
-      pillFontPx: String(pillFontPx),
-      footerFontPx: String(footerFontPx),
-      // ✅ NUEVO
-      line2Opacity: String(line2Opacity),
-      line2Weight: String(line2Weight),
-      footerOpacity: String(footerOpacity),
-      preset,
-    });
-
-    window.open(`/admin/image-editor/full?${q.toString()}`, "_blank");
-  };
-
+  // ✅ LISTA: soporta distintos formatos del backend
   const loadImages = async () => {
     setListLoading(true);
     setListError(null);
@@ -612,25 +316,28 @@ export default function ImageEditorEmbedPage() {
 
       if (typeof window !== "undefined") {
         const token = window.localStorage.getItem("news_access_token");
-        if (token) {
-          headers["authorization"] = `Bearer ${token}`;
-        }
+        if (token) headers["authorization"] = `Bearer ${token}`;
       }
 
-      const res = await fetch("/api/editor-images/list", {
-        method: "GET",
-        headers,
-      });
-
+      const res = await fetch("/api/editor-images/list", { method: "GET", headers });
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(text || `Error HTTP ${res.status} al obtener la lista de imágenes`);
       }
 
-      const data = (await res.json()) as { items: ImageItem[] };
-      setImages(data.items ?? []);
+      const data = await res.json();
+
+      // soporta items | data | images | results
+      const items =
+        data?.items ??
+        data?.data ??
+        data?.images ??
+        data?.results ??
+        [];
+
+      setImages(Array.isArray(items) ? items : []);
     } catch (err: any) {
-      console.error("[image-editor] Error al cargar imágenes:", err);
+      console.error("[image-editor-embed] Error al cargar imágenes:", err);
       setListError(err.message ?? "Error al obtener la lista de imágenes.");
     } finally {
       setListLoading(false);
@@ -638,108 +345,32 @@ export default function ImageEditorEmbedPage() {
   };
 
   useEffect(() => {
-    if (initializedFromQuery) return;
+    void loadImages();
+  }, []);
 
-    const imageUrl = searchParams.get("imageUrl");
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, typeFilter, images.length]);
 
-    const overlayTitle =
-      searchParams.get("overlayTitle") ?? searchParams.get("title") ?? "";
-    const overlaySubtitle =
-      searchParams.get("overlaySubtitle") ?? searchParams.get("subtitle") ?? "";
-    const overlayFooter =
-      searchParams.get("overlayFooter") ?? searchParams.get("footer") ?? "";
+  const filteredImages = images.filter((img) => {
+    const nameMatch =
+      !searchTerm || img.filename?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const overlayPrimaryColor =
-      searchParams.get("overlayPrimaryColor") ?? searchParams.get("primaryColor") ?? "";
-    const overlaySecondaryColor =
-      searchParams.get("overlaySecondaryColor") ??
-      searchParams.get("secondaryColor") ??
-      "";
-    const overlayTone = searchParams.get("overlayTone") ?? searchParams.get("tone") ?? "";
+    const imgType = resolveImageType(img);
+    const typeMatch =
+      typeFilter === "all"
+        ? true
+        : typeFilter === "raw"
+          ? imgType === "raw"
+          : imgType === "cover";
 
-    const qpTextPos = searchParams.get("textPosition");
-    if (qpTextPos === "top" || qpTextPos === "middle" || qpTextPos === "bottom") {
-      setTextPosition(qpTextPos);
-    }
+    return nameMatch && typeMatch;
+  });
 
-    const qpVariant = searchParams.get("coverVariant");
-    if (qpVariant === "classic" || qpVariant === "full") setCoverVariant(qpVariant);
-
-    const qpTitleFont = Number(searchParams.get("titleFontPx"));
-    if (!Number.isNaN(qpTitleFont) && qpTitleFont >= 28 && qpTitleFont <= 60) {
-      setTitleFontPx(qpTitleFont);
-    }
-    const qpSubFont = Number(searchParams.get("subtitleFontPx"));
-    if (!Number.isNaN(qpSubFont) && qpSubFont >= 12 && qpSubFont <= 26) {
-      setSubtitleFontPx(qpSubFont);
-    }
-    const qpPillFont = Number(searchParams.get("pillFontPx"));
-    if (!Number.isNaN(qpPillFont) && qpPillFont >= 10 && qpPillFont <= 16) {
-      setPillFontPx(qpPillFont);
-    }
-    const qpFooterFont = Number(searchParams.get("footerFontPx"));
-    if (!Number.isNaN(qpFooterFont) && qpFooterFont >= 10 && qpFooterFont <= 16) {
-      setFooterFontPx(qpFooterFont);
-    }
-
-    // ✅ NUEVO
-    const qpLine2Opacity = Number(searchParams.get("line2Opacity"));
-    if (!Number.isNaN(qpLine2Opacity) && qpLine2Opacity >= 0.7 && qpLine2Opacity <= 1) {
-      setLine2Opacity(qpLine2Opacity);
-    }
-    const qpLine2Weight = Number(searchParams.get("line2Weight"));
-    if (!Number.isNaN(qpLine2Weight) && qpLine2Weight >= 600 && qpLine2Weight <= 900) {
-      setLine2Weight(qpLine2Weight);
-    }
-    const qpFooterOpacity = Number(searchParams.get("footerOpacity"));
-    if (!Number.isNaN(qpFooterOpacity) && qpFooterOpacity >= 0.6 && qpFooterOpacity <= 1) {
-      setFooterOpacity(qpFooterOpacity);
-    }
-    const qpPreset = searchParams.get("preset") as CoverPreset | null;
-    if (qpPreset) setPreset(qpPreset);
-
-    // publishDate desde query -> ISO
-    const qpPublishDate = searchParams.get("publishDate") ?? searchParams.get("publishedAt");
-    if (qpPublishDate) setPublishDateIso(toISODateOnly(qpPublishDate));
-    else setPublishDateIso(toISODateOnly(null));
-
-    if (overlayTitle) setTitle(overlayTitle);
-    if (overlaySubtitle) setSubtitle(overlaySubtitle);
-    if (overlayFooter) setFooter(overlayFooter);
-
-    if (overlayPrimaryColor) setTitleColor(overlayPrimaryColor);
-    if (overlaySecondaryColor) {
-      setSubtitleColor(overlaySecondaryColor);
-      setHandleColor(overlaySecondaryColor);
-    }
-
-    if (overlayTone === "light") setOverlayOpacity(0.85);
-    else if (overlayTone === "dark") setOverlayOpacity(1);
-
-    if (imageUrl) {
-      (async () => {
-        try {
-          const res = await fetch(imageUrl);
-          if (!res.ok) throw new Error("No se pudo descargar la imagen inicial.");
-
-          const blob = await res.blob();
-          const mime = blob.type || "image/jpeg";
-          let ext = "jpg";
-          if (mime === "image/png") ext = "png";
-          else if (mime === "image/webp") ext = "webp";
-
-          const f = new File([blob], `image-from-article.${ext}`, { type: mime });
-          applyBaseFile(f, imageUrl);
-        } catch (err) {
-          console.error("init error:", err);
-        } finally {
-          setInitializedFromQuery(true);
-        }
-      })();
-    } else {
-      setInitializedFromQuery(true);
-    }
-  }, [initializedFromQuery, searchParams]);
+  const totalPages = Math.max(1, Math.ceil(filteredImages.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const pagedImages = filteredImages.slice(startIndex, startIndex + PAGE_SIZE);
 
   const selectExistingAsBase = async (img: ImageItem) => {
     try {
@@ -762,77 +393,155 @@ export default function ImageEditorEmbedPage() {
 
       applyBaseFile(f, img.url);
 
-      if (typeof window !== "undefined") {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {
       console.error("selectExistingAsBase error:", err);
       setErrorMsg(err.message ?? "No se pudo usar esa imagen como base.");
     }
   };
 
-  useEffect(() => {
-    void loadImages();
-  }, []);
+  // Enhance
+  const handleEnhance = async () => {
+    if (!file) {
+      setErrorMsg("Primero cargá una imagen (subí una, pegá una captura o elegí una RAW).");
+      return;
+    }
 
-  useEffect(() => {
-    setPage(1);
-  }, [searchTerm, typeFilter, images.length]);
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
 
-  const filteredImages = images.filter((img) => {
-    const nameMatch =
-      !searchTerm || img.filename.toLowerCase().includes(searchTerm.toLowerCase());
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
 
-    const imgType = resolveImageType(img);
-    const typeMatch =
-      typeFilter === "all"
-        ? true
-        : typeFilter === "raw"
-          ? imgType === "raw"
-          : imgType === "cover";
+      if (typeof window !== "undefined") {
+        const token = window.localStorage.getItem("news_access_token");
+        if (token) fd.append("accessToken", token);
+      }
 
-    return nameMatch && typeMatch;
-  });
+      const brandConfig = {
+        brandName: "CANALIBERTARIO",
+        claim: "NOTICIAS Y ANÁLISIS ECONÓMICOS Y POLÍTICOS DESDE UNA MIRADA LIBERTARIA",
+        useHeaderWordmark: true,
+        siteUrl: null,
+        socialHandle: "@canallibertario",
+        socialIcons: ["x", "facebook", "instagram"] as const,
+        assets: {
+          logoHorizontalPath: BRAND_LOGO_HORIZONTAL,
+          lockupPath: BRAND_LOCKUP,
+        },
+      };
 
-  const totalPages = Math.max(1, Math.ceil(filteredImages.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const pagedImages = filteredImages.slice(startIndex, startIndex + PAGE_SIZE);
+      const subtitleToSend = useSubtitle ? (subtitle.trim() || null) : null;
 
-  // Vista previa SIEMPRE en base a la imagen base (editor)
+      const optionsJson: any = {
+        title: title.trim() || null,
+        subtitle: subtitleToSend,
+        footer: null,
+        footerDate: publishDateIso,
+        publishDateIso,
+        brand: brandConfig,
+        alertTag: alertTag || null,
+        useSocialIcons: true,
+        layout: {
+          textPosition: DEFAULT_LOOK.textPosition,
+          textOffsetPct: DEFAULT_LOOK.textOffsetPct,
+          overlayHeightPct: DEFAULT_LOOK.overlayHeightPct,
+          overlayOpacity: 0.9,
+          headerStrip: null,
+          alertAlign: DEFAULT_LOOK.alertAlign,
+          coverVariant: DEFAULT_LOOK.coverVariant,
+          footerOpacity: DEFAULT_LOOK.footerOpacity,
+          line2Opacity: DEFAULT_LOOK.line2Opacity,
+          line2Weight: DEFAULT_LOOK.line2Weight,
+        },
+        colors: {
+          theme,
+          bottomBar: "rgba(0,0,0,0.85)",
+          title: DEFAULT_LOOK.titleColor,
+          subtitle: DEFAULT_LOOK.subtitleColor,
+          footer: DEFAULT_LOOK.dateColor,
+        },
+        typography: {
+          titleFontPx: DEFAULT_LOOK.titleFontPx,
+          subtitleFontPx: DEFAULT_LOOK.subtitleFontPx,
+          pillFontPx: DEFAULT_LOOK.pillFontPx,
+          footerFontPx: DEFAULT_LOOK.footerFontPx,
+        },
+      };
+
+      fd.append("optionsJson", JSON.stringify(optionsJson));
+
+      const res = await fetch("/api/editor-images/enhance", {
+        method: "POST",
+        body: fd,
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Error HTTP ${res.status} al procesar la imagen`);
+      }
+
+      const data = (await res.json()) as EnhanceResponse;
+
+      if (!data.enhancedImageUrl) {
+        throw new Error("La respuesta no contiene una URL de imagen procesada.");
+      }
+
+      setResultUrl(data.enhancedImageUrl);
+
+      const urlLower = data.enhancedImageUrl.toLowerCase();
+      const isCover =
+        urlLower.includes("/covers/") ||
+        urlLower.includes("/cover/") ||
+        /[-_/]covers?[-_/]/.test(urlLower);
+
+      setSuccessMsg(
+        data.message ??
+          (isCover
+            ? "Cover generada correctamente (lista para publicar)."
+            : "Imagen subida como RAW (no se pudo generar cover)."),
+      );
+
+      void loadImages();
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message ?? "Error al procesar la imagen con IA.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenFullEditor = () => {
+    if (typeof window === "undefined") return;
+
+    const baseImageUrl = resultUrl || previewUrl;
+    if (!baseImageUrl) {
+      alert("Primero cargá una imagen o generá una cover.");
+      return;
+    }
+
+    const q = new URLSearchParams({
+      imageUrl: baseImageUrl,
+      title,
+      subtitle: useSubtitle ? subtitle : "",
+      alertTag: alertTag || "",
+      publishDate: publishDateIso || "",
+      useSubtitle: useSubtitle ? "1" : "0",
+      coverVariant: DEFAULT_LOOK.coverVariant,
+    });
+
+    window.open(`/admin/image-editor/full?${q.toString()}`, "_blank");
+  };
+
+  // Preview computed
   const mainPreviewUrl = previewUrl;
   const hasBaseImage = !!mainPreviewUrl;
 
-  const alertAlignClass =
-    alertAlign === "left"
-      ? "justify-start"
-      : alertAlign === "center"
-        ? "justify-center"
-        : "justify-end";
-
-  const displayTitle = title || "Título de la portada";
+  const displayTitle = title.trim() || "Título de la portada";
   const titleLines = displayTitle.split(/\r?\n/).slice(0, 3);
-
-  // Safe area (1280×720): 64px lateral (~5%), 72px abajo (~10%)
-  const SAFE_X = "5%";
-  const SAFE_TOP = "6.5%";
-  const SAFE_BOTTOM = "10%";
-
-  const textVertical =
-    textPosition === "top"
-      ? "justify-start"
-      : textPosition === "middle"
-        ? "justify-center"
-        : "justify-end";
-
-  // ✅ Ajustes por variante (solo preview)
-  const variantPaddingX = coverVariant === "full" ? 44 : 32;
-  const variantPaddingY = coverVariant === "full" ? 22 : 18;
-  const variantMaxWidth = coverVariant === "full" ? 940 : 860;
-  const variantTitleShadow =
-    coverVariant === "full"
-      ? "0 12px 30px rgba(0,0,0,0.38)"
-      : "0 10px 26px rgba(0,0,0,0.35)";
+  const subtitleToRender = useSubtitle ? subtitle.trim() : "";
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6 md:py-8">
@@ -842,14 +551,13 @@ export default function ImageEditorEmbedPage() {
         <section className="relative z-10 space-y-6 p-4 md:p-8">
           <header className="space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
-              Editor de imágenes · Covers
+              Editor de imágenes · Covers (rápido)
             </div>
             <h1 className="text-2xl font-semibold leading-tight md:text-3xl">
-              Ajustá textos y vista previa antes de generar la cover
+              Generá una cover lista para publicar
             </h1>
             <p className="max-w-3xl text-sm text-slate-300">
-              Subí una imagen, pegá una captura o elegí una RAW de la biblioteca. Después definí el
-              título, la bajada y la etiqueta. La salida es una cover horizontal 1280×720.
+              Cargá una imagen, poné título, elegí etiqueta/tema (opcional) y generá. El resto queda fijo.
             </p>
           </header>
 
@@ -857,27 +565,17 @@ export default function ImageEditorEmbedPage() {
           <div className="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-4 md:p-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Vista previa (editor) / Resultado (renderer)
+                Vista previa / Resultado
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/40 px-3 py-1 text-[11px] text-slate-200">
-                  <input
-                    type="checkbox"
-                    checked={showSafeArea}
-                    onChange={(e) => setShowSafeArea(e.target.checked)}
-                    className="h-3 w-3 rounded border-slate-600 bg-slate-900"
-                  />
-                  Mostrar safe area
-                </label>
-
                 <button
                   type="button"
                   onClick={handleEnhance}
                   disabled={loading || !file}
                   className="inline-flex items-center justify-center rounded-full bg-sky-500 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_18px_35px_rgba(56,189,248,0.45)] hover:bg-sky-400 disabled:bg-slate-700 disabled:text-slate-300"
                 >
-                  {loading ? "Procesando..." : "Generar cover (renderer)"}
+                  {loading ? "Procesando..." : "Generar cover"}
                 </button>
 
                 <button
@@ -886,7 +584,7 @@ export default function ImageEditorEmbedPage() {
                   disabled={!previewUrl && !resultUrl}
                   className="inline-flex items-center justify-center rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-xs font-semibold text-slate-100 hover:border-sky-400 hover:bg-slate-800 disabled:opacity-50"
                 >
-                  Full
+                  Abrir Full
                 </button>
               </div>
             </div>
@@ -894,183 +592,121 @@ export default function ImageEditorEmbedPage() {
             <div className="mt-4 grid gap-4 xl:grid-cols-12">
               {/* PREVIEW */}
               <div className="xl:col-span-8 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Vista previa
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/40 px-3 py-1 text-[11px] text-slate-200">
-                      <input
-                        type="checkbox"
-                        checked={showFooterDatePreview}
-                        onChange={(e) => setShowFooterDatePreview(e.target.checked)}
-                        className="h-3 w-3 rounded border-slate-600 bg-slate-900"
-                      />
-                      Mostrar fecha en preview
-                    </label>
-
-                    {/* ✅ NUEVO: selector de preset */}
-                    <select
-                      value={preset}
-                      onChange={(e) => applyPreset(e.target.value as CoverPreset)}
-                      className="rounded-full border border-slate-700 bg-slate-950/40 px-3 py-1 text-[11px] text-slate-100 outline-none"
-                      title="Preset de look (solo preview + se envía al backend)"
-                    >
-                      <option value="custom">{presetLabel("custom")}</option>
-                      <option value="classic">{presetLabel("classic")}</option>
-                      <option value="full">{presetLabel("full")}</option>
-                      <option value="institutional">{presetLabel("institutional")}</option>
-                      <option value="breaking">{presetLabel("breaking")}</option>
-                    </select>
-
-                    {/* selector de variante */}
-                    <select
-                      value={coverVariant}
-                      onChange={(e) => {
-                        setPreset("custom");
-                        setCoverVariant(e.target.value as CoverVariant);
-                      }}
-                      className="rounded-full border border-slate-700 bg-slate-950/40 px-3 py-1 text-[11px] text-slate-100 outline-none"
-                      title="Variante de cover"
-                    >
-                      <option value="classic">{variantLabel("classic")}</option>
-                      <option value="full">{variantLabel("full")}</option>
-                    </select>
-                  </div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Vista previa
                 </div>
 
                 {hasBaseImage ? (
                   <div className="relative w-full overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
                     <div className="relative aspect-video w-full">
-                      {mainPreviewUrl && (
-                        <img
-                          src={mainPreviewUrl}
-                          alt="Preview portada"
-                          className="h-full w-full object-cover"
-                          onClick={() => window.open(mainPreviewUrl, "_blank")}
-                          style={{ cursor: "zoom-in" }}
-                        />
-                      )}
+                      <img
+                        src={mainPreviewUrl!}
+                        alt="Preview portada"
+                        className="h-full w-full object-cover"
+                        onClick={() => window.open(mainPreviewUrl!, "_blank")}
+                        style={{ cursor: "zoom-in" }}
+                      />
 
-                      {/* Safe area overlay */}
                       {showSafeArea && (
                         <>
                           <div
                             className="pointer-events-none absolute z-30 rounded-xl border border-white/20"
                             style={{
-                              left: SAFE_X,
-                              right: SAFE_X,
-                              top: SAFE_TOP,
-                              bottom: SAFE_BOTTOM,
+                              left: DEFAULT_LOOK.SAFE_X,
+                              right: DEFAULT_LOOK.SAFE_X,
+                              top: DEFAULT_LOOK.SAFE_TOP,
+                              bottom: DEFAULT_LOOK.SAFE_BOTTOM,
                               boxShadow: "0 0 0 9999px rgba(0,0,0,0.06) inset",
                             }}
                           />
                           <div
                             className="pointer-events-none absolute z-30 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70"
-                            style={{ left: SAFE_X, bottom: SAFE_BOTTOM }}
+                            style={{
+                              left: DEFAULT_LOOK.SAFE_X,
+                              bottom: DEFAULT_LOOK.SAFE_BOTTOM,
+                            }}
                           >
                             safe area
                           </div>
                         </>
                       )}
 
-                      {/* Header strip (opcional) */}
-                      {useHeaderStrip && (
-                        <div
-                          className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-center justify-between gap-4 px-6 py-2.5"
-                          style={{
-                            background:
-                              "linear-gradient(to right, rgba(15,23,42,0.92), rgba(15,23,42,0.78))",
-                          }}
-                        >
-                          <div className="flex min-w-0 items-center gap-3">
-                            <img
-                              src={BRAND_LOGO_HORIZONTAL}
-                              alt="Canalibertario"
-                              className="h-5 w-auto opacity-95"
-                            />
-                            <div className="min-w-0">
-                              <div className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-200">
-                                {headerDate || "Fecha no definida"}
-                              </div>
-                              <div className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300">
-                                {headerLabel || "Cobertura especial"}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Overlay inferior */}
+                      {/* Overlay inferior fijo */}
                       <div
                         className="pointer-events-none absolute inset-x-0 bottom-0 z-10"
                         style={{
-                          height: `${overlayHeight}%`,
-                          background: getBottomOverlay(theme, overlayOpacity),
-                          transform:
-                            textOffsetPct !== 0 ? `translateY(${textOffsetPct}%)` : undefined,
+                          height: `${DEFAULT_LOOK.overlayHeightPct}%`,
+                          background: getBottomOverlay(theme),
                         }}
                       >
                         <div
-                          className={`flex h-full w-full flex-col ${textVertical}`}
+                          className="flex h-full w-full flex-col justify-end"
                           style={{
-                            paddingLeft: `${variantPaddingX}px`,
-                            paddingRight: `${variantPaddingX}px`,
-                            paddingBottom: `${variantPaddingY}px`,
-                            paddingTop: `${variantPaddingY}px`,
+                            paddingLeft: "32px",
+                            paddingRight: "32px",
+                            paddingBottom: "18px",
+                            paddingTop: "18px",
                           }}
                         >
                           <div className="space-y-3">
                             {/* Pill */}
                             {alertTag && (
-                              <div className={`flex ${alertAlignClass}`}>
+                              <div className="flex justify-start">
                                 <div
                                   className="inline-flex items-center rounded-full px-3 py-1 font-semibold uppercase tracking-[0.14em] text-white shadow-[0_10px_22px_rgba(0,0,0,0.25)]"
-                                  style={{ background: getPillBg(alertTag), fontSize: pillFontPx }}
+                                  style={{
+                                    background: getPillBg(alertTag),
+                                    fontSize: DEFAULT_LOOK.pillFontPx,
+                                  }}
                                 >
                                   {alertTag}
                                 </div>
                               </div>
                             )}
 
-                            {/* Headline (2 líneas con jerarquía) */}
+                            {/* Title */}
                             <div
                               className="leading-[1.08] tracking-[0.02em]"
                               style={{
-                                maxWidth: `${variantMaxWidth}px`,
-                                color: titleColor,
-                                textShadow: variantTitleShadow,
+                                maxWidth: "860px",
+                                color: DEFAULT_LOOK.titleColor,
+                                textShadow: "0 10px 26px rgba(0,0,0,0.35)",
                               }}
                             >
-                              {/* Línea 1 */}
                               <div
                                 className="font-extrabold"
-                                style={{ fontSize: titleFontPx, opacity: 1 }}
+                                style={{ fontSize: DEFAULT_LOOK.titleFontPx, opacity: 1 }}
                               >
                                 {titleLines[0] ?? ""}
                               </div>
 
-                              {/* Línea 2 (más liviana) */}
                               {titleLines[1] ? (
                                 <div
                                   style={{
-                                    fontSize: Math.max(24, Math.round(titleFontPx * 0.86)),
-                                    fontWeight: line2Weight,
-                                    opacity: line2Opacity,
+                                    fontSize: Math.max(
+                                      24,
+                                      Math.round(DEFAULT_LOOK.titleFontPx * 0.86),
+                                    ),
+                                    fontWeight: DEFAULT_LOOK.line2Weight,
+                                    opacity: DEFAULT_LOOK.line2Opacity,
                                   }}
                                 >
                                   {titleLines[1]}
                                 </div>
                               ) : null}
 
-                              {/* Línea 3 (si existe) */}
                               {titleLines[2] ? (
                                 <div
                                   style={{
-                                    fontSize: Math.max(22, Math.round(titleFontPx * 0.78)),
-                                    fontWeight: Math.max(650, Math.round(line2Weight - 50)),
-                                    opacity: Math.max(0.78, line2Opacity - 0.06),
+                                    fontSize: Math.max(
+                                      22,
+                                      Math.round(DEFAULT_LOOK.titleFontPx * 0.78),
+                                    ),
+                                    fontWeight: Math.max(
+                                      650,
+                                      Math.round(DEFAULT_LOOK.line2Weight - 50),
+                                    ),
+                                    opacity: Math.max(0.78, DEFAULT_LOOK.line2Opacity - 0.06),
                                   }}
                                 >
                                   {titleLines[2]}
@@ -1078,56 +714,43 @@ export default function ImageEditorEmbedPage() {
                               ) : null}
                             </div>
 
-                            {/* Subtitle */}
-                            {subtitle && (
+                            {/* Subtitle opcional */}
+                            {subtitleToRender && (
                               <div
                                 className="font-medium leading-snug"
                                 style={{
-                                  maxWidth: `${variantMaxWidth}px`,
-                                  color: subtitleColor,
+                                  maxWidth: "860px",
+                                  color: DEFAULT_LOOK.subtitleColor,
                                   textShadow: "0 8px 22px rgba(0,0,0,0.28)",
-                                  fontSize: subtitleFontPx,
+                                  fontSize: DEFAULT_LOOK.subtitleFontPx,
                                 }}
                               >
-                                {subtitle}
+                                {subtitleToRender}
                               </div>
                             )}
 
-                            {/* Footer: lockup izq + fecha der */}
+                            {/* Footer fijo */}
                             <div className="mt-2 flex items-center justify-between gap-4">
                               <div className="flex items-center gap-3">
-                                {useBrandLockup ? (
-                                  <img
-                                    src={BRAND_LOCKUP}
-                                    alt="Canalibertario redes"
-                                    className="h-7 w-auto"
-                                    style={{ opacity: footerOpacity }}
-                                  />
-                                ) : (
-                                  <img
-                                    src={BRAND_LOGO_HORIZONTAL}
-                                    alt="Canalibertario"
-                                    className="h-6 w-auto"
-                                    style={{ opacity: footerOpacity }}
-                                  />
-                                )}
+                                <img
+                                  src={BRAND_LOCKUP}
+                                  alt="Canalibertario redes"
+                                  className="h-7 w-auto"
+                                  style={{ opacity: DEFAULT_LOOK.footerOpacity }}
+                                />
                               </div>
 
-                              {showFooterDatePreview ? (
-                                <span
-                                  className="font-semibold uppercase tracking-[0.18em]"
-                                  style={{
-                                    color: handleColor,
-                                    textShadow: "0 8px 22px rgba(0,0,0,0.28)",
-                                    fontSize: footerFontPx,
-                                    opacity: footerOpacity,
-                                  }}
-                                >
-                                  {publishDateAR}
-                                </span>
-                              ) : (
-                                <span />
-                              )}
+                              <span
+                                className="font-semibold uppercase tracking-[0.18em]"
+                                style={{
+                                  color: DEFAULT_LOOK.dateColor,
+                                  textShadow: "0 8px 22px rgba(0,0,0,0.28)",
+                                  fontSize: DEFAULT_LOOK.footerFontPx,
+                                  opacity: DEFAULT_LOOK.footerOpacity,
+                                }}
+                              >
+                                {publishDateAR}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -1139,6 +762,42 @@ export default function ImageEditorEmbedPage() {
                     Subí una imagen, pegá una captura o elegí una RAW para ver la vista previa.
                   </p>
                 )}
+
+                {/* Avanzado */}
+                <details className="mt-4 rounded-xl border border-slate-800/80 bg-slate-950/60 p-3">
+                  <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
+                    Avanzado
+                  </summary>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <label className="flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/40 px-3 py-1 text-[11px] text-slate-200">
+                      <input
+                        type="checkbox"
+                        checked={showSafeArea}
+                        onChange={(e) => setShowSafeArea(e.target.checked)}
+                        className="h-3 w-3 rounded border-slate-600 bg-slate-900"
+                      />
+                      Mostrar safe area
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => setPublishDateIso(toISODateOnly(null))}
+                      className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-[11px] font-semibold text-slate-200 hover:border-sky-400 hover:bg-slate-800"
+                      title="Setea fecha de hoy"
+                    >
+                      Fecha hoy
+                    </button>
+
+                    <input
+                      type="date"
+                      value={publishDateIso}
+                      onChange={(e) => setPublishDateIso(toISODateOnly(e.target.value))}
+                      className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-[11px] text-slate-50 outline-none focus:border-sky-400"
+                      title="Fecha de publicación"
+                    />
+                  </div>
+                </details>
               </div>
 
               {/* RESULTADO */}
@@ -1175,21 +834,16 @@ export default function ImageEditorEmbedPage() {
             </div>
           </div>
 
-          {/* CONTROLES */}
+          {/* CONTROLES MINIMOS */}
           <div className="grid gap-6 rounded-2xl border border-slate-800/80 bg-slate-900/80 p-4 md:grid-cols-12 md:p-6">
-            <div className="md:col-span-5 space-y-4">
+            <div className="md:col-span-6 space-y-4">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                1. Cargar imagen base
+                1) Imagen base
               </div>
 
               <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-700/80 bg-slate-800/80 px-4 py-2 text-xs font-medium text-slate-50 hover:border-sky-400/80 hover:bg-slate-800">
-                Seleccionar imagen de portada
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
+                Seleccionar imagen
+                <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
               </label>
 
               <div className="space-y-2 rounded-xl border border-slate-800/80 bg-slate-950/70 p-3">
@@ -1202,12 +856,11 @@ export default function ImageEditorEmbedPage() {
                   onChange={(e) => setScreenshotInput(e.target.value)}
                   onPaste={handleScreenshotPaste}
                   className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                  placeholder="Ctrl+V para pegar la imagen o pegá la URL de la captura..."
+                  placeholder="Ctrl+V para pegar imagen o pegá la URL..."
                 />
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[10px] text-slate-400">
-                    Si pegás una imagen se usa como RAW. Si pegás una URL, clic en &quot;Usar
-                    captura&quot;.
+                    Si pegás URL, tocá “Usar captura”.
                   </p>
                   <button
                     type="button"
@@ -1219,28 +872,43 @@ export default function ImageEditorEmbedPage() {
                   </button>
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-3 rounded-xl border border-slate-800/80 bg-slate-950/70 p-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Textos
-                </div>
+            <div className="md:col-span-6 space-y-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                2) Texto (mínimo)
+              </div>
 
+              <div className="space-y-1">
+                <label className="text-[11px] text-slate-300">Título</label>
+                <textarea
+                  rows={2}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                  placeholder="Ej: Milei anuncia medidas"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Podés usar <strong>Enter</strong> para forzar cortes.
+                </p>
+              </div>
+
+              <label className="flex items-center gap-2 text-[11px] text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={useSubtitle}
+                  onChange={(e) => {
+                    setUseSubtitle(e.target.checked);
+                    if (!e.target.checked) setSubtitle("");
+                  }}
+                  className="h-3 w-3 rounded border-slate-600 bg-slate-900"
+                />
+                Incluir bajada / descripción (opcional)
+              </label>
+
+              {useSubtitle && (
                 <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Título principal</label>
-                  <textarea
-                    rows={2}
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                    placeholder="Ej: Milei anuncia medidas"
-                  />
-                  <p className="text-[10px] text-slate-400">
-                    Podés usar <strong>Enter</strong> para forzar saltos de línea.
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Bajada / descripción corta</label>
+                  <label className="text-[11px] text-slate-300">Bajada</label>
                   <input
                     type="text"
                     value={subtitle}
@@ -1249,7 +917,9 @@ export default function ImageEditorEmbedPage() {
                     placeholder="Ej: Nuevo plan económico"
                   />
                 </div>
+              )}
 
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-[11px] text-slate-300">Etiqueta (opcional)</label>
                   <select
@@ -1266,168 +936,13 @@ export default function ImageEditorEmbedPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Posición de la etiqueta</label>
+                  <label className="text-[11px] text-slate-300">Tema</label>
                   <div className="flex flex-wrap gap-2 text-[11px]">
-                    {(["left", "center", "right"] as AlertAlign[]).map((a) => (
-                      <button
-                        key={a}
-                        type="button"
-                        onClick={() => setAlertAlign(a)}
-                        className={`rounded-full border px-3 py-1 font-semibold ${
-                          alertAlign === a
-                            ? "border-sky-400 bg-sky-500/10 text-sky-200"
-                            : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400 hover:bg-slate-800"
-                        }`}
-                      >
-                        {alertAlignLabel(a)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-2 rounded-lg border border-slate-800/70 bg-slate-900/60 p-2">
-                  <label className="flex items-center gap-2 text-[11px] text-slate-200">
-                    <input
-                      type="checkbox"
-                      checked={useHeaderStrip}
-                      onChange={(e) => setUseHeaderStrip(e.target.checked)}
-                      className="h-3 w-3 rounded border-slate-600 bg-slate-900"
-                    />
-                    Mostrar franja superior (fecha / contexto + logo horizontal)
-                  </label>
-
-                  {useHeaderStrip && (
-                    <div className="space-y-2">
-                      <div className="space-y-1">
-                        <label className="text-[11px] text-slate-300">Fecha / momento</label>
-                        <input
-                          type="text"
-                          value={headerDate}
-                          onChange={(e) => setHeaderDate(e.target.value)}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                          placeholder="Ej: 20/12/2025 · 20:17"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[11px] text-slate-300">Texto extra (opcional)</label>
-                        <input
-                          type="text"
-                          value={headerLabel}
-                          onChange={(e) => setHeaderLabel(e.target.value)}
-                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                          placeholder="Ej: Cobertura especial · Economía"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Fecha de publicación</label>
-                  <input
-                    type="date"
-                    value={publishDateIso}
-                    onChange={(e) => setPublishDateIso(toISODateOnly(e.target.value))}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                  />
-                  <p className="text-[10px] text-slate-400">
-                    En preview se ve como <strong>{publishDateAR}</strong> si activás el toggle.
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Sitio del canal</label>
-                  <input
-                    type="text"
-                    value={footer}
-                    onChange={(e) => setFooter(e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                    placeholder="www.canalibertario.com (opcional)"
-                  />
-                </div>
-
-                <label className="flex items-center gap-2 text-[11px] text-slate-200">
-                  <input
-                    type="checkbox"
-                    checked={useBrandLockup}
-                    onChange={(e) => setUseBrandLockup(e.target.checked)}
-                    className="h-3 w-3 rounded border-slate-600 bg-slate-900"
-                  />
-                  Usar lockup (redes + Canalibertario) en el footer
-                </label>
-              </div>
-            </div>
-
-            <div className="md:col-span-7 space-y-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Layout, variante y tipografía
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Variante de cover</label>
-                  <select
-                    value={coverVariant}
-                    onChange={(e) => {
-                      setPreset("custom");
-                      setCoverVariant(e.target.value as CoverVariant);
-                    }}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                  >
-                    <option value="classic">{variantLabel("classic")}</option>
-                    <option value="full">{variantLabel("full")}</option>
-                  </select>
-                  <p className="text-[10px] text-slate-400">
-                    Afecta la vista previa (paddings, ancho, sombras). Se envía al backend por si
-                    querés replicarlo ahí.
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Posición del bloque de texto</label>
-                  <select
-                    value={textPosition}
-                    onChange={(e) => setTextPosition(e.target.value as TextPosition)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                  >
-                    <option value="bottom">Inferior (clásico)</option>
-                    <option value="middle">Centro</option>
-                    <option value="top">Superior</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Ajuste fino vertical</label>
-                  <input
-                    type="range"
-                    min={-20}
-                    max={20}
-                    value={textOffsetPct}
-                    onChange={(e) => {
-                      setPreset("custom");
-                      setTextOffsetPct(Number(e.target.value) || 0);
-                    }}
-                    className="w-full"
-                  />
-                  <div className="text-[10px] text-slate-400">
-                    {textOffsetPct}% (negativo sube, positivo baja).
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Tema de color del overlay</label>
-                  <div className="flex flex-wrap gap-2 text-[11px]">
-                    {(["purple", "sunset", "black"] as CoverTheme[]).map((t) => (
+                    {(["black", "purple", "sunset"] as CoverTheme[]).map((t) => (
                       <button
                         key={t}
                         type="button"
-                        onClick={() => {
-                          setPreset("custom");
-                          setTheme(t);
-                        }}
+                        onClick={() => setTheme(t)}
                         className={`rounded-full border px-3 py-1 font-semibold ${
                           theme === t
                             ? "border-sky-400 bg-sky-500/10 text-sky-200"
@@ -1441,333 +956,183 @@ export default function ImageEditorEmbedPage() {
                 </div>
               </div>
 
-              {/* Overlay */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Altura del overlay</label>
-                  <input
-                    type="range"
-                    min={25}
-                    max={40}
-                    value={overlayHeight}
-                    onChange={(e) => {
-                      setPreset("custom");
-                      setOverlayHeight(Number(e.target.value) || 30);
-                    }}
-                    className="w-full"
-                  />
-                  <div className="text-[10px] text-slate-400">{overlayHeight}%</div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Intensidad del overlay</label>
-                  <input
-                    type="range"
-                    min={60}
-                    max={100}
-                    value={Math.round(overlayOpacity * 100)}
-                    onChange={(e) => {
-                      setPreset("custom");
-                      setOverlayOpacity(
-                        Math.max(0.6, Math.min(1, Number(e.target.value) / 100)),
-                      );
-                    }}
-                    className="w-full"
-                  />
-                  <div className="text-[10px] text-slate-400">
-                    {Math.round(overlayOpacity * 100)}%
-                  </div>
-                </div>
-              </div>
-
-              {/* Tipografía */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Tamaño título (línea 1)</label>
-                  <input
-                    type="range"
-                    min={28}
-                    max={60}
-                    value={titleFontPx}
-                    onChange={(e) => {
-                      setPreset("custom");
-                      setTitleFontPx(Number(e.target.value) || 40);
-                    }}
-                    className="w-full"
-                  />
-                  <div className="text-[10px] text-slate-400">{titleFontPx}px</div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Tamaño bajada</label>
-                  <input
-                    type="range"
-                    min={12}
-                    max={26}
-                    value={subtitleFontPx}
-                    onChange={(e) => {
-                      setPreset("custom");
-                      setSubtitleFontPx(Number(e.target.value) || 16);
-                    }}
-                    className="w-full"
-                  />
-                  <div className="text-[10px] text-slate-400">{subtitleFontPx}px</div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Tamaño pill</label>
-                  <input
-                    type="range"
-                    min={10}
-                    max={16}
-                    value={pillFontPx}
-                    onChange={(e) => {
-                      setPreset("custom");
-                      setPillFontPx(Number(e.target.value) || 12);
-                    }}
-                    className="w-full"
-                  />
-                  <div className="text-[10px] text-slate-400">{pillFontPx}px</div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Tamaño footer (preview)</label>
-                  <input
-                    type="range"
-                    min={10}
-                    max={16}
-                    value={footerFontPx}
-                    onChange={(e) => {
-                      setPreset("custom");
-                      setFooterFontPx(Number(e.target.value) || 12);
-                    }}
-                    className="w-full"
-                  />
-                  <div className="text-[10px] text-slate-400">{footerFontPx}px</div>
-                </div>
-              </div>
-
-              {/* Jerarquía línea 2 + footer sutil */}
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Línea 2 · Opacidad</label>
-                  <input
-                    type="range"
-                    min={70}
-                    max={100}
-                    value={Math.round(line2Opacity * 100)}
-                    onChange={(e) => {
-                      setPreset("custom");
-                      setLine2Opacity(Math.max(0.7, Math.min(1, Number(e.target.value) / 100)));
-                    }}
-                    className="w-full"
-                  />
-                  <div className="text-[10px] text-slate-400">{Math.round(line2Opacity * 100)}%</div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Línea 2 · Weight</label>
-                  <input
-                    type="range"
-                    min={600}
-                    max={900}
-                    step={10}
-                    value={line2Weight}
-                    onChange={(e) => {
-                      setPreset("custom");
-                      setLine2Weight(Number(e.target.value) || 750);
-                    }}
-                    className="w-full"
-                  />
-                  <div className="text-[10px] text-slate-400">{line2Weight}</div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-300">Footer · Opacidad</label>
-                  <input
-                    type="range"
-                    min={70}
-                    max={100}
-                    value={Math.round(footerOpacity * 100)}
-                    onChange={(e) => {
-                      setPreset("custom");
-                      setFooterOpacity(Math.max(0.7, Math.min(1, Number(e.target.value) / 100)));
-                    }}
-                    className="w-full"
-                  />
-                  <div className="text-[10px] text-slate-400">{Math.round(footerOpacity * 100)}%</div>
-                </div>
-              </div>
-
-              {/* Colores */}
-              <div className="grid gap-3 md:grid-cols-3">
-                <ColorSwatches label="Color título" value={titleColor} onChange={setTitleColor} />
-                <ColorSwatches
-                  label="Color bajada"
-                  value={subtitleColor}
-                  onChange={setSubtitleColor}
-                />
-                <ColorSwatches label="Color fecha" value={handleColor} onChange={setHandleColor} />
+              <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-3 text-[11px] text-slate-300">
+                <div className="font-semibold text-slate-200">Defaults (fijos)</div>
+                <ul className="mt-1 list-disc pl-5 text-slate-400">
+                  <li>Overlay + tipografías + layout: predefinidos</li>
+                  <li>Footer: lockup + fecha</li>
+                  <li>Sin sliders ni ajustes finos (eso va en Full)</li>
+                </ul>
               </div>
             </div>
           </div>
-        </section>
-      </div>
 
-      {/* BIBLIOTECA */}
-      <section className="mt-6 rounded-3xl border border-slate-900/80 bg-slate-950/95 p-4 text-slate-50">
-        <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold">Biblioteca de imágenes</h2>
-            <p className="text-xs text-slate-400">RAW + covers generadas automáticamente.</p>
-          </div>
+          {/* ✅ BIBLIOTECA: abierta por defecto para que “se vea sí o sí” */}
+          <details open className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 md:p-6">
+            <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
+              Biblioteca (RAW / Covers)
+            </summary>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar..."
-              className="w-40 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px]"
-            />
+            <div className="mt-4">
+              <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold">Biblioteca de imágenes</h2>
+                  <p className="text-xs text-slate-400">Elegí una RAW como base si no querés subir.</p>
+                </div>
 
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as "all" | "raw" | "cover")}
-              className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px]"
-            >
-              <option value="all">Todas</option>
-              <option value="raw">RAW</option>
-              <option value="cover">Covers</option>
-            </select>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Buscar..."
+                    className="w-40 rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px]"
+                  />
 
-            <button
-              type="button"
-              onClick={() => void loadImages()}
-              disabled={listLoading}
-              className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold"
-            >
-              {listLoading ? "Actualizando..." : "Refrescar lista"}
-            </button>
-          </div>
-        </div>
-
-        {listError && (
-          <div className="mt-2 rounded-xl border border-red-400/60 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
-            {listError}
-          </div>
-        )}
-
-        {!listError && filteredImages.length === 0 && (
-          <p className="text-sm text-slate-400">No hay imágenes para mostrar.</p>
-        )}
-
-        {!listError && filteredImages.length > 0 && (
-          <>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-              {pagedImages.map((img, index) => {
-                const imgType = resolveImageType(img);
-
-                return (
-                  <div
-                    key={img.url || `${img.filename}-${index}`}
-                    className="flex flex-col rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-[11px]"
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value as "all" | "raw" | "cover")}
+                    className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px]"
                   >
-                    <div className="mb-2 aspect-video overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
-                      <img src={img.url} alt={img.filename} className="h-full w-full object-cover" />
+                    <option value="all">Todas</option>
+                    <option value="raw">RAW</option>
+                    <option value="cover">Covers</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => void loadImages()}
+                    disabled={listLoading}
+                    className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold"
+                  >
+                    {listLoading ? "Actualizando..." : "Refrescar lista"}
+                  </button>
+                </div>
+              </div>
+
+              {listError && (
+                <div className="mt-2 rounded-xl border border-red-400/60 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+                  {listError}
+                </div>
+              )}
+
+              {!listError && listLoading && images.length === 0 && (
+                <p className="text-sm text-slate-400">Cargando imágenes…</p>
+              )}
+
+              {!listError && !listLoading && filteredImages.length === 0 && (
+                <p className="text-sm text-slate-400">No hay imágenes para mostrar.</p>
+              )}
+
+              {!listError && filteredImages.length > 0 && (
+                <>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+                    {pagedImages.map((img, index) => {
+                      const imgType = resolveImageType(img);
+
+                      return (
+                        <div
+                          key={img.url || `${img.filename}-${index}`}
+                          className="flex flex-col rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-[11px]"
+                        >
+                          <div className="mb-2 aspect-video overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+                            <img src={img.url} alt={img.filename} className="h-full w-full object-cover" />
+                          </div>
+
+                          <div className="mb-1 flex items-center justify-between gap-2">
+                            <span className="truncate text-slate-100">{img.filename}</span>
+
+                            <span
+                              className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${
+                                imgType === "raw"
+                                  ? "border border-amber-400/70 bg-amber-500/10 text-amber-200"
+                                  : "border border-sky-400/70 bg-sky-500/10 text-sky-200"
+                              }`}
+                            >
+                              {imgType === "raw" ? "RAW" : "COVER"}
+                            </span>
+                          </div>
+
+                          <div className="mb-2 truncate text-[10px] text-slate-400">{img.url}</div>
+
+                          <div className="mt-auto flex flex-col gap-1">
+                            <button
+                              type="button"
+                              onClick={() => void selectExistingAsBase(img)}
+                              className="w-full rounded-full border border-sky-400/80 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold text-sky-200 hover:bg-sky-500/20"
+                            >
+                              Usar como base
+                            </button>
+
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => window.open(img.url, "_blank")}
+                                className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
+                              >
+                                Abrir
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(img.url);
+                                    alert("URL copiada al portapapeles");
+                                  } catch {
+                                    // ignore
+                                  }
+                                }}
+                                className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
+                              >
+                                Copiar URL
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-4 flex flex-col items-center justify-between gap-2 text-[11px] text-slate-300 sm:flex-row">
+                    <div>
+                      Mostrando{" "}
+                      <span className="font-semibold">
+                        {startIndex + 1}-{startIndex + pagedImages.length}
+                      </span>{" "}
+                      de <span className="font-semibold">{filteredImages.length}</span>
                     </div>
 
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="truncate text-slate-100">{img.filename}</span>
-
-                      <span
-                        className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${
-                          imgType === "raw"
-                            ? "border border-amber-400/70 bg-amber-500/10 text-amber-200"
-                            : "border border-sky-400/70 bg-sky-500/10 text-sky-200"
-                        }`}
-                      >
-                        {imgType === "raw" ? "RAW" : "COVER"}
-                      </span>
-                    </div>
-
-                    <div className="mb-2 truncate text-[10px] text-slate-400">{img.url}</div>
-
-                    <div className="mt-auto flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => void selectExistingAsBase(img)}
-                        className="w-full rounded-full border border-sky-400/80 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold text-sky-200 hover:bg-sky-500/20"
+                        onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold hover:border-sky-400 hover:bg-slate-800 disabled:opacity-50"
                       >
-                        Usar como base
+                        Anterior
                       </button>
 
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => window.open(img.url, "_blank")}
-                          className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
-                        >
-                          Abrir
-                        </button>
+                      <span className="min-w-[90px] text-center">
+                        Página {currentPage} de {totalPages}
+                      </span>
 
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(img.url);
-                              alert("URL copiada al portapapeles");
-                            } catch {
-                              // ignore
-                            }
-                          }}
-                          className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
-                        >
-                          Copiar URL
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                        className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold hover:border-sky-400 hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        Siguiente
+                      </button>
                     </div>
                   </div>
-                );
-              })}
+                </>
+              )}
             </div>
-
-            <div className="mt-4 flex flex-col items-center justify-between gap-2 text-[11px] text-slate-300 sm:flex-row">
-              <div>
-                Mostrando{" "}
-                <span className="font-semibold">
-                  {startIndex + 1}-{startIndex + pagedImages.length}
-                </span>{" "}
-                de <span className="font-semibold">{filteredImages.length}</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold hover:border-sky-400 hover:bg-slate-800 disabled:opacity-50"
-                >
-                  Anterior
-                </button>
-
-                <span className="min-w-[90px] text-center">
-                  Página {currentPage} de {totalPages}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold hover:border-sky-400 hover:bg-slate-800 disabled:opacity-50"
-                >
-                  Siguiente
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </section>
+          </details>
+        </section>
+      </div>
     </main>
   );
 }

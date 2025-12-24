@@ -15,7 +15,6 @@ type FormSnapshot = {
   publishedAt?: string;
   imageUrl?: string;
 
-  // (opcional) si ya estás guardando algo del overlay en el form del front
   coverOverlay?: unknown;
 };
 
@@ -25,8 +24,6 @@ type CoverOverlaySuggestion = {
   tone?: string | null;
   primaryColor?: string | null;
   secondaryColor?: string | null;
-
-  // si tu back devuelve más cosas, se preservan igual
   [k: string]: unknown;
 };
 
@@ -38,11 +35,10 @@ type AiCombinedResponse = {
   ideology?: string;
   sourceIdeology?: string;
 
-  imageUrl: string; // raw (puede ser /uploads/... o url absoluta)
+  imageUrl: string;
   coverOverlay: CoverOverlaySuggestion;
 };
 
-// Helper: escapa comillas y & para usar en atributos HTML (alt="")
 function escapeHtmlAttr(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -51,7 +47,6 @@ function escapeHtmlAttr(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
-// Si el valor existente tiene texto, se respeta; si está vacío, se usa el de la IA.
 function preferExisting(existing?: unknown, ai?: unknown): string | undefined {
   const ex =
     typeof existing === "string"
@@ -94,7 +89,6 @@ function mergeIdeology(userIde?: string, aiIde?: string): string {
   return u;
 }
 
-// misma key que usás para /internal/articles
 const INTERNAL_KEY =
   process.env.INTERNAL_INGEST_KEY ??
   process.env.INGEST_KEY ??
@@ -127,7 +121,14 @@ export async function POST(req: NextRequest) {
     // 1) Subir imagen al backend (/internal/uploads/image)
     const uploadBody = new FormData();
     uploadBody.set("file", file);
-    uploadBody.set("kind", "screenshot");
+
+    /**
+     * ✅ IMPORTANTE:
+     * "screenshot" puede no existir en tu backend y cae al default (cover).
+     * Usá el kind real que mapea a /uploads/screens.
+     * Probables: "screen" o "screens".
+     */
+    uploadBody.set("kind", "screen");
 
     const uploadHeaders: Record<string, string> = {};
     if (authHeader) uploadHeaders["authorization"] = authHeader;
@@ -141,7 +142,12 @@ export async function POST(req: NextRequest) {
 
     if (!uploadRes.ok) {
       const text = await uploadRes.text().catch(() => "");
-      console.error("Error al subir imagen:", uploadRes.status, uploadRes.statusText, text);
+      console.error(
+        "Error al subir imagen:",
+        uploadRes.status,
+        uploadRes.statusText,
+        text,
+      );
       return NextResponse.json(
         {
           message: "Error al subir la imagen al backend",
@@ -167,10 +173,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // URL pública para mostrar en el editor
+    // 🔎 Debug útil: si igual te lo devuelve en covers, tu backend está ignorando kind
+    if (rawImageUrl.includes("/uploads/covers/")) {
+      console.warn(
+        "[from-image-ai] ⚠️ La imagen volvió en /uploads/covers. El backend probablemente no reconoce kind='screen' o lo está mapeando mal.",
+        rawImageUrl,
+      );
+    }
+
     const publicImageUrl = getPublicUrl(rawImageUrl);
 
-    // 2) Pedir TODO JUNTO: nota + overlay (tu endpoint magia)
+    // 2) Pedir TODO JUNTO: nota + overlay
     const aiHeaders: Record<string, string> = {
       "Content-Type": "application/json",
     };
@@ -179,11 +192,14 @@ export async function POST(req: NextRequest) {
 
     console.log("[from-image-ai] rawImageUrl:", rawImageUrl);
 
-    const aiRes = await fetch(buildApiUrl("/internal/ai/article-and-overlay-from-image"), {
-      method: "POST",
-      headers: aiHeaders,
-      body: JSON.stringify({ imageUrl: rawImageUrl }),
-    });
+    const aiRes = await fetch(
+      buildApiUrl("/internal/ai/article-and-overlay-from-image"),
+      {
+        method: "POST",
+        headers: aiHeaders,
+        body: JSON.stringify({ imageUrl: rawImageUrl }),
+      },
+    );
 
     if (!aiRes.ok) {
       const text = await aiRes.text().catch(() => "");
@@ -205,12 +221,12 @@ export async function POST(req: NextRequest) {
 
     const ai = (await aiRes.json()) as AiCombinedResponse;
 
-    // 3) Merge de campos de texto (respetar lo que el usuario ya escribió)
+    // 3) Merge de campos de texto
     const finalTitle = preferExisting(form.title, ai.title);
     const finalSummary = preferExisting(form.summary, ai.summary);
     const baseBodyHtml = preferExisting(form.bodyHtml, ai.bodyHtml);
 
-    // 4) Armamos el bodyHtml final
+    // 4) Body final con inyección de screenshot (solo si el usuario no escribió bodyHtml)
     let finalBodyHtml = baseBodyHtml;
     const shouldInjectImage = !form.bodyHtml && !!baseBodyHtml;
 
@@ -220,7 +236,7 @@ export async function POST(req: NextRequest) {
       finalBodyHtml = imgTag + (baseBodyHtml ?? "");
     }
 
-    // 5) Devolvemos TODO: texto + overlay + imageUrl pública
+    // 5) Respuesta final
     const merged = {
       title: finalTitle ?? "",
       summary: finalSummary ?? "",
@@ -228,9 +244,11 @@ export async function POST(req: NextRequest) {
       category: mergeCategory(form.category, ai.category),
       ideology: mergeIdeology(form.ideology, ai.ideology),
       sourceIdeology: preferExisting(form.sourceIdeology, ai.sourceIdeology),
+
+      // ✅ esto es la captura (screen), no una cover
       imageUrl: publicImageUrl,
 
-      // CLAVE: esto lo vas a usar para precargar el editor de portada
+      // esto sirve para precargar el editor de portada (pero no debería “convertir” la captura en cover)
       coverOverlay: ai.coverOverlay ?? null,
     };
 
