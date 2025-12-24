@@ -47,8 +47,16 @@ const BRAND_COLORS = [...BASE_COLORS];
 const TAG_COLORS = [...BASE_COLORS];
 
 const DEFAULT_BLOCK_HEIGHT = 130;
-const FOOTER_HEIGHT = 46;
+const FOOTER_HEIGHT = 54;
 const PREVIEW_HEIGHT_FALLBACK = 360;
+
+// ✅ Branding actual
+const BRAND_LOGO_SRC = "/brand/canalibertario.png";
+
+// ✅ Iconos reales (vienen de tu backend /brand)
+const ICON_X = "/brand/icon-twitter.png";
+const ICON_FB = "/brand/icon-facebook.png";
+const ICON_IG = "/brand/icon-instagram.png";
 
 function themeLabel(value: CoverTheme): string {
   switch (value) {
@@ -61,7 +69,7 @@ function themeLabel(value: CoverTheme): string {
     case "blue":
       return "Azul / Institucional";
     case "black":
-      return "Negro / Luto / Máximo contraste";
+      return "Negro / Máximo contraste";
     default:
       return value;
   }
@@ -74,7 +82,7 @@ function getThemePreviewColors(theme: CoverTheme) {
         bandFrom: "rgba(15,23,42,0.0)",
         bandMid: "rgba(15,23,42,0.45)",
         bandTo: "rgba(249,115,22,0.96)",
-        footerBg: "#7c2d12",
+        footerBg: "#0b1220",
         footerBorder: "#f97316",
       };
     case "wine":
@@ -82,7 +90,7 @@ function getThemePreviewColors(theme: CoverTheme) {
         bandFrom: "rgba(2,6,23,0.0)",
         bandMid: "rgba(15,23,42,0.45)",
         bandTo: "rgba(185,28,28,0.96)",
-        footerBg: "#450a0a",
+        footerBg: "#0b1220",
         footerBorder: "#b91c1c",
       };
     case "blue":
@@ -90,7 +98,7 @@ function getThemePreviewColors(theme: CoverTheme) {
         bandFrom: "rgba(15,23,42,0.0)",
         bandMid: "rgba(15,23,42,0.45)",
         bandTo: "rgba(37,99,235,0.96)",
-        footerBg: "#020617",
+        footerBg: "#0b1220",
         footerBorder: "#0ea5e9",
       };
     case "black":
@@ -98,7 +106,7 @@ function getThemePreviewColors(theme: CoverTheme) {
         bandFrom: "rgba(15,23,42,0.0)",
         bandMid: "rgba(15,23,42,0.7)",
         bandTo: "rgba(0,0,0,0.98)",
-        footerBg: "#020617",
+        footerBg: "#0b1220",
         footerBorder: "#64748b",
       };
     case "purple":
@@ -107,10 +115,19 @@ function getThemePreviewColors(theme: CoverTheme) {
         bandFrom: "rgba(2,6,23,0.0)",
         bandMid: "rgba(15,23,42,0.45)",
         bandTo: "rgba(109,40,217,0.96)",
-        footerBg: "#020617",
+        footerBg: "#0b1220",
         footerBorder: "#4338ca",
       };
   }
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, n));
+}
+
+function isUrlLike(s: string) {
+  const t = (s ?? "").toLowerCase();
+  return t.includes("http://") || t.includes("https://") || t.includes("www.");
 }
 
 export default function ImageEditorFullPage() {
@@ -118,7 +135,6 @@ export default function ImageEditorFullPage() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
 
-  // altura real del área 16:9
   const [previewHeight, setPreviewHeight] = useState(PREVIEW_HEIGHT_FALLBACK);
 
   // Imagen base
@@ -128,10 +144,11 @@ export default function ImageEditorFullPage() {
   // Textos
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
-  const [footer, setFooter] = useState("www.canalibertario.com");
+  // ✅ footer = fecha/contexto corto (sin URL)
+  const [footer, setFooter] = useState("");
   const [alertTag, setAlertTag] = useState<AlertTag>("");
 
-  // Franja superior (fecha / contexto)
+  // Franja superior (opcional)
   const [showHeaderStrip, setShowHeaderStrip] = useState(false);
   const [headerDate, setHeaderDate] = useState("");
   const [headerLabel, setHeaderLabel] = useState("");
@@ -142,7 +159,7 @@ export default function ImageEditorFullPage() {
   const [brandColor, setBrandColor] = useState("#ffffff");
   const [alertColor, setAlertColor] = useState("#f97316");
 
-  // Tema de color
+  // Tema
   const [theme, setTheme] = useState<CoverTheme>("black");
 
   // Tamaños
@@ -155,7 +172,7 @@ export default function ImageEditorFullPage() {
   const [initialBlockTop, setInitialBlockTop] = useState(260);
   const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
 
-  // Opacidad del fondo
+  // Opacidad
   const [overlayOpacity, setOverlayOpacity] = useState(1);
 
   // Offsets internos
@@ -171,13 +188,16 @@ export default function ImageEditorFullPage() {
   // Drag
   const [drag, setDrag] = useState<DragState>(null);
 
-  // Estado general
+  // Estado
   const [loadingImage, setLoadingImage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // medir altura real del viewport 16:9
+  // ✅ Previews redes (solo formatos de imagen)
+  const [showSocialPreviews, setShowSocialPreviews] = useState(true);
+
+  // medir altura real del 16:9
   useEffect(() => {
     function updateHeight() {
       if (!previewRef.current) return;
@@ -195,7 +215,10 @@ export default function ImageEditorFullPage() {
     const imageUrl = searchParams.get("imageUrl");
     const initialTitle = searchParams.get("title") ?? "";
     const initialSubtitle = searchParams.get("subtitle") ?? "";
-    const initialFooter = searchParams.get("footer") ?? "www.canalibertario.com";
+
+    const initialFooterRaw = (searchParams.get("footer") ?? "").trim();
+    const initialFooter = isUrlLike(initialFooterRaw) ? "" : initialFooterRaw;
+
     const initialAlert = (searchParams.get("alertTag") as AlertTag | null) ?? "";
     const qpTheme = searchParams.get("theme") as CoverTheme | null;
 
@@ -260,8 +283,6 @@ export default function ImageEditorFullPage() {
         const blob = await res.blob();
         const mime = blob.type || "image/jpeg";
 
-        // IMPORTANTE: el previewUrl puede ser el mismo imageUrl,
-        // pero el File debe existir para poder subirlo.
         const f = new File([blob], `image-from-url.jpg`, { type: mime });
         setFile(f);
         setPreviewUrl(imageUrl);
@@ -325,7 +346,7 @@ export default function ImageEditorFullPage() {
         }
         case "resize": {
           const minHeight = 90;
-          const maxHeight = 240;
+          const maxHeight = 260;
           const newH = drag.blockHeight + dy;
           setBlockHeight(Math.min(maxHeight, Math.max(minHeight, newH)));
           break;
@@ -369,6 +390,18 @@ export default function ImageEditorFullPage() {
     setAlertOffsetY(10);
   }
 
+  // helpers layout -> percent (para reusar en previews)
+  const effectiveHeight = previewHeight || PREVIEW_HEIGHT_FALLBACK;
+  const blockTopPct = effectiveHeight > 0 ? (blockTop / effectiveHeight) * 100 : 0;
+  const overlayHeightPct = effectiveHeight > 0 ? (blockHeight / effectiveHeight) * 100 : 38;
+
+  const titleXFrac = clamp(titleOffsetX / 1280, 0, 1);
+  const titleYFrac = clamp(titleOffsetY / 720, 0, 1);
+  const subtitleXFrac = clamp(subtitleOffsetX / 1280, 0, 1);
+  const subtitleYFrac = clamp(subtitleOffsetY / 720, 0, 1);
+  const alertXFrac = clamp(alertOffsetX / 1280, 0, 1);
+  const alertYFrac = clamp(alertOffsetY / 720, 0, 1);
+
   // ✅ GENERAR COVER (via API route Next -> Backend)
   const handleGenerate = async () => {
     if (!file) {
@@ -382,40 +415,32 @@ export default function ImageEditorFullPage() {
 
     try {
       const fd = new FormData();
-
-      // ✅ backend espera FileInterceptor('file')
       fd.append("file", file);
 
-      // si tu API route usa token para pasar Authorization al backend
       const token =
-        typeof window !== "undefined" ? window.localStorage.getItem("news_access_token") : null;
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("news_access_token")
+          : null;
       if (token) fd.append("accessToken", token);
 
-      const safeFooter = footer.trim() || null;
+      // ✅ footer = fecha/contexto
+      const footerText = footer.trim() || null;
 
+      // ✅ Branding sin URL y sin handle visual en preview
       const brandConfig = {
         brandName: "CANALIBERTARIO",
-        claim: "NOTICIAS Y ANÁLISIS ECONÓMICOS Y POLÍTICOS DESDE UNA MIRADA LIBERTARIA",
         useHeaderWordmark: true,
-        siteUrl: safeFooter,
-        socialHandle: "@canalibertario",
+        siteUrl: null,
+        socialHandle: null,
         socialIcons: ["x", "facebook", "instagram"] as const,
+        logoUrl: BRAND_LOGO_SRC,
       };
-
-      const effectiveHeight = previewHeight || PREVIEW_HEIGHT_FALLBACK;
-
-      // ✅ lo que tu renderer entiende bien:
-      const blockTopPct =
-        effectiveHeight > 0 ? (blockTop / effectiveHeight) * 100 : 0;
-
-      const overlayHeightPct =
-        effectiveHeight > 0 ? (blockHeight / effectiveHeight) * 100 : 38;
 
       const layout = {
         textPosition,
-        blockTopPct,              // ✅ clave (evita offsets raros)
-        overlayHeightPct,         // ✅ tu renderer ya lo usa
-        overlayOpacity,           // ✅ tu renderer ya lo usa
+        blockTopPct,
+        overlayHeightPct,
+        overlayOpacity,
         titleFontPx: titleSize,
         subtitleFontPx: subtitleSize,
         headerStrip: showHeaderStrip
@@ -437,7 +462,7 @@ export default function ImageEditorFullPage() {
       const options = {
         title: title.trim() || null,
         subtitle: subtitle.trim() || null,
-        footer: safeFooter,
+        footer: footerText,
         brand: brandConfig,
         alertTag: alertTag || null,
         useSocialIcons: true,
@@ -447,7 +472,6 @@ export default function ImageEditorFullPage() {
 
       fd.append("optionsJson", JSON.stringify(options));
 
-      // ✅ NO pegarle al backend directo desde el browser
       const res = await fetch("/api/editor-images/enhance", {
         method: "POST",
         body: fd,
@@ -460,32 +484,26 @@ export default function ImageEditorFullPage() {
 
       const data = await res.json().catch(() => null);
 
-      // tu backend devuelve coverUrl / rawUrl y también url
-      const coverUrl: string | null = data?.coverUrl ?? data?.enhancedImageUrl ?? data?.url ?? null;
+      const finalUrl: string | null =
+        data?.imageUrl ?? data?.coverUrl ?? data?.enhancedImageUrl ?? data?.url ?? null;
 
-      if (!coverUrl) {
+      if (!finalUrl) {
         const coverError = data?.coverError?.message ? ` (${data.coverError.message})` : "";
-        throw new Error(`El backend no devolvió coverUrl. Volvió RAW${coverError}`);
+        throw new Error(`El backend no devolvió imageUrl/coverUrl${coverError}`);
       }
 
-      setStatusMsg(
-        data?.message ??
-          "Imagen procesada correctamente. Se generó una portada (cover) lista para usar."
-      );
+      setStatusMsg(data?.message ?? "Cover generada. URL copiada al portapapeles.");
 
-      // copiar al portapapeles
       if (typeof navigator !== "undefined" && navigator.clipboard) {
         try {
-          await navigator.clipboard.writeText(coverUrl);
-          setStatusMsg((prev) => (prev ?? "") + " La URL de la portada se copió al portapapeles.");
+          await navigator.clipboard.writeText(finalUrl);
         } catch {}
       }
 
-      // devolver al opener
       if (typeof window !== "undefined" && window.opener && window.location) {
         try {
           window.opener.postMessage(
-            { type: "editor-image-url", url: coverUrl },
+            { type: "editor-image-url", url: finalUrl },
             window.location.origin
           );
         } catch {}
@@ -499,8 +517,169 @@ export default function ImageEditorFullPage() {
   };
 
   const themeColors = getThemePreviewColors(theme);
-  const effectiveHeight = previewHeight || PREVIEW_HEIGHT_FALLBACK;
-  const overlayHeightPct = Math.round((blockHeight / effectiveHeight) * 100);
+
+  function SocialIcons() {
+    return (
+      <div className="flex items-center gap-1.5">
+        <img
+          src={ICON_X}
+          alt="X"
+          className="h-6 w-6 rounded-full bg-black/60 p-1"
+          onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+        />
+        <img
+          src={ICON_FB}
+          alt="Facebook"
+          className="h-6 w-6 rounded-full bg-black/60 p-1"
+          onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+        />
+        <img
+          src={ICON_IG}
+          alt="Instagram"
+          className="h-6 w-6 rounded-full bg-black/60 p-1"
+          onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+        />
+      </div>
+    );
+  }
+
+  function OverlayLayer(props: { w: number; h: number; showHeader: boolean }) {
+    const { w, h, showHeader } = props;
+
+    const topPx = (blockTopPct / 100) * h;
+    const heightPx = (overlayHeightPct / 100) * h;
+
+    const titleLeft = titleXFrac * w;
+    const titleTop = titleYFrac * h;
+    const subtitleLeft = subtitleXFrac * w;
+    const subtitleTop = subtitleYFrac * h;
+    const alertLeft = alertXFrac * w;
+    const alertTop = alertYFrac * h;
+
+    return (
+      <>
+        {/* header strip */}
+        {showHeader && (headerDate || headerLabel) && (
+          <div
+            className="absolute inset-x-0 flex items-center justify-between px-4 text-[11px]"
+            style={{
+              top: 0,
+              height: 40,
+              backgroundColor: themeColors.footerBg,
+              borderBottom: `1px solid ${themeColors.footerBorder}`,
+            }}
+          >
+            <span className="font-semibold text-slate-200">
+              {headerDate || "Fecha"}
+            </span>
+            {headerLabel && (
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200">
+                {headerLabel}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* gradient block */}
+        <div
+          className="absolute left-0 right-0"
+          style={{
+            top: topPx,
+            height: heightPx,
+            background: `linear-gradient(to bottom, ${themeColors.bandFrom} 0%, ${themeColors.bandMid} 40%, ${themeColors.bandTo} 100%)`,
+            opacity: overlayOpacity,
+          }}
+        >
+          <div className="relative h-full w-full">
+            {alertTag && (
+              <div
+                className="absolute inline-flex select-none items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
+                style={{
+                  left: alertLeft,
+                  top: alertTop,
+                  backgroundColor: alertColor,
+                  color: alertColor.toLowerCase() === "#ffffff" ? "#000000" : "#ffffff",
+                }}
+              >
+                {alertTag}
+              </div>
+            )}
+
+            {title && (
+              <span
+                className="absolute select-none font-extrabold tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
+                style={{
+                  left: titleLeft,
+                  top: titleTop,
+                  fontSize: `${Math.max(18, Math.round((titleSize / 1280) * w))}px`,
+                  color: titleColor,
+                  whiteSpace: "pre-line",
+                  maxWidth: "86%",
+                }}
+              >
+                {title}
+              </span>
+            )}
+
+            {subtitle && (
+              <span
+                className="absolute select-none font-medium drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]"
+                style={{
+                  left: subtitleLeft,
+                  top: subtitleTop,
+                  fontSize: `${Math.max(12, Math.round((subtitleSize / 1280) * w))}px`,
+                  color: subtitleColor,
+                  whiteSpace: "pre-line",
+                  maxWidth: "75%",
+                }}
+              >
+                {subtitle}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* footer branding (SIN URL, SIN HANDLE) */}
+        <div
+          className="absolute inset-x-0 flex items-center justify-between gap-3 px-4"
+          style={{
+            bottom: 0,
+            height: FOOTER_HEIGHT,
+            backgroundColor: themeColors.footerBg,
+            borderTop: `1px solid ${themeColors.footerBorder}`,
+          }}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <img
+              src={BRAND_LOGO_SRC}
+              alt="Canalibertario"
+              className="h-7 w-7 flex-none rounded-full border border-white/10 bg-black/30 object-cover"
+              onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+            />
+            <div className="min-w-0">
+              <div className="truncate text-xs font-extrabold tracking-tight text-slate-100">
+                CANALIBERTARIO
+              </div>
+              <div className="truncate text-[10px] text-slate-300">
+                Noticias y análisis (mirada libertaria)
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-none items-center gap-3">
+            <div className="opacity-95" style={{ color: brandColor }}>
+              <SocialIcons />
+            </div>
+            {footer.trim() ? (
+              <span className="text-[10px] text-slate-300">{footer.trim()}</span>
+            ) : null}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  const overlayHeightPctUI = Math.round((blockHeight / effectiveHeight) * 100);
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50">
@@ -522,7 +701,7 @@ export default function ImageEditorFullPage() {
           >
             <div className="flex items-center justify-between px-6 pt-4 text-[11px] uppercase tracking-[0.18em] text-slate-400">
               <span>Vista previa 16:9</span>
-              <span>Recomendado para X / Facebook / Instagram (1280x720 aprox.)</span>
+              <span>Base ideal para X / Facebook / YouTube</span>
             </div>
 
             <div
@@ -533,29 +712,7 @@ export default function ImageEditorFullPage() {
                 <>
                   <img src={previewUrl} alt="Imagen base" className="h-full w-full object-cover" />
 
-                  {/* FRANJA SUPERIOR */}
-                  {showHeaderStrip && (headerDate || headerLabel) && (
-                    <div
-                      className="absolute inset-x-0 flex items-center justify-between px-6 text-xs"
-                      style={{
-                        top: 0,
-                        height: 40,
-                        backgroundColor: themeColors.footerBg,
-                        borderBottom: `1px solid ${themeColors.footerBorder}`,
-                      }}
-                    >
-                      <span className="font-semibold text-slate-200">
-                        {headerDate || "Fecha / sitio del canal"}
-                      </span>
-                      {headerLabel && (
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200">
-                          {headerLabel}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* BLOQUE */}
+                  {/* BLOQUE (drag) */}
                   <div
                     className="absolute left-0 right-0 cursor-move"
                     style={{
@@ -567,7 +724,6 @@ export default function ImageEditorFullPage() {
                     onMouseDown={(e) => startDrag("block", e)}
                   >
                     <div className="relative h-full w-full">
-                      {/* ETIQUETA */}
                       {alertTag && (
                         <div
                           className="absolute inline-flex cursor-move select-none items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
@@ -583,7 +739,6 @@ export default function ImageEditorFullPage() {
                         </div>
                       )}
 
-                      {/* TÍTULO */}
                       {title && (
                         <span
                           className="absolute cursor-move select-none font-extrabold tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
@@ -601,7 +756,6 @@ export default function ImageEditorFullPage() {
                         </span>
                       )}
 
-                      {/* BAJADA */}
                       {subtitle && (
                         <span
                           className="absolute max-w-[65%] cursor-move select-none font-medium drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]"
@@ -618,7 +772,6 @@ export default function ImageEditorFullPage() {
                         </span>
                       )}
 
-                      {/* RESIZE */}
                       <div
                         className="absolute bottom-2 left-[10%] right-[10%] h-1.5 cursor-ns-resize rounded-full bg-slate-200/80"
                         onMouseDown={(e) => startDrag("resize", e)}
@@ -626,9 +779,31 @@ export default function ImageEditorFullPage() {
                     </div>
                   </div>
 
-                  {/* FOOTER */}
+                  {/* FRANJA SUPERIOR */}
+                  {showHeaderStrip && (headerDate || headerLabel) && (
+                    <div
+                      className="absolute inset-x-0 flex items-center justify-between px-6 text-xs"
+                      style={{
+                        top: 0,
+                        height: 40,
+                        backgroundColor: themeColors.footerBg,
+                        borderBottom: `1px solid ${themeColors.footerBorder}`,
+                      }}
+                    >
+                      <span className="font-semibold text-slate-200">
+                        {headerDate || "Fecha / contexto"}
+                      </span>
+                      {headerLabel && (
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200">
+                          {headerLabel}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* FOOTER BRANDING (SIN URL, SIN HANDLE) */}
                   <div
-                    className="absolute inset-x-0 flex items-center justify-between px-8 text-xs"
+                    className="absolute inset-x-0 flex items-center justify-between gap-3 px-8"
                     style={{
                       bottom: 0,
                       height: FOOTER_HEIGHT,
@@ -636,33 +811,61 @@ export default function ImageEditorFullPage() {
                       borderTop: `1px solid ${themeColors.footerBorder}`,
                     }}
                   >
-                    <span className="font-semibold text-slate-200">{footer.trim() || null}</span>
-                    <div className="flex items-center gap-4 text-slate-100">
-                      <span className="text-sm font-extrabold" style={{ color: brandColor }}>
-                        @canalibertario
-                      </span>
-                      <div className="flex items-center gap-2 text-[11px]">
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/70">X</span>
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/70">f</span>
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-[11px]">ig</span>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <img
+                        src={BRAND_LOGO_SRC}
+                        alt="Canalibertario"
+                        className="h-8 w-8 flex-none rounded-full border border-white/10 bg-black/30 object-cover"
+                        onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+                      />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-extrabold tracking-tight text-slate-100">
+                          CANALIBERTARIO
+                        </div>
+                        <div className="truncate text-[11px] text-slate-300">
+                          Noticias y análisis (mirada libertaria)
+                        </div>
                       </div>
+                    </div>
+
+                    <div className="flex flex-none items-center gap-3">
+                      <div style={{ color: brandColor }}>
+                        <SocialIcons />
+                      </div>
+                      {footer.trim() ? (
+                        <span className="text-[11px] text-slate-300">{footer.trim()}</span>
+                      ) : null}
                     </div>
                   </div>
                 </>
               ) : (
                 <div className="flex h-full items-center justify-center text-sm text-slate-400">
-                  {loadingImage ? "Cargando imagen..." : "No hay imagen base. Volvé desde el panel principal o seleccioná una imagen nueva."}
+                  {loadingImage
+                    ? "Cargando imagen..."
+                    : "No hay imagen base. Volvé desde el panel principal o seleccioná una imagen nueva."}
                 </div>
               )}
             </div>
 
             {/* COLORES */}
             <div className="mt-4 rounded-b-3xl border-t border-slate-800 bg-slate-950/80 px-6 py-4">
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Colores y tema
-              </h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Colores y tema
+                </h2>
 
-              <div className="space-y-3 text-[11px]">
+                <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={showSocialPreviews}
+                    onChange={(e) => setShowSocialPreviews(e.target.checked)}
+                    className="h-3 w-3 rounded border-slate-600 bg-slate-900"
+                  />
+                  Mostrar previews de recorte (imágenes)
+                </label>
+              </div>
+
+              <div className="mt-3 space-y-3 text-[11px]">
                 <div className="space-y-2">
                   <span className="block text-slate-300">Tema de color de la barra</span>
                   <div className="flex flex-wrap gap-2">
@@ -692,7 +895,9 @@ export default function ImageEditorFullPage() {
                         type="button"
                         onClick={() => setTitleColor(c)}
                         className={`h-5 w-5 rounded-full border ${
-                          titleColor === c ? "border-sky-400 ring-2 ring-sky-400/60" : "border-slate-600"
+                          titleColor === c
+                            ? "border-sky-400 ring-2 ring-sky-400/60"
+                            : "border-slate-600"
                         }`}
                         style={{ backgroundColor: c }}
                       />
@@ -710,7 +915,9 @@ export default function ImageEditorFullPage() {
                         type="button"
                         onClick={() => setSubtitleColor(c)}
                         className={`h-5 w-5 rounded-full border ${
-                          subtitleColor === c ? "border-sky-400 ring-2 ring-sky-400/60" : "border-slate-600"
+                          subtitleColor === c
+                            ? "border-sky-400 ring-2 ring-sky-400/60"
+                            : "border-slate-600"
                         }`}
                         style={{ backgroundColor: c }}
                       />
@@ -720,7 +927,7 @@ export default function ImageEditorFullPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="w-32 text-slate-300">Color @canalibertario + iconos</span>
+                  <span className="w-32 text-slate-300">Color iconos</span>
                   <div className="flex items-center gap-1">
                     {BRAND_COLORS.map((c) => (
                       <button
@@ -728,7 +935,9 @@ export default function ImageEditorFullPage() {
                         type="button"
                         onClick={() => setBrandColor(c)}
                         className={`h-5 w-5 rounded-full border ${
-                          brandColor === c ? "border-sky-400 ring-2 ring-sky-400/60" : "border-slate-600"
+                          brandColor === c
+                            ? "border-sky-400 ring-2 ring-sky-400/60"
+                            : "border-slate-600"
                         }`}
                         style={{ backgroundColor: c }}
                       />
@@ -746,7 +955,9 @@ export default function ImageEditorFullPage() {
                         type="button"
                         onClick={() => setAlertColor(c)}
                         className={`h-5 w-5 rounded-full border ${
-                          alertColor === c ? "border-sky-400 ring-2 ring-sky-400/60" : "border-slate-600"
+                          alertColor === c
+                            ? "border-sky-400 ring-2 ring-sky-400/60"
+                            : "border-slate-600"
                         }`}
                         style={{ backgroundColor: c }}
                       />
@@ -765,6 +976,55 @@ export default function ImageEditorFullPage() {
               </div>
             </div>
           </section>
+
+          {/* ✅ Previews recorte (IMÁGENES) */}
+          {showSocialPreviews && previewUrl ? (
+            <section className="space-y-3 rounded-3xl border border-slate-900 bg-slate-950/70 p-5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Previews recorte (imágenes)
+                </h2>
+                <span className="text-[11px] text-slate-500">
+                  Visual. La generación final la hace el backend.
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {/* 16:9 */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold text-slate-300">
+                    16:9 (X / Facebook / YouTube)
+                  </div>
+                  <div className="relative aspect-[16/9] overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
+                    <img src={previewUrl} alt="16:9" className="h-full w-full object-cover" />
+                    <OverlayLayer w={1280} h={720} showHeader={showHeaderStrip} />
+                  </div>
+                </div>
+
+                {/* 1:1 */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold text-slate-300">
+                    1:1 (Instagram feed)
+                  </div>
+                  <div className="relative aspect-square overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
+                    <img src={previewUrl} alt="1:1" className="h-full w-full object-cover" />
+                    <OverlayLayer w={1080} h={1080} showHeader={false} />
+                  </div>
+                </div>
+
+                {/* 4:5 */}
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold text-slate-300">
+                    4:5 (Instagram feed alto)
+                  </div>
+                  <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
+                    <img src={previewUrl} alt="4:5" className="h-full w-full object-cover" />
+                    <OverlayLayer w={1080} h={1350} showHeader={false} />
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
         </div>
 
         {/* DERECHA */}
@@ -792,7 +1052,8 @@ export default function ImageEditorFullPage() {
 
               <div className="space-y-1">
                 <label className="text-[11px] text-slate-300">
-                  Título principal <span className="ml-1 text-[10px] text-slate-500">(Enter agrega salto de línea)</span>
+                  Título principal{" "}
+                  <span className="ml-1 text-[10px] text-slate-500">(Enter agrega salto de línea)</span>
                 </label>
                 <textarea
                   value={title}
@@ -804,7 +1065,8 @@ export default function ImageEditorFullPage() {
 
               <div className="space-y-1">
                 <label className="text-[11px] text-slate-300">
-                  Bajada / descripción <span className="ml-1 text-[10px] text-slate-500">(también acepta saltos de línea)</span>
+                  Bajada / descripción{" "}
+                  <span className="ml-1 text-[10px] text-slate-500">(también acepta saltos de línea)</span>
                 </label>
                 <textarea
                   value={subtitle}
@@ -831,7 +1093,7 @@ export default function ImageEditorFullPage() {
                       type="text"
                       value={headerDate}
                       onChange={(e) => setHeaderDate(e.target.value)}
-                      placeholder="06/12/2025 - 20:57"
+                      placeholder="24/12/2025 - 11:48"
                       className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
                     />
                     <input
@@ -846,11 +1108,15 @@ export default function ImageEditorFullPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] text-slate-300">Sitio / firma</label>
+                <label className="text-[11px] text-slate-300">
+                  Footer (fecha / contexto corto){" "}
+                  <span className="ml-1 text-[10px] text-slate-500">(sin URL)</span>
+                </label>
                 <input
                   type="text"
                   value={footer}
                   onChange={(e) => setFooter(e.target.value)}
+                  placeholder="24/12/2025 · 11:48"
                   className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
                 />
               </div>
@@ -875,7 +1141,14 @@ export default function ImageEditorFullPage() {
                     <span>Tamaño título</span>
                     <span className="text-slate-400">{titleSize}px</span>
                   </div>
-                  <input type="range" min={24} max={48} value={titleSize} onChange={(e) => setTitleSize(Number(e.target.value))} className="w-full" />
+                  <input
+                    type="range"
+                    min={24}
+                    max={48}
+                    value={titleSize}
+                    onChange={(e) => setTitleSize(Number(e.target.value))}
+                    className="w-full"
+                  />
                 </div>
 
                 <div>
@@ -883,19 +1156,26 @@ export default function ImageEditorFullPage() {
                     <span>Tamaño bajada</span>
                     <span className="text-slate-400">{subtitleSize}px</span>
                   </div>
-                  <input type="range" min={16} max={32} value={subtitleSize} onChange={(e) => setSubtitleSize(Number(e.target.value))} className="w-full" />
+                  <input
+                    type="range"
+                    min={16}
+                    max={32}
+                    value={subtitleSize}
+                    onChange={(e) => setSubtitleSize(Number(e.target.value))}
+                    className="w-full"
+                  />
                 </div>
 
                 <div className="border-t border-slate-800 pt-2">
                   <div className="mb-1 flex items-center justify-between">
                     <span>Altura del fondo (barra)</span>
-                    <span className="text-slate-400">{Math.round((blockHeight / (previewHeight || PREVIEW_HEIGHT_FALLBACK)) * 100)}% altura imagen</span>
+                    <span className="text-slate-400">{overlayHeightPctUI}%</span>
                   </div>
                   <input
                     type="range"
                     min={25}
-                    max={60}
-                    value={Math.round((blockHeight / (previewHeight || PREVIEW_HEIGHT_FALLBACK)) * 100)}
+                    max={65}
+                    value={overlayHeightPctUI}
                     onChange={(e) => {
                       const pct = Number(e.target.value);
                       const h = previewHeight || PREVIEW_HEIGHT_FALLBACK;
@@ -933,11 +1213,11 @@ export default function ImageEditorFullPage() {
               <div><b>Bajada:</b> {subtitle || "—"}</div>
               <div><b>Etiqueta:</b> {alertTag || "(sin)"} {alertTag && `· color ${alertColor}`}</div>
               <div><b>Franja superior:</b> {showHeaderStrip ? `${headerDate || "sin fecha"} · ${headerLabel || "sin etiqueta"}` : "desactivada"}</div>
-              <div><b>Firma:</b> {(footer || null) + " + X / Facebook / Instagram"}</div>
+              <div><b>Footer:</b> {footer.trim() || "(vacío)"} <span className="text-slate-500">(sin URL)</span></div>
               <div><b>Tema de color:</b> {themeLabel(theme)}</div>
-              <div><b>Posición bloque:</b> {Math.round(blockTop)}px desde arriba · alto {Math.round(blockHeight)}px</div>
+              <div><b>Posición bloque:</b> {Math.round(blockTop)}px · alto {Math.round(blockHeight)}px</div>
               <div><b>Tipografía (preview):</b> título {titleSize}px · bajada {subtitleSize}px</div>
-              <div><b>Fondo:</b> altura {overlayHeightPct}% · opacidad {Math.round(overlayOpacity * 100)}%</div>
+              <div><b>Fondo:</b> altura {overlayHeightPctUI}% · opacidad {Math.round(overlayOpacity * 100)}%</div>
             </div>
 
             <button
