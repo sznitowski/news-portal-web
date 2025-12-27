@@ -10,7 +10,15 @@ import {
 import { useSearchParams } from "next/navigation";
 
 type TextPosition = "top" | "middle" | "bottom";
-type CoverTheme = "purple" | "sunset" | "wine" | "blue" | "black";
+
+/**
+ * ✅ Themes:
+ * - black: no tocar
+ * - purple / blue / red: oficiales
+ * - wine: compat (alias de red)
+ * - sunset: legacy (no lo mostramos en el selector)
+ */
+type CoverTheme = "purple" | "blue" | "red" | "wine" | "black" | "sunset";
 
 const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
 type AlertTag = (typeof ALERT_TAGS)[number];
@@ -21,8 +29,10 @@ type DragState = {
   target: DragTarget;
   startX: number;
   startY: number;
+
   blockTop: number;
   blockHeight: number;
+
   titleOffsetX: number;
   titleOffsetY: number;
   subtitleOffsetX: number;
@@ -31,7 +41,7 @@ type DragState = {
   alertOffsetY: number;
 } | null;
 
-// Paleta unificada
+// Paleta unificada (para título/subtítulo/iconos)
 const BASE_COLORS = [
   "#ffffff",
   "#000000",
@@ -44,10 +54,12 @@ const BASE_COLORS = [
 const TITLE_COLORS = [...BASE_COLORS];
 const SUBTITLE_COLORS = [...BASE_COLORS];
 const BRAND_COLORS = [...BASE_COLORS];
-const TAG_COLORS = [...BASE_COLORS];
+
+// ❌ TAG_COLORS eliminado: la etiqueta ahora SIEMPRE usa barBg del theme
 
 const DEFAULT_BLOCK_HEIGHT = 130;
 const FOOTER_HEIGHT = 54;
+const HEADER_STRIP_HEIGHT = 40;
 const PREVIEW_HEIGHT_FALLBACK = 360;
 
 // ✅ Branding actual
@@ -62,61 +74,84 @@ function themeLabel(value: CoverTheme): string {
   switch (value) {
     case "purple":
       return "Canalibertario (violeta)";
-    case "sunset":
-      return "Sunset / Urgente (naranja)";
-    case "wine":
-      return "Wine / Impacto (bordó)";
     case "blue":
       return "Azul / Institucional";
+    case "red":
+      return "Rojo / Impacto";
+    case "wine":
+      return "Wine (legacy) → Rojo / Impacto";
     case "black":
       return "Negro / Máximo contraste";
+    case "sunset":
+      return "Sunset (legacy)";
     default:
       return value;
   }
 }
 
+/**
+ * ✅ THEMES OFICIALES (preview)
+ * Regla global:
+ * HEADER = FOOTER = TAG = barBg
+ * footerBorder = barBorder con alpha ~0.20
+ * overlay bandTo = themeBottom con alpha 0.78
+ */
 function getThemePreviewColors(theme: CoverTheme) {
-  switch (theme) {
-    case "sunset":
+  // normalizamos alias
+  const t: CoverTheme = theme === "wine" ? "red" : theme;
+
+  switch (t) {
+    // 🟣 IDENTIDAD (marca)
+    case "purple":
       return {
-        bandFrom: "rgba(15,23,42,0.0)",
-        bandMid: "rgba(15,23,42,0.45)",
-        bandTo: "rgba(249,115,22,0.96)",
-        footerBg: "#0b1220",
-        footerBorder: "#f97316",
+        // overlay tint
+        bandFrom: "rgba(10,6,20,0.00)", // themeTop #0A0614
+        bandMid: "rgba(0,0,0,0.28)",
+        bandTo: "rgba(58,28,107,0.78)", // themeBottom #3A1C6B
+        // bars
+        footerBg: "#160A2E", // barBg
+        footerBorder: "rgba(58,28,107,0.20)", // barBorder (alpha ~0.20)
       };
-    case "wine":
-      return {
-        bandFrom: "rgba(2,6,23,0.0)",
-        bandMid: "rgba(15,23,42,0.45)",
-        bandTo: "rgba(185,28,28,0.96)",
-        footerBg: "#0b1220",
-        footerBorder: "#b91c1c",
-      };
+
+    // 🔵 INSTITUCIONAL
     case "blue":
       return {
-        bandFrom: "rgba(15,23,42,0.0)",
-        bandMid: "rgba(15,23,42,0.45)",
-        bandTo: "rgba(37,99,235,0.96)",
-        footerBg: "#0b1220",
-        footerBorder: "#0ea5e9",
+        bandFrom: "rgba(5,11,22,0.00)", // themeTop #050B16
+        bandMid: "rgba(0,0,0,0.28)",
+        bandTo: "rgba(15,76,129,0.78)", // themeBottom #0F4C81
+        footerBg: "#071A2D", // barBg
+        footerBorder: "rgba(15,76,129,0.20)", // barBorder
       };
+
+    // 🟥 IMPACTO (reemplaza wine)
+    case "red":
+      return {
+        bandFrom: "rgba(11,7,16,0.00)", // themeTop #0B0710
+        bandMid: "rgba(0,0,0,0.28)",
+        bandTo: "rgba(177,18,38,0.78)", // themeBottom #B11226
+        footerBg: "#3B0A0A", // barBg (casi negro rojizo)
+        footerBorder: "rgba(177,18,38,0.20)", // barBorder
+      };
+
+    // ⚫ máximo contraste (no tocar)
     case "black":
       return {
-        bandFrom: "rgba(15,23,42,0.0)",
-        bandMid: "rgba(15,23,42,0.7)",
-        bandTo: "rgba(0,0,0,0.98)",
-        footerBg: "#0b1220",
-        footerBorder: "#64748b",
+        bandFrom: "rgba(0,0,0,0.00)",
+        bandMid: "rgba(0,0,0,0.35)",
+        bandTo: "rgba(0,0,0,0.85)",
+        footerBg: "#05070d",
+        footerBorder: "rgba(100,116,139,0.20)",
       };
-    case "purple":
+
+    // legacy (no lo mostramos)
+    case "sunset":
     default:
       return {
-        bandFrom: "rgba(2,6,23,0.0)",
-        bandMid: "rgba(15,23,42,0.45)",
-        bandTo: "rgba(109,40,217,0.96)",
-        footerBg: "#0b1220",
-        footerBorder: "#4338ca",
+        bandFrom: "rgba(2,6,23,0.00)",
+        bandMid: "rgba(0,0,0,0.28)",
+        bandTo: "rgba(217,119,6,0.78)",
+        footerBg: "#120A05",
+        footerBorder: "rgba(217,119,6,0.20)",
       };
   }
 }
@@ -128,6 +163,16 @@ function clamp(n: number, min: number, max: number) {
 function isUrlLike(s: string) {
   const t = (s ?? "").toLowerCase();
   return t.includes("http://") || t.includes("https://") || t.includes("www.");
+}
+
+// normaliza theme desde querystring (compat wine->red)
+function normalizeTheme(input: string | null): CoverTheme | null {
+  if (!input) return null;
+  const t = input as CoverTheme;
+  if (t === "wine") return "red"; // compat
+  if (t === "purple" || t === "blue" || t === "red" || t === "black") return t;
+  if (t === "sunset") return "sunset"; // legacy
+  return null;
 }
 
 export default function ImageEditorFullPage() {
@@ -153,11 +198,13 @@ export default function ImageEditorFullPage() {
   const [headerDate, setHeaderDate] = useState("");
   const [headerLabel, setHeaderLabel] = useState("");
 
-  // Colores
+  // Colores (título/subtítulo/iconos)
   const [titleColor, setTitleColor] = useState("#ffffff");
   const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
   const [brandColor, setBrandColor] = useState("#ffffff");
-  const [alertColor, setAlertColor] = useState("#f97316");
+
+  // ❗️Etiqueta: ahora NO es editable, siempre barBg del theme
+  const [alertColor, setAlertColor] = useState("#000000");
 
   // Tema
   const [theme, setTheme] = useState<CoverTheme>("black");
@@ -220,7 +267,8 @@ export default function ImageEditorFullPage() {
     const initialFooter = isUrlLike(initialFooterRaw) ? "" : initialFooterRaw;
 
     const initialAlert = (searchParams.get("alertTag") as AlertTag | null) ?? "";
-    const qpTheme = searchParams.get("theme") as CoverTheme | null;
+
+    const qpTheme = normalizeTheme(searchParams.get("theme"));
 
     const qpHeaderEnabled = searchParams.get("headerEnabled") === "1";
     const qpHeaderDate = searchParams.get("headerDate") ?? "";
@@ -235,15 +283,7 @@ export default function ImageEditorFullPage() {
     setHeaderDate(qpHeaderDate);
     setHeaderLabel(qpHeaderLabel);
 
-    if (
-      qpTheme === "purple" ||
-      qpTheme === "sunset" ||
-      qpTheme === "wine" ||
-      qpTheme === "blue" ||
-      qpTheme === "black"
-    ) {
-      setTheme(qpTheme);
-    }
+    if (qpTheme) setTheme(qpTheme);
 
     const textPosParam = searchParams.get("textPosition") as TextPosition | null;
 
@@ -295,6 +335,12 @@ export default function ImageEditorFullPage() {
     })();
   }, [searchParams]);
 
+  // ✅ cada vez que cambia el theme: la etiqueta pasa a barBg (regla global)
+  const themeColors = getThemePreviewColors(theme);
+  useEffect(() => {
+    setAlertColor(themeColors.footerBg);
+  }, [themeColors.footerBg]);
+
   // IMAGEN LOCAL
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -327,6 +373,16 @@ export default function ImageEditorFullPage() {
     });
   };
 
+  /**
+   * ✅ CAMBIO: sincronizar coordenadas con backend (área útil sin footer y con header opcional)
+   */
+  const effectiveHeight = previewHeight || PREVIEW_HEIGHT_FALLBACK;
+  const contentTopOffset = showHeaderStrip ? HEADER_STRIP_HEIGHT : 0;
+  const contentHeight = Math.max(
+    1,
+    effectiveHeight - FOOTER_HEIGHT - contentTopOffset,
+  );
+
   useEffect(() => {
     if (!drag) return;
 
@@ -334,19 +390,17 @@ export default function ImageEditorFullPage() {
       const dx = ev.clientX - drag.startX;
       const dy = ev.clientY - drag.startY;
 
-      const h = previewHeight || PREVIEW_HEIGHT_FALLBACK;
-
       switch (drag.target) {
         case "block": {
-          const minTop = 40;
-          const maxTop = h - drag.blockHeight;
+          const minTop = contentTopOffset + 12;
+          const maxTop = contentTopOffset + contentHeight - drag.blockHeight;
           const newTop = drag.blockTop + dy;
           setBlockTop(Math.min(maxTop, Math.max(minTop, newTop)));
           break;
         }
         case "resize": {
           const minHeight = 90;
-          const maxHeight = 260;
+          const maxHeight = Math.min(260, contentHeight);
           const newH = drag.blockHeight + dy;
           setBlockHeight(Math.min(maxHeight, Math.max(minHeight, newH)));
           break;
@@ -377,7 +431,7 @@ export default function ImageEditorFullPage() {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [drag, previewHeight]);
+  }, [drag, contentHeight, contentTopOffset]);
 
   function resetPositions() {
     setBlockTop(initialBlockTop);
@@ -391,9 +445,9 @@ export default function ImageEditorFullPage() {
   }
 
   // helpers layout -> percent (para reusar en previews)
-  const effectiveHeight = previewHeight || PREVIEW_HEIGHT_FALLBACK;
-  const blockTopPct = effectiveHeight > 0 ? (blockTop / effectiveHeight) * 100 : 0;
-  const overlayHeightPct = effectiveHeight > 0 ? (blockHeight / effectiveHeight) * 100 : 38;
+  const relativeBlockTop = clamp(blockTop - contentTopOffset, 0, contentHeight);
+  const blockTopPct = (relativeBlockTop / contentHeight) * 100;
+  const overlayHeightPct = (blockHeight / contentHeight) * 100;
 
   const titleXFrac = clamp(titleOffsetX / 1280, 0, 1);
   const titleYFrac = clamp(titleOffsetY / 720, 0, 1);
@@ -405,7 +459,9 @@ export default function ImageEditorFullPage() {
   // ✅ GENERAR COVER (via API route Next -> Backend)
   const handleGenerate = async () => {
     if (!file) {
-      setErrorMsg("Primero seleccioná una imagen base (o asegurate que se haya cargado la del artículo).");
+      setErrorMsg(
+        "Primero seleccioná una imagen base (o asegurate que se haya cargado la del artículo).",
+      );
       return;
     }
 
@@ -451,12 +507,13 @@ export default function ImageEditorFullPage() {
           : null,
       };
 
+      // ✅ alertBg SIEMPRE = barBg (regla global)
       const colors = {
-        theme,
+        theme: theme === "wine" ? "red" : theme, // compat
         title: titleColor,
         subtitle: subtitleColor,
         handle: brandColor,
-        alertBg: alertColor,
+        alertBg: themeColors.footerBg,
       };
 
       const options = {
@@ -485,10 +542,16 @@ export default function ImageEditorFullPage() {
       const data = await res.json().catch(() => null);
 
       const finalUrl: string | null =
-        data?.imageUrl ?? data?.coverUrl ?? data?.enhancedImageUrl ?? data?.url ?? null;
+        data?.imageUrl ??
+        data?.coverUrl ??
+        data?.enhancedImageUrl ??
+        data?.url ??
+        null;
 
       if (!finalUrl) {
-        const coverError = data?.coverError?.message ? ` (${data.coverError.message})` : "";
+        const coverError = data?.coverError?.message
+          ? ` (${data.coverError.message})`
+          : "";
         throw new Error(`El backend no devolvió imageUrl/coverUrl${coverError}`);
       }
 
@@ -504,7 +567,7 @@ export default function ImageEditorFullPage() {
         try {
           window.opener.postMessage(
             { type: "editor-image-url", url: finalUrl },
-            window.location.origin
+            window.location.origin,
           );
         } catch {}
       }
@@ -515,8 +578,6 @@ export default function ImageEditorFullPage() {
       setSaving(false);
     }
   };
-
-  const themeColors = getThemePreviewColors(theme);
 
   function SocialIcons() {
     return (
@@ -546,15 +607,18 @@ export default function ImageEditorFullPage() {
   function OverlayLayer(props: { w: number; h: number; showHeader: boolean }) {
     const { w, h, showHeader } = props;
 
-    const topPx = (blockTopPct / 100) * h;
-    const heightPx = (overlayHeightPct / 100) * h;
+    const headerH = showHeader ? HEADER_STRIP_HEIGHT : 0;
+    const contentH = Math.max(1, h - FOOTER_HEIGHT - headerH);
+
+    const topPx = headerH + (blockTopPct / 100) * contentH;
+    const heightPx = (overlayHeightPct / 100) * contentH;
 
     const titleLeft = titleXFrac * w;
-    const titleTop = titleYFrac * h;
+    const titleTop = titleYFrac * (h * (720 / 720));
     const subtitleLeft = subtitleXFrac * w;
-    const subtitleTop = subtitleYFrac * h;
+    const subtitleTop = subtitleYFrac * (h * (720 / 720));
     const alertLeft = alertXFrac * w;
-    const alertTop = alertYFrac * h;
+    const alertTop = alertYFrac * (h * (720 / 720));
 
     return (
       <>
@@ -564,14 +628,12 @@ export default function ImageEditorFullPage() {
             className="absolute inset-x-0 flex items-center justify-between px-4 text-[11px]"
             style={{
               top: 0,
-              height: 40,
-              backgroundColor: themeColors.footerBg,
+              height: HEADER_STRIP_HEIGHT,
+              backgroundColor: themeColors.footerBg, // ✅ barBg
               borderBottom: `1px solid ${themeColors.footerBorder}`,
             }}
           >
-            <span className="font-semibold text-slate-200">
-              {headerDate || "Fecha"}
-            </span>
+            <span className="font-semibold text-slate-200">{headerDate || "Fecha"}</span>
             {headerLabel && (
               <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200">
                 {headerLabel}
@@ -597,8 +659,8 @@ export default function ImageEditorFullPage() {
                 style={{
                   left: alertLeft,
                   top: alertTop,
-                  backgroundColor: alertColor,
-                  color: alertColor.toLowerCase() === "#ffffff" ? "#000000" : "#ffffff",
+                  backgroundColor: themeColors.footerBg, // ✅ TAG = barBg
+                  color: "#ffffff",
                 }}
               >
                 {alertTag}
@@ -645,7 +707,7 @@ export default function ImageEditorFullPage() {
           style={{
             bottom: 0,
             height: FOOTER_HEIGHT,
-            backgroundColor: themeColors.footerBg,
+            backgroundColor: themeColors.footerBg, // ✅ barBg
             borderTop: `1px solid ${themeColors.footerBorder}`,
           }}
         >
@@ -679,7 +741,9 @@ export default function ImageEditorFullPage() {
     );
   }
 
-  const overlayHeightPctUI = Math.round((blockHeight / effectiveHeight) * 100);
+  const overlayHeightPctUI = Math.round(
+    (blockHeight / Math.max(1, contentHeight)) * 100,
+  );
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50">
@@ -730,8 +794,8 @@ export default function ImageEditorFullPage() {
                           style={{
                             left: alertOffsetX,
                             top: alertOffsetY,
-                            backgroundColor: alertColor,
-                            color: alertColor.toLowerCase() === "#ffffff" ? "#000000" : "#ffffff",
+                            backgroundColor: themeColors.footerBg, // ✅ TAG = barBg
+                            color: "#ffffff",
                           }}
                           onMouseDown={(e) => startDrag("alert", e)}
                         >
@@ -785,8 +849,8 @@ export default function ImageEditorFullPage() {
                       className="absolute inset-x-0 flex items-center justify-between px-6 text-xs"
                       style={{
                         top: 0,
-                        height: 40,
-                        backgroundColor: themeColors.footerBg,
+                        height: HEADER_STRIP_HEIGHT,
+                        backgroundColor: themeColors.footerBg, // ✅ barBg
                         borderBottom: `1px solid ${themeColors.footerBorder}`,
                       }}
                     >
@@ -807,7 +871,7 @@ export default function ImageEditorFullPage() {
                     style={{
                       bottom: 0,
                       height: FOOTER_HEIGHT,
-                      backgroundColor: themeColors.footerBg,
+                      backgroundColor: themeColors.footerBg, // ✅ barBg
                       borderTop: `1px solid ${themeColors.footerBorder}`,
                     }}
                   >
@@ -816,7 +880,9 @@ export default function ImageEditorFullPage() {
                         src={BRAND_LOGO_SRC}
                         alt="Canalibertario"
                         className="h-8 w-8 flex-none rounded-full border border-white/10 bg-black/30 object-cover"
-                        onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+                        onError={(e) =>
+                          ((e.currentTarget as HTMLImageElement).style.display = "none")
+                        }
                       />
                       <div className="min-w-0">
                         <div className="truncate text-sm font-extrabold tracking-tight text-slate-100">
@@ -867,9 +933,9 @@ export default function ImageEditorFullPage() {
 
               <div className="mt-3 space-y-3 text-[11px]">
                 <div className="space-y-2">
-                  <span className="block text-slate-300">Tema de color de la barra</span>
+                  <span className="block text-slate-300">Tema oficial</span>
                   <div className="flex flex-wrap gap-2">
-                    {(["purple", "sunset", "wine", "blue", "black"] as CoverTheme[]).map((t) => (
+                    {(["purple", "red", "blue", "black"] as CoverTheme[]).map((t) => (
                       <button
                         key={t}
                         type="button"
@@ -883,6 +949,10 @@ export default function ImageEditorFullPage() {
                         {themeLabel(t)}
                       </button>
                     ))}
+                  </div>
+
+                  <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-[11px] text-slate-300">
+                    <b>Regla:</b> Header / Footer / Etiqueta usan el mismo color del theme (barBg).
                   </div>
                 </div>
 
@@ -946,24 +1016,19 @@ export default function ImageEditorFullPage() {
                   <span className="ml-2 text-slate-400">{brandColor}</span>
                 </div>
 
+                {/* ✅ Etiqueta: fijo por theme (no editable) */}
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="w-32 text-slate-300">Color etiqueta</span>
-                  <div className="flex items-center gap-1">
-                    {TAG_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setAlertColor(c)}
-                        className={`h-5 w-5 rounded-full border ${
-                          alertColor === c
-                            ? "border-sky-400 ring-2 ring-sky-400/60"
-                            : "border-slate-600"
-                        }`}
-                        style={{ backgroundColor: c }}
-                      />
-                    ))}
+                  <div className="inline-flex items-center gap-2">
+                    <span
+                      className="inline-block h-5 w-5 rounded-full border border-slate-600"
+                      style={{ backgroundColor: themeColors.footerBg }}
+                      title="La etiqueta usa barBg del theme"
+                    />
+                    <span className="text-slate-400">
+                      fijo por theme ({themeColors.footerBg})
+                    </span>
                   </div>
-                  <span className="ml-2 text-slate-400">{alertColor}</span>
                 </div>
 
                 <button
@@ -1041,7 +1106,8 @@ export default function ImageEditorFullPage() {
 
             {previewUrl && (
               <p className="truncate text-[11px] text-slate-400">
-                Usando como base: <span className="font-mono text-slate-300">{previewUrl}</span>
+                Usando como base:{" "}
+                <span className="font-mono text-slate-300">{previewUrl}</span>
               </p>
             )}
 
@@ -1053,7 +1119,9 @@ export default function ImageEditorFullPage() {
               <div className="space-y-1">
                 <label className="text-[11px] text-slate-300">
                   Título principal{" "}
-                  <span className="ml-1 text-[10px] text-slate-500">(Enter agrega salto de línea)</span>
+                  <span className="ml-1 text-[10px] text-slate-500">
+                    (Enter agrega salto de línea)
+                  </span>
                 </label>
                 <textarea
                   value={title}
@@ -1066,7 +1134,9 @@ export default function ImageEditorFullPage() {
               <div className="space-y-1">
                 <label className="text-[11px] text-slate-300">
                   Bajada / descripción{" "}
-                  <span className="ml-1 text-[10px] text-slate-500">(también acepta saltos de línea)</span>
+                  <span className="ml-1 text-[10px] text-slate-500">
+                    (también acepta saltos de línea)
+                  </span>
                 </label>
                 <textarea
                   value={subtitle}
@@ -1133,6 +1203,9 @@ export default function ImageEditorFullPage() {
                   <option value="ALERTA">ALERTA</option>
                   <option value="ÚLTIMA HORA">ÚLTIMA HORA</option>
                 </select>
+                <div className="text-[10px] text-slate-500">
+                  Color fijo por theme: <span className="font-mono">{themeColors.footerBg}</span>
+                </div>
               </div>
 
               <div className="mt-3 space-y-3 border-t border-slate-800 pt-3 text-[11px] text-slate-300">
@@ -1178,8 +1251,7 @@ export default function ImageEditorFullPage() {
                     value={overlayHeightPctUI}
                     onChange={(e) => {
                       const pct = Number(e.target.value);
-                      const h = previewHeight || PREVIEW_HEIGHT_FALLBACK;
-                      setBlockHeight(Math.round((pct / 100) * h));
+                      setBlockHeight(Math.round((pct / 100) * contentHeight));
                     }}
                     className="w-full"
                   />
@@ -1209,15 +1281,38 @@ export default function ImageEditorFullPage() {
             </h3>
 
             <div className="space-y-1 text-slate-300">
-              <div><b>Título:</b> {title || "—"}</div>
-              <div><b>Bajada:</b> {subtitle || "—"}</div>
-              <div><b>Etiqueta:</b> {alertTag || "(sin)"} {alertTag && `· color ${alertColor}`}</div>
-              <div><b>Franja superior:</b> {showHeaderStrip ? `${headerDate || "sin fecha"} · ${headerLabel || "sin etiqueta"}` : "desactivada"}</div>
-              <div><b>Footer:</b> {footer.trim() || "(vacío)"} <span className="text-slate-500">(sin URL)</span></div>
-              <div><b>Tema de color:</b> {themeLabel(theme)}</div>
-              <div><b>Posición bloque:</b> {Math.round(blockTop)}px · alto {Math.round(blockHeight)}px</div>
-              <div><b>Tipografía (preview):</b> título {titleSize}px · bajada {subtitleSize}px</div>
-              <div><b>Fondo:</b> altura {overlayHeightPctUI}% · opacidad {Math.round(overlayOpacity * 100)}%</div>
+              <div>
+                <b>Título:</b> {title || "—"}
+              </div>
+              <div>
+                <b>Bajada:</b> {subtitle || "—"}
+              </div>
+              <div>
+                <b>Etiqueta:</b> {alertTag || "(sin)"}{" "}
+                {alertTag && `· color fijo ${themeColors.footerBg}`}
+              </div>
+              <div>
+                <b>Franja superior:</b>{" "}
+                {showHeaderStrip
+                  ? `${headerDate || "sin fecha"} · ${headerLabel || "sin etiqueta"}`
+                  : "desactivada"}
+              </div>
+              <div>
+                <b>Footer:</b> {footer.trim() || "(vacío)"}{" "}
+                <span className="text-slate-500">(sin URL)</span>
+              </div>
+              <div>
+                <b>Tema de color:</b> {themeLabel(theme)}
+              </div>
+              <div>
+                <b>Posición bloque:</b> {Math.round(blockTop)}px · alto {Math.round(blockHeight)}px
+              </div>
+              <div>
+                <b>Tipografía (preview):</b> título {titleSize}px · bajada {subtitleSize}px
+              </div>
+              <div>
+                <b>Fondo:</b> altura {overlayHeightPctUI}% · opacidad {Math.round(overlayOpacity * 100)}%
+              </div>
             </div>
 
             <button
