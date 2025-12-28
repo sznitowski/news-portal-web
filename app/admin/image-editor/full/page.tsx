@@ -58,8 +58,12 @@ const BRAND_COLORS = [...BASE_COLORS];
 // ❌ TAG_COLORS eliminado: la etiqueta ahora SIEMPRE usa barBg del theme
 
 const DEFAULT_BLOCK_HEIGHT = 130;
+
+// IMPORTANTE: estas constantes son “baseline 16:9 (720p)”
 const FOOTER_HEIGHT = 54;
 const HEADER_STRIP_HEIGHT = 40;
+
+// Esto NO es 720p. Es la altura típica del preview en la UI si aún no se pudo medir.
 const PREVIEW_HEIGHT_FALLBACK = 360;
 
 // ✅ Branding actual
@@ -97,43 +101,36 @@ function themeLabel(value: CoverTheme): string {
  * overlay bandTo = themeBottom con alpha 0.78
  */
 function getThemePreviewColors(theme: CoverTheme) {
-  // normalizamos alias
   const t: CoverTheme = theme === "wine" ? "red" : theme;
 
   switch (t) {
-    // 🟣 IDENTIDAD (marca)
     case "purple":
       return {
-        // overlay tint
-        bandFrom: "rgba(10,6,20,0.00)", // themeTop #0A0614
+        bandFrom: "rgba(10,6,20,0.00)",
         bandMid: "rgba(0,0,0,0.28)",
-        bandTo: "rgba(58,28,107,0.78)", // themeBottom #3A1C6B
-        // bars
-        footerBg: "#160A2E", // barBg
-        footerBorder: "rgba(58,28,107,0.20)", // barBorder (alpha ~0.20)
+        bandTo: "rgba(58,28,107,0.78)",
+        footerBg: "#160A2E",
+        footerBorder: "rgba(58,28,107,0.20)",
       };
 
-    // 🔵 INSTITUCIONAL
     case "blue":
       return {
-        bandFrom: "rgba(5,11,22,0.00)", // themeTop #050B16
+        bandFrom: "rgba(5,11,22,0.00)",
         bandMid: "rgba(0,0,0,0.28)",
-        bandTo: "rgba(15,76,129,0.78)", // themeBottom #0F4C81
-        footerBg: "#071A2D", // barBg
-        footerBorder: "rgba(15,76,129,0.20)", // barBorder
+        bandTo: "rgba(15,76,129,0.78)",
+        footerBg: "#071A2D",
+        footerBorder: "rgba(15,76,129,0.20)",
       };
 
-    // 🟥 IMPACTO (reemplaza wine)
     case "red":
       return {
-        bandFrom: "rgba(11,7,16,0.00)", // themeTop #0B0710
+        bandFrom: "rgba(11,7,16,0.00)",
         bandMid: "rgba(0,0,0,0.28)",
-        bandTo: "rgba(177,18,38,0.78)", // themeBottom #B11226
-        footerBg: "#3B0A0A", // barBg (casi negro rojizo)
-        footerBorder: "rgba(177,18,38,0.20)", // barBorder
+        bandTo: "rgba(177,18,38,0.78)",
+        footerBg: "#3B0A0A",
+        footerBorder: "rgba(177,18,38,0.20)",
       };
 
-    // ⚫ máximo contraste (no tocar)
     case "black":
       return {
         bandFrom: "rgba(0,0,0,0.00)",
@@ -143,7 +140,6 @@ function getThemePreviewColors(theme: CoverTheme) {
         footerBorder: "rgba(100,116,139,0.20)",
       };
 
-    // legacy (no lo mostramos)
     case "sunset":
     default:
       return {
@@ -169,10 +165,66 @@ function isUrlLike(s: string) {
 function normalizeTheme(input: string | null): CoverTheme | null {
   if (!input) return null;
   const t = input as CoverTheme;
-  if (t === "wine") return "red"; // compat
+  if (t === "wine") return "red";
   if (t === "purple" || t === "blue" || t === "red" || t === "black") return t;
-  if (t === "sunset") return "sunset"; // legacy
+  if (t === "sunset") return "sunset";
   return null;
+}
+
+/**
+ * ✅ Escala header/footer del preview según altura real,
+ * para que coincida con el backend (baseline 720).
+ */
+function getScaledBarsForPreview(args: {
+  previewH: number;
+  showHeaderStrip: boolean;
+}) {
+  const h = Math.max(1, args.previewH);
+
+  const footerH = Math.round((FOOTER_HEIGHT / 720) * h);
+  const headerH = args.showHeaderStrip
+    ? Math.round((HEADER_STRIP_HEIGHT / 720) * h)
+    : 0;
+
+  const contentTopOffset = headerH;
+  const contentHeight = Math.max(1, h - footerH - headerH);
+
+  return { footerH, headerH, contentTopOffset, contentHeight };
+}
+
+// ✅ Conversión CORRECTA para coincidir con backend:
+// backend interpreta blockTopPct/overlayHeightPct como % del "contentHeight"
+// (altura total - footer - header opcional).
+function getBackendLayoutPct(args: {
+  previewEl: HTMLDivElement | null;
+  previewHeightFallback: number;
+
+  // OJO: estos heights deben ser LOS QUE ESTÁS USANDO EN EL PREVIEW (escalados)
+  showHeaderStrip: boolean;
+  headerStripHeightPx: number;
+  footerHeightPx: number;
+
+  // valores UI en px (dentro del preview total)
+  blockTopPx: number;
+  blockHeightPx: number;
+}) {
+  const liveH =
+    args.previewEl?.getBoundingClientRect().height &&
+    args.previewEl.getBoundingClientRect().height > 0
+      ? args.previewEl.getBoundingClientRect().height
+      : args.previewHeightFallback;
+
+  const headerH = args.showHeaderStrip ? args.headerStripHeightPx : 0;
+  const contentH = Math.max(1, liveH - args.footerHeightPx - headerH);
+
+  // blockTopPx en tu UI es px absolutos dentro del preview.
+  // Para backend, el % es relativo al contentH, y el 0% empieza debajo del header.
+  const topInsideContentPx = args.blockTopPx - headerH;
+
+  const blockTopPct = clamp((topInsideContentPx / contentH) * 100, 0, 100);
+  const overlayHeightPct = clamp((args.blockHeightPx / contentH) * 100, 0, 100);
+
+  return { blockTopPct, overlayHeightPct, liveH, contentH, headerH };
 }
 
 export default function ImageEditorFullPage() {
@@ -189,7 +241,6 @@ export default function ImageEditorFullPage() {
   // Textos
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
-  // ✅ footer = fecha/contexto corto (sin URL)
   const [footer, setFooter] = useState("");
   const [alertTag, setAlertTag] = useState<AlertTag>("");
 
@@ -198,19 +249,20 @@ export default function ImageEditorFullPage() {
   const [headerDate, setHeaderDate] = useState("");
   const [headerLabel, setHeaderLabel] = useState("");
 
-  // Colores (título/subtítulo/iconos)
+  // Colores
   const [titleColor, setTitleColor] = useState("#ffffff");
   const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
   const [brandColor, setBrandColor] = useState("#ffffff");
 
-  // ❗️Etiqueta: ahora NO es editable, siempre barBg del theme
+  // Etiqueta fijo por theme (se setea abajo)
   const [alertColor, setAlertColor] = useState("#000000");
 
   // Tema
   const [theme, setTheme] = useState<CoverTheme>("black");
 
-  // Tamaños
-  const [titleSize, setTitleSize] = useState(32);
+  // ✅ Tamaños (DEFAULTS)
+  // - título al mínimo para que no tengas que achicar siempre
+  const [titleSize, setTitleSize] = useState(24);
   const [subtitleSize, setSubtitleSize] = useState(20);
 
   // Posición del bloque
@@ -222,13 +274,13 @@ export default function ImageEditorFullPage() {
   // Opacidad
   const [overlayOpacity, setOverlayOpacity] = useState(1);
 
-  // Offsets internos
+  // Offsets internos (DENTRO DEL BLOQUE)
   const [titleOffsetX, setTitleOffsetX] = useState(40);
   const [titleOffsetY, setTitleOffsetY] = useState(30);
   const [subtitleOffsetX, setSubtitleOffsetX] = useState(40);
   const [subtitleOffsetY, setSubtitleOffsetY] = useState(80);
 
-  // Offset etiqueta
+  // Offset etiqueta (DENTRO DEL BLOQUE)
   const [alertOffsetX, setAlertOffsetX] = useState(40);
   const [alertOffsetY, setAlertOffsetY] = useState(10);
 
@@ -241,7 +293,7 @@ export default function ImageEditorFullPage() {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // ✅ Previews redes (solo formatos de imagen)
+  // Previews redes
   const [showSocialPreviews, setShowSocialPreviews] = useState(true);
 
   // medir altura real del 16:9
@@ -328,15 +380,18 @@ export default function ImageEditorFullPage() {
         setPreviewUrl(imageUrl);
       } catch (err: any) {
         console.error("[editor-full] error al cargar imagen inicial:", err);
-        setErrorMsg(err?.message ?? "No se pudo cargar la imagen inicial para editar.");
+        setErrorMsg(
+          err?.message ?? "No se pudo cargar la imagen inicial para editar."
+        );
       } finally {
         setLoadingImage(false);
       }
     })();
   }, [searchParams]);
 
-  // ✅ cada vez que cambia el theme: la etiqueta pasa a barBg (regla global)
   const themeColors = getThemePreviewColors(theme);
+
+  // cada vez que cambia el theme: la etiqueta pasa a barBg (regla global)
   useEffect(() => {
     setAlertColor(themeColors.footerBg);
   }, [themeColors.footerBg]);
@@ -373,15 +428,16 @@ export default function ImageEditorFullPage() {
     });
   };
 
-  /**
-   * ✅ CAMBIO: sincronizar coordenadas con backend (área útil sin footer y con header opcional)
-   */
+  // ✅ Área útil (pero AHORA con header/footer ESCALADOS al preview, igual que backend)
   const effectiveHeight = previewHeight || PREVIEW_HEIGHT_FALLBACK;
-  const contentTopOffset = showHeaderStrip ? HEADER_STRIP_HEIGHT : 0;
-  const contentHeight = Math.max(
-    1,
-    effectiveHeight - FOOTER_HEIGHT - contentTopOffset,
-  );
+  const bars = getScaledBarsForPreview({
+    previewH: effectiveHeight,
+    showHeaderStrip,
+  });
+  const contentTopOffset = bars.contentTopOffset;
+  const contentHeight = bars.contentHeight;
+  const previewHeaderH = bars.headerH;
+  const previewFooterH = bars.footerH;
 
   useEffect(() => {
     if (!drag) return;
@@ -444,23 +500,38 @@ export default function ImageEditorFullPage() {
     setAlertOffsetY(10);
   }
 
-  // helpers layout -> percent (para reusar en previews)
-  const relativeBlockTop = clamp(blockTop - contentTopOffset, 0, contentHeight);
-  const blockTopPct = (relativeBlockTop / contentHeight) * 100;
-  const overlayHeightPct = (blockHeight / contentHeight) * 100;
+  // ✅ ESTE ES EL CÁLCULO BUENO (lo que mandás al backend)
+  const live = getBackendLayoutPct({
+    previewEl: previewRef.current,
+    previewHeightFallback: PREVIEW_HEIGHT_FALLBACK,
+    showHeaderStrip,
+    headerStripHeightPx: previewHeaderH,
+    footerHeightPx: previewFooterH,
+    blockTopPx: blockTop,
+    blockHeightPx: blockHeight,
+  });
 
+  const blockTopPct = live.blockTopPct;
+  const overlayHeightPct = live.overlayHeightPct;
+
+  // offsets para previews (proporción 1280x720 baseline)
   const titleXFrac = clamp(titleOffsetX / 1280, 0, 1);
-  const titleYFrac = clamp(titleOffsetY / 720, 0, 1);
   const subtitleXFrac = clamp(subtitleOffsetX / 1280, 0, 1);
-  const subtitleYFrac = clamp(subtitleOffsetY / 720, 0, 1);
   const alertXFrac = clamp(alertOffsetX / 1280, 0, 1);
-  const alertYFrac = clamp(alertOffsetY / 720, 0, 1);
 
-  // ✅ GENERAR COVER (via API route Next -> Backend)
+  // offsets Y: SON dentro del bloque, así que guardamos fracción del bloque
+  const titleYInBlockFrac = clamp(titleOffsetY / Math.max(1, blockHeight), 0, 1);
+  const subtitleYInBlockFrac = clamp(
+    subtitleOffsetY / Math.max(1, blockHeight),
+    0,
+    1
+  );
+  const alertYInBlockFrac = clamp(alertOffsetY / Math.max(1, blockHeight), 0, 1);
+
   const handleGenerate = async () => {
     if (!file) {
       setErrorMsg(
-        "Primero seleccioná una imagen base (o asegurate que se haya cargado la del artículo).",
+        "Primero seleccioná una imagen base (o asegurate que se haya cargado la del artículo)."
       );
       return;
     }
@@ -479,10 +550,8 @@ export default function ImageEditorFullPage() {
           : null;
       if (token) fd.append("accessToken", token);
 
-      // ✅ footer = fecha/contexto
       const footerText = footer.trim() || null;
 
-      // ✅ Branding sin URL y sin handle visual en preview
       const brandConfig = {
         brandName: "CANALIBERTARIO",
         useHeaderWordmark: true,
@@ -494,6 +563,7 @@ export default function ImageEditorFullPage() {
 
       const layout = {
         textPosition,
+        // ✅ CLAVE: estos % van sobre "contentHeight", igual que backend
         blockTopPct,
         overlayHeightPct,
         overlayOpacity,
@@ -507,9 +577,8 @@ export default function ImageEditorFullPage() {
           : null,
       };
 
-      // ✅ alertBg SIEMPRE = barBg (regla global)
       const colors = {
-        theme: theme === "wine" ? "red" : theme, // compat
+        theme: theme === "wine" ? "red" : theme,
         title: titleColor,
         subtitle: subtitleColor,
         handle: brandColor,
@@ -518,7 +587,7 @@ export default function ImageEditorFullPage() {
 
       const options = {
         title: title.trim() || null,
-        subtitle: subtitle.trim() || null,
+        subtitle: subtitle.trim() || null, // ✅ opcional real
         footer: footerText,
         brand: brandConfig,
         alertTag: alertTag || null,
@@ -567,7 +636,7 @@ export default function ImageEditorFullPage() {
         try {
           window.opener.postMessage(
             { type: "editor-image-url", url: finalUrl },
-            window.location.origin,
+            window.location.origin
           );
         } catch {}
       }
@@ -586,54 +655,76 @@ export default function ImageEditorFullPage() {
           src={ICON_X}
           alt="X"
           className="h-6 w-6 rounded-full bg-black/60 p-1"
-          onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+          onError={(e) =>
+            (((e.currentTarget as HTMLImageElement).style.display = "none"),
+            undefined)
+          }
         />
         <img
           src={ICON_FB}
           alt="Facebook"
           className="h-6 w-6 rounded-full bg-black/60 p-1"
-          onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+          onError={(e) =>
+            (((e.currentTarget as HTMLImageElement).style.display = "none"),
+            undefined)
+          }
         />
         <img
           src={ICON_IG}
           alt="Instagram"
           className="h-6 w-6 rounded-full bg-black/60 p-1"
-          onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+          onError={(e) =>
+            (((e.currentTarget as HTMLImageElement).style.display = "none"),
+            undefined)
+          }
         />
       </div>
     );
   }
 
+  // ✅ Preview overlays para otras proporciones: escalar footer/header igual que backend (54/720 y 40/720)
   function OverlayLayer(props: { w: number; h: number; showHeader: boolean }) {
     const { w, h, showHeader } = props;
 
-    const headerH = showHeader ? HEADER_STRIP_HEIGHT : 0;
-    const contentH = Math.max(1, h - FOOTER_HEIGHT - headerH);
+    const footerH = Math.round((FOOTER_HEIGHT / 720) * h);
+    const headerH = showHeader ? Math.round((HEADER_STRIP_HEIGHT / 720) * h) : 0;
+    const contentH = Math.max(1, h - footerH - headerH);
 
-    const topPx = headerH + (blockTopPct / 100) * contentH;
-    const heightPx = (overlayHeightPct / 100) * contentH;
+    // ✅ % sobre contentH (NO sobre h). El 0% arranca debajo del header.
+    let topPx = headerH + (blockTopPct / 100) * contentH;
+    let heightPx = (overlayHeightPct / 100) * contentH;
 
+    // clamp para que no pise footer/header
+    const minTop = headerH;
+    const maxTop = headerH + contentH - heightPx;
+    topPx = Math.max(minTop, Math.min(maxTop, topPx));
+    heightPx = Math.max(1, Math.min(contentH, heightPx));
+
+    // Posiciones: X a escala del canvas (porque el bloque ocupa todo el ancho)
     const titleLeft = titleXFrac * w;
-    const titleTop = titleYFrac * (h * (720 / 720));
     const subtitleLeft = subtitleXFrac * w;
-    const subtitleTop = subtitleYFrac * (h * (720 / 720));
     const alertLeft = alertXFrac * w;
-    const alertTop = alertYFrac * (h * (720 / 720));
+
+    // Y: relativo al bloque (fracción * altura del bloque renderizado) + top del bloque
+    const titleTop = topPx + titleYInBlockFrac * heightPx;
+    const subtitleTop = topPx + subtitleYInBlockFrac * heightPx;
+    const alertTop = topPx + alertYInBlockFrac * heightPx;
 
     return (
       <>
-        {/* header strip */}
         {showHeader && (headerDate || headerLabel) && (
           <div
             className="absolute inset-x-0 flex items-center justify-between px-4 text-[11px]"
             style={{
               top: 0,
-              height: HEADER_STRIP_HEIGHT,
-              backgroundColor: themeColors.footerBg, // ✅ barBg
+              height: headerH,
+              backgroundColor: themeColors.footerBg,
               borderBottom: `1px solid ${themeColors.footerBorder}`,
             }}
           >
-            <span className="font-semibold text-slate-200">{headerDate || "Fecha"}</span>
+            <span className="font-semibold text-slate-200">
+              {headerDate || "Fecha"}
+            </span>
             {headerLabel && (
               <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200">
                 {headerLabel}
@@ -642,7 +733,6 @@ export default function ImageEditorFullPage() {
           </div>
         )}
 
-        {/* gradient block */}
         <div
           className="absolute left-0 right-0"
           style={{
@@ -658,8 +748,8 @@ export default function ImageEditorFullPage() {
                 className="absolute inline-flex select-none items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
                 style={{
                   left: alertLeft,
-                  top: alertTop,
-                  backgroundColor: themeColors.footerBg, // ✅ TAG = barBg
+                  top: alertTop - topPx, // dentro del bloque
+                  backgroundColor: themeColors.footerBg,
                   color: "#ffffff",
                 }}
               >
@@ -672,8 +762,11 @@ export default function ImageEditorFullPage() {
                 className="absolute select-none font-extrabold tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
                 style={{
                   left: titleLeft,
-                  top: titleTop,
-                  fontSize: `${Math.max(18, Math.round((titleSize / 1280) * w))}px`,
+                  top: titleTop - topPx, // dentro del bloque
+                  fontSize: `${Math.max(
+                    18,
+                    Math.round((titleSize / 1280) * w)
+                  )}px`,
                   color: titleColor,
                   whiteSpace: "pre-line",
                   maxWidth: "86%",
@@ -688,8 +781,11 @@ export default function ImageEditorFullPage() {
                 className="absolute select-none font-medium drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]"
                 style={{
                   left: subtitleLeft,
-                  top: subtitleTop,
-                  fontSize: `${Math.max(12, Math.round((subtitleSize / 1280) * w))}px`,
+                  top: subtitleTop - topPx, // dentro del bloque
+                  fontSize: `${Math.max(
+                    12,
+                    Math.round((subtitleSize / 1280) * w)
+                  )}px`,
                   color: subtitleColor,
                   whiteSpace: "pre-line",
                   maxWidth: "75%",
@@ -701,13 +797,12 @@ export default function ImageEditorFullPage() {
           </div>
         </div>
 
-        {/* footer branding (SIN URL, SIN HANDLE) */}
         <div
           className="absolute inset-x-0 flex items-center justify-between gap-3 px-4"
           style={{
             bottom: 0,
-            height: FOOTER_HEIGHT,
-            backgroundColor: themeColors.footerBg, // ✅ barBg
+            height: footerH,
+            backgroundColor: themeColors.footerBg,
             borderTop: `1px solid ${themeColors.footerBorder}`,
           }}
         >
@@ -716,7 +811,10 @@ export default function ImageEditorFullPage() {
               src={BRAND_LOGO_SRC}
               alt="Canalibertario"
               className="h-7 w-7 flex-none rounded-full border border-white/10 bg-black/30 object-cover"
-              onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+              onError={(e) =>
+                (((e.currentTarget as HTMLImageElement).style.display = "none"),
+                undefined)
+              }
             />
             <div className="min-w-0">
               <div className="truncate text-xs font-extrabold tracking-tight text-slate-100">
@@ -741,8 +839,9 @@ export default function ImageEditorFullPage() {
     );
   }
 
+  // ✅ slider “Altura del fondo (barra)” debe ser sobre contentHeight, no sobre altura total
   const overlayHeightPctUI = Math.round(
-    (blockHeight / Math.max(1, contentHeight)) * 100,
+    (blockHeight / Math.max(1, contentHeight)) * 100
   );
 
   return (
@@ -774,7 +873,11 @@ export default function ImageEditorFullPage() {
             >
               {previewUrl ? (
                 <>
-                  <img src={previewUrl} alt="Imagen base" className="h-full w-full object-cover" />
+                  <img
+                    src={previewUrl}
+                    alt="Imagen base"
+                    className="h-full w-full object-cover"
+                  />
 
                   {/* BLOQUE (drag) */}
                   <div
@@ -794,7 +897,7 @@ export default function ImageEditorFullPage() {
                           style={{
                             left: alertOffsetX,
                             top: alertOffsetY,
-                            backgroundColor: themeColors.footerBg, // ✅ TAG = barBg
+                            backgroundColor: themeColors.footerBg,
                             color: "#ffffff",
                           }}
                           onMouseDown={(e) => startDrag("alert", e)}
@@ -843,14 +946,14 @@ export default function ImageEditorFullPage() {
                     </div>
                   </div>
 
-                  {/* FRANJA SUPERIOR */}
+                  {/* FRANJA SUPERIOR (ESCALADA) */}
                   {showHeaderStrip && (headerDate || headerLabel) && (
                     <div
                       className="absolute inset-x-0 flex items-center justify-between px-6 text-xs"
                       style={{
                         top: 0,
-                        height: HEADER_STRIP_HEIGHT,
-                        backgroundColor: themeColors.footerBg, // ✅ barBg
+                        height: previewHeaderH,
+                        backgroundColor: themeColors.footerBg,
                         borderBottom: `1px solid ${themeColors.footerBorder}`,
                       }}
                     >
@@ -865,13 +968,13 @@ export default function ImageEditorFullPage() {
                     </div>
                   )}
 
-                  {/* FOOTER BRANDING (SIN URL, SIN HANDLE) */}
+                  {/* FOOTER BRANDING (ESCALADO) */}
                   <div
                     className="absolute inset-x-0 flex items-center justify-between gap-3 px-8"
                     style={{
                       bottom: 0,
-                      height: FOOTER_HEIGHT,
-                      backgroundColor: themeColors.footerBg, // ✅ barBg
+                      height: previewFooterH,
+                      backgroundColor: themeColors.footerBg,
                       borderTop: `1px solid ${themeColors.footerBorder}`,
                     }}
                   >
@@ -881,7 +984,9 @@ export default function ImageEditorFullPage() {
                         alt="Canalibertario"
                         className="h-8 w-8 flex-none rounded-full border border-white/10 bg-black/30 object-cover"
                         onError={(e) =>
-                          ((e.currentTarget as HTMLImageElement).style.display = "none")
+                          (((e.currentTarget as HTMLImageElement).style.display =
+                            "none"),
+                          undefined)
                         }
                       />
                       <div className="min-w-0">
@@ -899,7 +1004,9 @@ export default function ImageEditorFullPage() {
                         <SocialIcons />
                       </div>
                       {footer.trim() ? (
-                        <span className="text-[11px] text-slate-300">{footer.trim()}</span>
+                        <span className="text-[11px] text-slate-300">
+                          {footer.trim()}
+                        </span>
                       ) : null}
                     </div>
                   </div>
@@ -935,24 +1042,27 @@ export default function ImageEditorFullPage() {
                 <div className="space-y-2">
                   <span className="block text-slate-300">Tema oficial</span>
                   <div className="flex flex-wrap gap-2">
-                    {(["purple", "red", "blue", "black"] as CoverTheme[]).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => setTheme(t)}
-                        className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
-                          theme === t
-                            ? "border-sky-400 bg-sky-500/10 text-sky-100"
-                            : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400/70"
-                        }`}
-                      >
-                        {themeLabel(t)}
-                      </button>
-                    ))}
+                    {(["purple", "red", "blue", "black"] as CoverTheme[]).map(
+                      (t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setTheme(t)}
+                          className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
+                            theme === t
+                              ? "border-sky-400 bg-sky-500/10 text-sky-100"
+                              : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400/70"
+                          }`}
+                        >
+                          {themeLabel(t)}
+                        </button>
+                      )
+                    )}
                   </div>
 
                   <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-[11px] text-slate-300">
-                    <b>Regla:</b> Header / Footer / Etiqueta usan el mismo color del theme (barBg).
+                    <b>Regla:</b> Header / Footer / Etiqueta usan el mismo color
+                    del theme (barBg).
                   </div>
                 </div>
 
@@ -1061,7 +1171,11 @@ export default function ImageEditorFullPage() {
                     16:9 (X / Facebook / YouTube)
                   </div>
                   <div className="relative aspect-[16/9] overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
-                    <img src={previewUrl} alt="16:9" className="h-full w-full object-cover" />
+                    <img
+                      src={previewUrl}
+                      alt="16:9"
+                      className="h-full w-full object-cover"
+                    />
                     <OverlayLayer w={1280} h={720} showHeader={showHeaderStrip} />
                   </div>
                 </div>
@@ -1072,7 +1186,11 @@ export default function ImageEditorFullPage() {
                     1:1 (Instagram feed)
                   </div>
                   <div className="relative aspect-square overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
-                    <img src={previewUrl} alt="1:1" className="h-full w-full object-cover" />
+                    <img
+                      src={previewUrl}
+                      alt="1:1"
+                      className="h-full w-full object-cover"
+                    />
                     <OverlayLayer w={1080} h={1080} showHeader={false} />
                   </div>
                 </div>
@@ -1083,7 +1201,11 @@ export default function ImageEditorFullPage() {
                     4:5 (Instagram feed alto)
                   </div>
                   <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
-                    <img src={previewUrl} alt="4:5" className="h-full w-full object-cover" />
+                    <img
+                      src={previewUrl}
+                      alt="4:5"
+                      className="h-full w-full object-cover"
+                    />
                     <OverlayLayer w={1080} h={1350} showHeader={false} />
                   </div>
                 </div>
@@ -1101,7 +1223,12 @@ export default function ImageEditorFullPage() {
 
             <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-700/80 bg-slate-800/80 px-4 py-2 text-xs font-medium text-slate-50 hover:border-sky-400/80 hover:bg-slate-800">
               Seleccionar nueva imagen
-              <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileChange}
+              />
             </label>
 
             {previewUrl && (
@@ -1204,7 +1331,8 @@ export default function ImageEditorFullPage() {
                   <option value="ÚLTIMA HORA">ÚLTIMA HORA</option>
                 </select>
                 <div className="text-[10px] text-slate-500">
-                  Color fijo por theme: <span className="font-mono">{themeColors.footerBg}</span>
+                  Color fijo por theme:{" "}
+                  <span className="font-mono">{themeColors.footerBg}</span>
                 </div>
               </div>
 
@@ -1251,7 +1379,7 @@ export default function ImageEditorFullPage() {
                     value={overlayHeightPctUI}
                     onChange={(e) => {
                       const pct = Number(e.target.value);
-                      setBlockHeight(Math.round((pct / 100) * contentHeight));
+                      setBlockHeight(Math.round((pct / 100) * Math.max(1, contentHeight)));
                     }}
                     className="w-full"
                   />
@@ -1260,7 +1388,9 @@ export default function ImageEditorFullPage() {
                 <div>
                   <div className="mb-1 flex items-center justify-between">
                     <span>Opacidad del fondo</span>
-                    <span className="text-slate-400">{Math.round(overlayOpacity * 100)}%</span>
+                    <span className="text-slate-400">
+                      {Math.round(overlayOpacity * 100)}%
+                    </span>
                   </div>
                   <input
                     type="range"
@@ -1305,13 +1435,20 @@ export default function ImageEditorFullPage() {
                 <b>Tema de color:</b> {themeLabel(theme)}
               </div>
               <div>
-                <b>Posición bloque:</b> {Math.round(blockTop)}px · alto {Math.round(blockHeight)}px
+                <b>Posición bloque:</b> {Math.round(blockTop)}px · alto{" "}
+                {Math.round(blockHeight)}px
               </div>
               <div>
-                <b>Tipografía (preview):</b> título {titleSize}px · bajada {subtitleSize}px
+                <b>Tipografía (preview):</b> título {titleSize}px · bajada{" "}
+                {subtitleSize}px
               </div>
               <div>
-                <b>Fondo:</b> altura {overlayHeightPctUI}% · opacidad {Math.round(overlayOpacity * 100)}%
+                <b>Fondo:</b> altura {overlayHeightPctUI}% · opacidad{" "}
+                {Math.round(overlayOpacity * 100)}%
+              </div>
+              <div>
+                <b>% enviado al backend:</b> top {blockTopPct.toFixed(1)}% · alto{" "}
+                {overlayHeightPct.toFixed(1)}%
               </div>
             </div>
 
