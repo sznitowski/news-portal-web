@@ -1,4 +1,3 @@
-// app/admin/image-editor/full/page.tsx
 "use client";
 
 import {
@@ -10,20 +9,22 @@ import {
 import { useSearchParams } from "next/navigation";
 
 type TextPosition = "top" | "middle" | "bottom";
-
-/**
- * ✅ Themes:
- * - black: no tocar
- * - purple / blue / red: oficiales
- * - wine: compat (alias de red)
- * - sunset: legacy (no lo mostramos en el selector)
- */
 type CoverTheme = "purple" | "blue" | "red" | "wine" | "black" | "sunset";
 
 const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
 type AlertTag = (typeof ALERT_TAGS)[number];
 
-type DragTarget = "block" | "title" | "subtitle" | "resize" | "alert" | null;
+type DragTarget =
+  | "block"
+  | "title"
+  | "subtitle"
+  | "resize"
+  | "alert"
+  | "logoCircle"
+  | "logoHorizontal"
+  | "logoCircleResize"
+  | "logoHorizontalResize"
+  | null;
 
 type DragState = {
   target: DragTarget;
@@ -39,9 +40,17 @@ type DragState = {
   subtitleOffsetY: number;
   alertOffsetX: number;
   alertOffsetY: number;
+
+  // logo
+  logoCircleXPct: number;
+  logoCircleYPct: number;
+  logoCircleWidthPct: number;
+
+  logoHorizontalXPct: number;
+  logoHorizontalYPct: number;
+  logoHorizontalWidthPct: number;
 } | null;
 
-// Paleta unificada (para título/subtítulo/iconos)
 const BASE_COLORS = [
   "#ffffff",
   "#000000",
@@ -55,21 +64,42 @@ const TITLE_COLORS = [...BASE_COLORS];
 const SUBTITLE_COLORS = [...BASE_COLORS];
 const BRAND_COLORS = [...BASE_COLORS];
 
-// ❌ TAG_COLORS eliminado: la etiqueta ahora SIEMPRE usa barBg del theme
-
 const DEFAULT_BLOCK_HEIGHT = 130;
 
-// IMPORTANTE: estas constantes son “baseline 16:9 (720p)”
+// baseline 16:9 (720p)
 const FOOTER_HEIGHT = 54;
 const HEADER_STRIP_HEIGHT = 40;
 
-// Esto NO es 720p. Es la altura típica del preview en la UI si aún no se pudo medir.
 const PREVIEW_HEIGHT_FALLBACK = 360;
 
-// ✅ Branding actual
-const BRAND_LOGO_SRC = "/brand/canalibertario.png";
+// ✅ footer lockup (FIJO / NO TOCAR)
+const BRAND_LOCKUP_SRC = "/brand/canalibertario.png";
 
-// ✅ Iconos reales (vienen de tu backend /brand)
+// ✅ logos flotantes (overlay) — probamos varias rutas porque en prod linux el case importa
+const LOGO_CIRCLE_CANDIDATES = [
+  "/brand/Logos/logo-circular.png",
+  "/brand/logos/logo-circular.png",
+  "/brand/logo-circular.png",
+  "/brand/logo-circular.webp",
+  "/brand/logo-circular.svg",
+
+  // ✅ fallback: si no existe el circular, al menos mostrás ALGO real
+  "/brand/canalibertario.png",
+];
+
+
+const LOGO_HORIZONTAL_CANDIDATES = [
+  "/brand/Logos/logo-horizontal.png",
+  "/brand/logos/logo-horizontal.png",
+  "/brand/logo-horizontal.png",
+  "/brand/logo-horizontal.webp",
+  "/brand/logo-horizontal.svg",
+
+  // ✅ fallback: si no existe el horizontal, mostrás el lockup
+  "/brand/canalibertario.png",
+];
+
+// Iconos (si los usás en el footer lockup visual del editor)
 const ICON_X = "/brand/icon-twitter.png";
 const ICON_FB = "/brand/icon-facebook.png";
 const ICON_IG = "/brand/icon-instagram.png";
@@ -93,13 +123,6 @@ function themeLabel(value: CoverTheme): string {
   }
 }
 
-/**
- * ✅ THEMES OFICIALES (preview)
- * Regla global:
- * HEADER = FOOTER = TAG = barBg
- * footerBorder = barBorder con alpha ~0.20
- * overlay bandTo = themeBottom con alpha 0.78
- */
 function getThemePreviewColors(theme: CoverTheme) {
   const t: CoverTheme = theme === "wine" ? "red" : theme;
 
@@ -112,7 +135,6 @@ function getThemePreviewColors(theme: CoverTheme) {
         footerBg: "#160A2E",
         footerBorder: "rgba(58,28,107,0.20)",
       };
-
     case "blue":
       return {
         bandFrom: "rgba(5,11,22,0.00)",
@@ -121,7 +143,6 @@ function getThemePreviewColors(theme: CoverTheme) {
         footerBg: "#071A2D",
         footerBorder: "rgba(15,76,129,0.20)",
       };
-
     case "red":
       return {
         bandFrom: "rgba(11,7,16,0.00)",
@@ -130,7 +151,6 @@ function getThemePreviewColors(theme: CoverTheme) {
         footerBg: "#3B0A0A",
         footerBorder: "rgba(177,18,38,0.20)",
       };
-
     case "black":
       return {
         bandFrom: "rgba(0,0,0,0.00)",
@@ -139,7 +159,6 @@ function getThemePreviewColors(theme: CoverTheme) {
         footerBg: "#05070d",
         footerBorder: "rgba(100,116,139,0.20)",
       };
-
     case "sunset":
     default:
       return {
@@ -161,7 +180,6 @@ function isUrlLike(s: string) {
   return t.includes("http://") || t.includes("https://") || t.includes("www.");
 }
 
-// normaliza theme desde querystring (compat wine->red)
 function normalizeTheme(input: string | null): CoverTheme | null {
   if (!input) return null;
   const t = input as CoverTheme;
@@ -171,10 +189,7 @@ function normalizeTheme(input: string | null): CoverTheme | null {
   return null;
 }
 
-/**
- * ✅ Escala header/footer del preview según altura real,
- * para que coincida con el backend (baseline 720).
- */
+// Preview bars escalados (coincide backend)
 function getScaledBarsForPreview(args: {
   previewH: number;
   showHeaderStrip: boolean;
@@ -192,39 +207,111 @@ function getScaledBarsForPreview(args: {
   return { footerH, headerH, contentTopOffset, contentHeight };
 }
 
-// ✅ Conversión CORRECTA para coincidir con backend:
-// backend interpreta blockTopPct/overlayHeightPct como % del "contentHeight"
-// (altura total - footer - header opcional).
+// ✅ Conversión CORRECTA: blockTopPct/overlayHeightPct como % de contentHeight
 function getBackendLayoutPct(args: {
   previewEl: HTMLDivElement | null;
   previewHeightFallback: number;
 
-  // OJO: estos heights deben ser LOS QUE ESTÁS USANDO EN EL PREVIEW (escalados)
   showHeaderStrip: boolean;
   headerStripHeightPx: number;
   footerHeightPx: number;
 
-  // valores UI en px (dentro del preview total)
   blockTopPx: number;
   blockHeightPx: number;
 }) {
   const liveH =
     args.previewEl?.getBoundingClientRect().height &&
-    args.previewEl.getBoundingClientRect().height > 0
+      args.previewEl.getBoundingClientRect().height > 0
       ? args.previewEl.getBoundingClientRect().height
       : args.previewHeightFallback;
 
   const headerH = args.showHeaderStrip ? args.headerStripHeightPx : 0;
   const contentH = Math.max(1, liveH - args.footerHeightPx - headerH);
 
-  // blockTopPx en tu UI es px absolutos dentro del preview.
-  // Para backend, el % es relativo al contentH, y el 0% empieza debajo del header.
   const topInsideContentPx = args.blockTopPx - headerH;
 
   const blockTopPct = clamp((topInsideContentPx / contentH) * 100, 0, 100);
   const overlayHeightPct = clamp((args.blockHeightPx / contentH) * 100, 0, 100);
 
   return { blockTopPct, overlayHeightPct, liveH, contentH, headerH };
+}
+
+function pxToPct(px: number, size: number) {
+  return clamp((px / Math.max(1, size)) * 100, 0, 100);
+}
+function pctToPx(pct: number, size: number) {
+  return (clamp(pct, 0, 100) / 100) * Math.max(1, size);
+}
+
+/**
+ * ✅ El backend interpreta logoOverlay.xPct/yPct como % del canvas completo (width/height),
+ * pero el editor guarda Y como % del "content box".
+ * Convierte Y content->canvas usando baseline 720.
+ */
+function contentYPctToCanvasYPct(args: {
+  yContentPct: number;
+  showHeaderStrip: boolean;
+}) {
+  const headerH = args.showHeaderStrip ? HEADER_STRIP_HEIGHT : 0;
+  const footerH = FOOTER_HEIGHT;
+  const contentH = 720 - headerH - footerH;
+
+  const yPxInCanvas =
+    headerH + (clamp(args.yContentPct, 0, 100) / 100) * contentH;
+  return (yPxInCanvas / 720) * 100;
+}
+
+// ✅ Img que intenta múltiples paths. Si falla todo, muestra placeholder (NO desaparece).
+function ImgMulti(props: {
+  candidates: string[];
+  alt: string;
+  className?: string;
+  style?: React.CSSProperties;
+  onMouseDown?: (e: ReactMouseEvent<HTMLElement>) => void;
+  rounded?: boolean;
+}) {
+  const { candidates, alt, className, style, onMouseDown, rounded } = props;
+  const [idx, setIdx] = useState(0);
+  const src = candidates[idx] ?? "";
+
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setIdx(0);
+    setFailed(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidates.join("|")]);
+
+  if (failed || !src) {
+    return (
+      <div
+        onMouseDown={onMouseDown}
+        className={`flex items-center justify-center border border-white/20 bg-black/40 text-[10px] text-white/70 ${rounded ? "rounded-full" : "rounded-xl"
+          } ${className ?? ""}`}
+        style={style}
+        title={`No se encontró asset: ${candidates.join(" | ")}`}
+      >
+        LOGO (ruta mal)
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      style={style}
+      draggable={false}
+      onDragStart={(e) => e.preventDefault()}
+      onMouseDown={onMouseDown}
+      onError={() => {
+        const next = idx + 1;
+        if (next < candidates.length) setIdx(next);
+        else setFailed(true);
+      }}
+    />
+  );
 }
 
 export default function ImageEditorFullPage() {
@@ -238,13 +325,32 @@ export default function ImageEditorFullPage() {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  // ✅ branding
+  const [showLogoCircle, setShowLogoCircle] = useState(true);
+  const [showLogoHorizontal, setShowLogoHorizontal] = useState(false);
+
+  // ⚠️ footer lockup SIEMPRE activo (fijo / NO se toca)
+  const showFooterLockup = true;
+
+  // ✅ logo overlay: posición/size (en % del CONTENT BOX)
+  // (X/Y internos para drag, NO hay sliders X/Y)
+  const [logoCircleXPct, setLogoCircleXPct] = useState(82);
+  const [logoCircleYPct, setLogoCircleYPct] = useState(10);
+  const [logoCircleWidthPct, setLogoCircleWidthPct] = useState(10);
+  const [logoCircleOpacity, setLogoCircleOpacity] = useState(0.95);
+
+  const [logoHorizontalXPct, setLogoHorizontalXPct] = useState(70);
+  const [logoHorizontalYPct, setLogoHorizontalYPct] = useState(10);
+  const [logoHorizontalWidthPct, setLogoHorizontalWidthPct] = useState(24);
+  const [logoHorizontalOpacity, setLogoHorizontalOpacity] = useState(0.95);
+
   // Textos
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
   const [footer, setFooter] = useState("");
   const [alertTag, setAlertTag] = useState<AlertTag>("");
 
-  // Franja superior (opcional)
+  // Header strip
   const [showHeaderStrip, setShowHeaderStrip] = useState(false);
   const [headerDate, setHeaderDate] = useState("");
   const [headerLabel, setHeaderLabel] = useState("");
@@ -254,33 +360,28 @@ export default function ImageEditorFullPage() {
   const [subtitleColor, setSubtitleColor] = useState("#e5e7eb");
   const [brandColor, setBrandColor] = useState("#ffffff");
 
-  // Etiqueta fijo por theme (se setea abajo)
-  const [alertColor, setAlertColor] = useState("#000000");
-
   // Tema
   const [theme, setTheme] = useState<CoverTheme>("black");
 
-  // ✅ Tamaños (DEFAULTS)
-  // - título al mínimo para que no tengas que achicar siempre
+  // Tamaños textos
   const [titleSize, setTitleSize] = useState(24);
   const [subtitleSize, setSubtitleSize] = useState(20);
 
-  // Posición del bloque
+  // Bloque
   const [blockTop, setBlockTop] = useState(260);
   const [blockHeight, setBlockHeight] = useState(DEFAULT_BLOCK_HEIGHT);
   const [initialBlockTop, setInitialBlockTop] = useState(260);
   const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
 
-  // Opacidad
   const [overlayOpacity, setOverlayOpacity] = useState(1);
 
-  // Offsets internos (DENTRO DEL BLOQUE)
+  // Offsets dentro del bloque
   const [titleOffsetX, setTitleOffsetX] = useState(40);
   const [titleOffsetY, setTitleOffsetY] = useState(30);
   const [subtitleOffsetX, setSubtitleOffsetX] = useState(40);
   const [subtitleOffsetY, setSubtitleOffsetY] = useState(80);
 
-  // Offset etiqueta (DENTRO DEL BLOQUE)
+  // Tag offsets
   const [alertOffsetX, setAlertOffsetX] = useState(40);
   const [alertOffsetY, setAlertOffsetY] = useState(10);
 
@@ -296,20 +397,31 @@ export default function ImageEditorFullPage() {
   // Previews redes
   const [showSocialPreviews, setShowSocialPreviews] = useState(true);
 
-  // medir altura real del 16:9
+  const themeColors = getThemePreviewColors(theme);
+
+  // ✅ mutual exclusive
+  useEffect(() => {
+    if (showLogoHorizontal && showLogoCircle) setShowLogoCircle(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showLogoHorizontal]);
+  useEffect(() => {
+    if (showLogoCircle && showLogoHorizontal) setShowLogoHorizontal(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showLogoCircle]);
+
+  // medir altura real preview
   useEffect(() => {
     function updateHeight() {
       if (!previewRef.current) return;
       const rect = previewRef.current.getBoundingClientRect();
       if (rect.height > 0) setPreviewHeight(rect.height);
     }
-
     updateHeight();
     window.addEventListener("resize", updateHeight);
     return () => window.removeEventListener("resize", updateHeight);
-  }, [previewUrl]);
+  }, [previewUrl, showHeaderStrip]);
 
-  // INIT DESDE QUERY STRING
+  // INIT desde querystring
   useEffect(() => {
     const imageUrl = searchParams.get("imageUrl");
     const initialTitle = searchParams.get("title") ?? "";
@@ -318,8 +430,8 @@ export default function ImageEditorFullPage() {
     const initialFooterRaw = (searchParams.get("footer") ?? "").trim();
     const initialFooter = isUrlLike(initialFooterRaw) ? "" : initialFooterRaw;
 
-    const initialAlert = (searchParams.get("alertTag") as AlertTag | null) ?? "";
-
+    const initialAlert =
+      (searchParams.get("alertTag") as AlertTag | null) ?? "";
     const qpTheme = normalizeTheme(searchParams.get("theme"));
 
     const qpHeaderEnabled = searchParams.get("headerEnabled") === "1";
@@ -337,7 +449,9 @@ export default function ImageEditorFullPage() {
 
     if (qpTheme) setTheme(qpTheme);
 
-    const textPosParam = searchParams.get("textPosition") as TextPosition | null;
+    const textPosParam = searchParams.get("textPosition") as
+      | TextPosition
+      | null;
 
     let pos: TextPosition = "bottom";
     let startTop = 260;
@@ -380,21 +494,13 @@ export default function ImageEditorFullPage() {
         setPreviewUrl(imageUrl);
       } catch (err: any) {
         console.error("[editor-full] error al cargar imagen inicial:", err);
-        setErrorMsg(
-          err?.message ?? "No se pudo cargar la imagen inicial para editar."
-        );
+        setPreviewUrl(imageUrl);
+        setFile(null);
       } finally {
         setLoadingImage(false);
       }
     })();
   }, [searchParams]);
-
-  const themeColors = getThemePreviewColors(theme);
-
-  // cada vez que cambia el theme: la etiqueta pasa a barBg (regla global)
-  useEffect(() => {
-    setAlertColor(themeColors.footerBg);
-  }, [themeColors.footerBg]);
 
   // IMAGEN LOCAL
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -407,16 +513,68 @@ export default function ImageEditorFullPage() {
     setPreviewUrl(url);
   };
 
-  // DRAG
+  // Área útil (content box)
+  const effectiveHeight = previewHeight || PREVIEW_HEIGHT_FALLBACK;
+  const bars = getScaledBarsForPreview({
+    previewH: effectiveHeight,
+    showHeaderStrip,
+  });
+
+  const contentTopOffset = bars.contentTopOffset;
+  const contentHeight = bars.contentHeight;
+  const previewHeaderH = bars.headerH;
+  const previewFooterH = bars.footerH;
+
+  function getPreviewSizes() {
+    const previewW =
+      previewRef.current?.getBoundingClientRect().width ?? 1280;
+    const previewH =
+      previewRef.current?.getBoundingClientRect().height ?? 720;
+
+    const contentW = Math.max(1, previewW);
+    const contentH = Math.max(1, previewH - previewHeaderH - previewFooterH);
+
+    return { previewW, previewH, contentW, contentH };
+  }
+
+  // clamp de logo dentro del content box (0..contentW-logoW, 0..contentH-logoH)
+  function clampLogoPct(args: {
+    xPct: number;
+    yPct: number;
+    widthPct: number;
+    kind: "circle" | "horizontal";
+  }) {
+    const { contentW, contentH } = getPreviewSizes();
+    const wPx = (args.widthPct / 100) * contentW;
+
+    // altura estimada para hitbox / clamp
+    const hPx = args.kind === "circle" ? wPx : wPx * 0.28;
+
+    const xPx = pctToPx(args.xPct, contentW);
+    const yPx = pctToPx(args.yPct, contentH);
+
+    const maxX = Math.max(0, contentW - wPx);
+    const maxY = Math.max(0, contentH - hPx);
+
+    const xClamped = clamp(xPx, 0, maxX);
+    const yClamped = clamp(yPx, 0, maxY);
+
+    return {
+      xPct: pxToPct(xClamped, contentW),
+      yPct: pxToPct(yClamped, contentH),
+    };
+  }
+
+  // DRAG start
   const startDrag = (target: DragTarget, e: ReactMouseEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!containerRef.current) return;
 
     setDrag({
       target,
       startX: e.clientX,
       startY: e.clientY,
+
       blockTop,
       blockHeight,
       titleOffsetX,
@@ -425,20 +583,18 @@ export default function ImageEditorFullPage() {
       subtitleOffsetY,
       alertOffsetX,
       alertOffsetY,
+
+      logoCircleXPct,
+      logoCircleYPct,
+      logoCircleWidthPct,
+
+      logoHorizontalXPct,
+      logoHorizontalYPct,
+      logoHorizontalWidthPct,
     });
   };
 
-  // ✅ Área útil (pero AHORA con header/footer ESCALADOS al preview, igual que backend)
-  const effectiveHeight = previewHeight || PREVIEW_HEIGHT_FALLBACK;
-  const bars = getScaledBarsForPreview({
-    previewH: effectiveHeight,
-    showHeaderStrip,
-  });
-  const contentTopOffset = bars.contentTopOffset;
-  const contentHeight = bars.contentHeight;
-  const previewHeaderH = bars.headerH;
-  const previewFooterH = bars.footerH;
-
+  // DRAG move
   useEffect(() => {
     if (!drag) return;
 
@@ -476,18 +632,110 @@ export default function ImageEditorFullPage() {
           setAlertOffsetY(drag.alertOffsetY + dy);
           break;
         }
+
+        // ✅ LOGO DRAG (en % del content box) — libre X/Y
+        case "logoCircle": {
+          const { contentW, contentH } = getPreviewSizes();
+
+          const startXpx = pctToPx(drag.logoCircleXPct, contentW);
+          const startYpx = pctToPx(drag.logoCircleYPct, contentH);
+
+          const xPct = pxToPct(startXpx + dx, contentW);
+          const yPct = pxToPct(startYpx + dy, contentH);
+
+          const clamped = clampLogoPct({
+            xPct,
+            yPct,
+            widthPct: logoCircleWidthPct,
+            kind: "circle",
+          });
+
+          setLogoCircleXPct(clamped.xPct);
+          setLogoCircleYPct(clamped.yPct);
+          break;
+        }
+
+        case "logoHorizontal": {
+          const { contentW, contentH } = getPreviewSizes();
+
+          const startXpx = pctToPx(drag.logoHorizontalXPct, contentW);
+          const startYpx = pctToPx(drag.logoHorizontalYPct, contentH);
+
+          const xPct = pxToPct(startXpx + dx, contentW);
+          const yPct = pxToPct(startYpx + dy, contentH);
+
+          const clamped = clampLogoPct({
+            xPct,
+            yPct,
+            widthPct: logoHorizontalWidthPct,
+            kind: "horizontal",
+          });
+
+          setLogoHorizontalXPct(clamped.xPct);
+          setLogoHorizontalYPct(clamped.yPct);
+          break;
+        }
+
+        // ✅ LOGO RESIZE (drag desde handle)
+        case "logoCircleResize": {
+          const { contentW } = getPreviewSizes();
+          const startWpx = (drag.logoCircleWidthPct / 100) * contentW;
+          const newWpx = Math.max(24, startWpx + dx);
+          const newPct = clamp((newWpx / contentW) * 100, 6, 40);
+          setLogoCircleWidthPct(newPct);
+
+          const clamped = clampLogoPct({
+            xPct: logoCircleXPct,
+            yPct: logoCircleYPct,
+            widthPct: newPct,
+            kind: "circle",
+          });
+          setLogoCircleXPct(clamped.xPct);
+          setLogoCircleYPct(clamped.yPct);
+          break;
+        }
+
+        case "logoHorizontalResize": {
+          const { contentW } = getPreviewSizes();
+          const startWpx = (drag.logoHorizontalWidthPct / 100) * contentW;
+          const newWpx = Math.max(48, startWpx + dx);
+          const newPct = clamp((newWpx / contentW) * 100, 6, 40);
+          setLogoHorizontalWidthPct(newPct);
+
+          const clamped = clampLogoPct({
+            xPct: logoHorizontalXPct,
+            yPct: logoHorizontalYPct,
+            widthPct: newPct,
+            kind: "horizontal",
+          });
+          setLogoHorizontalXPct(clamped.xPct);
+          setLogoHorizontalYPct(clamped.yPct);
+          break;
+        }
       }
     };
 
     const handleUp = () => setDrag(null);
 
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
+    window.addEventListener("mousemove", handleMove, { passive: true });
+    window.addEventListener("mouseup", handleUp, { passive: true });
     return () => {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [drag, contentHeight, contentTopOffset]);
+  }, [
+    drag,
+    contentHeight,
+    contentTopOffset,
+    previewHeaderH,
+    previewFooterH,
+    logoCircleWidthPct,
+    logoHorizontalWidthPct,
+    logoCircleXPct,
+    logoCircleYPct,
+    logoHorizontalXPct,
+    logoHorizontalYPct,
+  ]);
 
   function resetPositions() {
     setBlockTop(initialBlockTop);
@@ -498,9 +746,33 @@ export default function ImageEditorFullPage() {
     setSubtitleOffsetY(80);
     setAlertOffsetX(40);
     setAlertOffsetY(10);
+
+    setLogoCircleXPct(82);
+    setLogoCircleYPct(10);
+    setLogoCircleWidthPct(10);
+    setLogoCircleOpacity(0.95);
+
+    setLogoHorizontalXPct(70);
+    setLogoHorizontalYPct(10);
+    setLogoHorizontalWidthPct(24);
+    setLogoHorizontalOpacity(0.95);
   }
 
-  // ✅ ESTE ES EL CÁLCULO BUENO (lo que mandás al backend)
+  function resetFloatingLogo() {
+    if (showLogoHorizontal) {
+      setLogoHorizontalXPct(70);
+      setLogoHorizontalYPct(10);
+      setLogoHorizontalWidthPct(24);
+      setLogoHorizontalOpacity(0.95);
+      return;
+    }
+    setLogoCircleXPct(82);
+    setLogoCircleYPct(10);
+    setLogoCircleWidthPct(10);
+    setLogoCircleOpacity(0.95);
+  }
+
+  // ✅ % para backend (contentHeight)
   const live = getBackendLayoutPct({
     previewEl: previewRef.current,
     previewHeightFallback: PREVIEW_HEIGHT_FALLBACK,
@@ -514,12 +786,11 @@ export default function ImageEditorFullPage() {
   const blockTopPct = live.blockTopPct;
   const overlayHeightPct = live.overlayHeightPct;
 
-  // offsets para previews (proporción 1280x720 baseline)
+  // offsets para previews (baseline)
   const titleXFrac = clamp(titleOffsetX / 1280, 0, 1);
   const subtitleXFrac = clamp(subtitleOffsetX / 1280, 0, 1);
   const alertXFrac = clamp(alertOffsetX / 1280, 0, 1);
 
-  // offsets Y: SON dentro del bloque, así que guardamos fracción del bloque
   const titleYInBlockFrac = clamp(titleOffsetY / Math.max(1, blockHeight), 0, 1);
   const subtitleYInBlockFrac = clamp(
     subtitleOffsetY / Math.max(1, blockHeight),
@@ -528,153 +799,39 @@ export default function ImageEditorFullPage() {
   );
   const alertYInBlockFrac = clamp(alertOffsetY / Math.max(1, blockHeight), 0, 1);
 
-  const handleGenerate = async () => {
-    if (!file) {
-      setErrorMsg(
-        "Primero seleccioná una imagen base (o asegurate que se haya cargado la del artículo)."
-      );
-      return;
-    }
-
-    setSaving(true);
-    setErrorMsg(null);
-    setStatusMsg(null);
-
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-
-      const token =
-        typeof window !== "undefined"
-          ? window.localStorage.getItem("news_access_token")
-          : null;
-      if (token) fd.append("accessToken", token);
-
-      const footerText = footer.trim() || null;
-
-      const brandConfig = {
-        brandName: "CANALIBERTARIO",
-        useHeaderWordmark: true,
-        siteUrl: null,
-        socialHandle: null,
-        socialIcons: ["x", "facebook", "instagram"] as const,
-        logoUrl: BRAND_LOGO_SRC,
-      };
-
-      const layout = {
-        textPosition,
-        // ✅ CLAVE: estos % van sobre "contentHeight", igual que backend
-        blockTopPct,
-        overlayHeightPct,
-        overlayOpacity,
-        titleFontPx: titleSize,
-        subtitleFontPx: subtitleSize,
-        headerStrip: showHeaderStrip
-          ? {
-              date: headerDate || null,
-              label: headerLabel || null,
-            }
-          : null,
-      };
-
-      const colors = {
-        theme: theme === "wine" ? "red" : theme,
-        title: titleColor,
-        subtitle: subtitleColor,
-        handle: brandColor,
-        alertBg: themeColors.footerBg,
-      };
-
-      const options = {
-        title: title.trim() || null,
-        subtitle: subtitle.trim() || null, // ✅ opcional real
-        footer: footerText,
-        brand: brandConfig,
-        alertTag: alertTag || null,
-        useSocialIcons: true,
-        layout,
-        colors,
-      };
-
-      fd.append("optionsJson", JSON.stringify(options));
-
-      const res = await fetch("/api/editor-images/enhance", {
-        method: "POST",
-        body: fd,
-      });
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `Error HTTP ${res.status} al generar la portada`);
-      }
-
-      const data = await res.json().catch(() => null);
-
-      const finalUrl: string | null =
-        data?.imageUrl ??
-        data?.coverUrl ??
-        data?.enhancedImageUrl ??
-        data?.url ??
-        null;
-
-      if (!finalUrl) {
-        const coverError = data?.coverError?.message
-          ? ` (${data.coverError.message})`
-          : "";
-        throw new Error(`El backend no devolvió imageUrl/coverUrl${coverError}`);
-      }
-
-      setStatusMsg(data?.message ?? "Cover generada. URL copiada al portapapeles.");
-
-      if (typeof navigator !== "undefined" && navigator.clipboard) {
-        try {
-          await navigator.clipboard.writeText(finalUrl);
-        } catch {}
-      }
-
-      if (typeof window !== "undefined" && window.opener && window.location) {
-        try {
-          window.opener.postMessage(
-            { type: "editor-image-url", url: finalUrl },
-            window.location.origin
-          );
-        } catch {}
-      }
-    } catch (err: any) {
-      console.error("[editor-full] error:", err);
-      setErrorMsg(err?.message ?? "Error al generar la portada.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   function SocialIcons() {
     return (
       <div className="flex items-center gap-1.5">
         <img
           src={ICON_X}
           alt="X"
+          draggable={false}
+          onDragStart={(e) => e.preventDefault()}
           className="h-6 w-6 rounded-full bg-black/60 p-1"
           onError={(e) =>
-            (((e.currentTarget as HTMLImageElement).style.display = "none"),
+          (((e.currentTarget as HTMLImageElement).style.display = "none"),
             undefined)
           }
         />
         <img
           src={ICON_FB}
           alt="Facebook"
+          draggable={false}
+          onDragStart={(e) => e.preventDefault()}
           className="h-6 w-6 rounded-full bg-black/60 p-1"
           onError={(e) =>
-            (((e.currentTarget as HTMLImageElement).style.display = "none"),
+          (((e.currentTarget as HTMLImageElement).style.display = "none"),
             undefined)
           }
         />
         <img
           src={ICON_IG}
           alt="Instagram"
+          draggable={false}
+          onDragStart={(e) => e.preventDefault()}
           className="h-6 w-6 rounded-full bg-black/60 p-1"
           onError={(e) =>
-            (((e.currentTarget as HTMLImageElement).style.display = "none"),
+          (((e.currentTarget as HTMLImageElement).style.display = "none"),
             undefined)
           }
         />
@@ -682,36 +839,84 @@ export default function ImageEditorFullPage() {
     );
   }
 
-  // ✅ Preview overlays para otras proporciones: escalar footer/header igual que backend (54/720 y 40/720)
+  // ✅ Preview overlays para otras proporciones
   function OverlayLayer(props: { w: number; h: number; showHeader: boolean }) {
     const { w, h, showHeader } = props;
 
     const footerH = Math.round((FOOTER_HEIGHT / 720) * h);
-    const headerH = showHeader ? Math.round((HEADER_STRIP_HEIGHT / 720) * h) : 0;
+    const headerH = showHeader
+      ? Math.round((HEADER_STRIP_HEIGHT / 720) * h)
+      : 0;
     const contentH = Math.max(1, h - footerH - headerH);
+    const contentW = Math.max(1, w);
 
-    // ✅ % sobre contentH (NO sobre h). El 0% arranca debajo del header.
     let topPx = headerH + (blockTopPct / 100) * contentH;
     let heightPx = (overlayHeightPct / 100) * contentH;
 
-    // clamp para que no pise footer/header
     const minTop = headerH;
     const maxTop = headerH + contentH - heightPx;
     topPx = Math.max(minTop, Math.min(maxTop, topPx));
     heightPx = Math.max(1, Math.min(contentH, heightPx));
 
-    // Posiciones: X a escala del canvas (porque el bloque ocupa todo el ancho)
     const titleLeft = titleXFrac * w;
     const subtitleLeft = subtitleXFrac * w;
     const alertLeft = alertXFrac * w;
 
-    // Y: relativo al bloque (fracción * altura del bloque renderizado) + top del bloque
     const titleTop = topPx + titleYInBlockFrac * heightPx;
     const subtitleTop = topPx + subtitleYInBlockFrac * heightPx;
     const alertTop = topPx + alertYInBlockFrac * heightPx;
 
+    // ✅ logos flotantes (NO en footer)
+    const circleLeft = pctToPx(logoCircleXPct, contentW);
+    const circleTop = headerH + pctToPx(logoCircleYPct, contentH);
+    const circleW = (logoCircleWidthPct / 100) * contentW;
+
+    const horizLeft = pctToPx(logoHorizontalXPct, contentW);
+    const horizTop = headerH + pctToPx(logoHorizontalYPct, contentH);
+    const horizW = (logoHorizontalWidthPct / 100) * contentW;
+    const horizH = horizW * 0.28;
+
     return (
       <>
+        {showLogoHorizontal && (
+          <div
+            className="absolute"
+            style={{
+              left: horizLeft,
+              top: horizTop,
+              width: horizW,
+              height: horizH,
+            }}
+          >
+            <ImgMulti
+              candidates={LOGO_HORIZONTAL_CANDIDATES}
+              alt="Logo horizontal (preview)"
+              className="absolute inset-0 object-contain select-none"
+              style={{ opacity: logoHorizontalOpacity }}
+            />
+          </div>
+        )}
+
+        {showLogoCircle && !showLogoHorizontal && (
+          <div
+            className="absolute"
+            style={{
+              left: circleLeft,
+              top: circleTop,
+              width: circleW,
+              height: circleW,
+            }}
+          >
+            <ImgMulti
+              candidates={LOGO_CIRCLE_CANDIDATES}
+              alt="Logo circular (preview)"
+              className="absolute inset-0 object-contain select-none"
+              style={{ opacity: logoCircleOpacity }}
+              rounded
+            />
+          </div>
+        )}
+
         {showHeader && (headerDate || headerLabel) && (
           <div
             className="absolute inset-x-0 flex items-center justify-between px-4 text-[11px]"
@@ -748,7 +953,7 @@ export default function ImageEditorFullPage() {
                 className="absolute inline-flex select-none items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
                 style={{
                   left: alertLeft,
-                  top: alertTop - topPx, // dentro del bloque
+                  top: alertTop - topPx,
                   backgroundColor: themeColors.footerBg,
                   color: "#ffffff",
                 }}
@@ -762,7 +967,7 @@ export default function ImageEditorFullPage() {
                 className="absolute select-none font-extrabold tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
                 style={{
                   left: titleLeft,
-                  top: titleTop - topPx, // dentro del bloque
+                  top: titleTop - topPx,
                   fontSize: `${Math.max(
                     18,
                     Math.round((titleSize / 1280) * w)
@@ -781,7 +986,7 @@ export default function ImageEditorFullPage() {
                 className="absolute select-none font-medium drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]"
                 style={{
                   left: subtitleLeft,
-                  top: subtitleTop - topPx, // dentro del bloque
+                  top: subtitleTop - topPx,
                   fontSize: `${Math.max(
                     12,
                     Math.round((subtitleSize / 1280) * w)
@@ -797,6 +1002,7 @@ export default function ImageEditorFullPage() {
           </div>
         </div>
 
+        {/* ✅ Footer FIJO (lockup) */}
         <div
           className="absolute inset-x-0 flex items-center justify-between gap-3 px-4"
           style={{
@@ -806,25 +1012,32 @@ export default function ImageEditorFullPage() {
             borderTop: `1px solid ${themeColors.footerBorder}`,
           }}
         >
-          <div className="flex min-w-0 items-center gap-3">
-            <img
-              src={BRAND_LOGO_SRC}
-              alt="Canalibertario"
-              className="h-7 w-7 flex-none rounded-full border border-white/10 bg-black/30 object-cover"
-              onError={(e) =>
-                (((e.currentTarget as HTMLImageElement).style.display = "none"),
-                undefined)
-              }
-            />
-            <div className="min-w-0">
-              <div className="truncate text-xs font-extrabold tracking-tight text-slate-100">
-                CANALIBERTARIO
-              </div>
-              <div className="truncate text-[10px] text-slate-300">
-                Noticias y análisis (mirada libertaria)
+          {showFooterLockup ? (
+            <div className="flex min-w-0 items-center gap-3">
+              <img
+                src={BRAND_LOCKUP_SRC}
+                alt="Canalibertario lockup"
+                draggable={false}
+                onDragStart={(e) => e.preventDefault()}
+                className="h-7 w-7 flex-none rounded-full border border-white/10 bg-black/30 object-cover"
+                onError={(e) =>
+                (((e.currentTarget as HTMLImageElement).style.display =
+                  "none"),
+                  undefined)
+                }
+              />
+              <div className="min-w-0">
+                <div className="truncate text-xs font-extrabold tracking-tight text-slate-100">
+                  CANALIBERTARIO
+                </div>
+                <div className="truncate text-[10px] text-slate-300">
+                  Noticias y análisis (mirada libertaria)
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div />
+          )}
 
           <div className="flex flex-none items-center gap-3">
             <div className="opacity-95" style={{ color: brandColor }}>
@@ -839,10 +1052,204 @@ export default function ImageEditorFullPage() {
     );
   }
 
-  // ✅ slider “Altura del fondo (barra)” debe ser sobre contentHeight, no sobre altura total
+  // slider altura fondo (barra) sobre contentHeight
   const overlayHeightPctUI = Math.round(
     (blockHeight / Math.max(1, contentHeight)) * 100
   );
+
+  async function ensureFileFromPreviewUrl(): Promise<File | null> {
+    if (!previewUrl) return null;
+    try {
+      const res = await fetch(previewUrl);
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      const mime = blob.type || "image/jpeg";
+      return new File([blob], "image-from-preview.jpg", { type: mime });
+    } catch {
+      return null;
+    }
+  }
+
+  const handleGenerate = async () => {
+    if (!previewUrl && !file) {
+      setErrorMsg(
+        "Primero seleccioná una imagen base (o asegurate que se haya cargado la del artículo)."
+      );
+      return;
+    }
+
+    setSaving(true);
+    setErrorMsg(null);
+    setStatusMsg(null);
+
+    try {
+      let effectiveFile = file;
+      if (!effectiveFile) {
+        effectiveFile = await ensureFileFromPreviewUrl();
+        if (effectiveFile) setFile(effectiveFile);
+      }
+
+      if (!effectiveFile) {
+        throw new Error(
+          "No pude armar el archivo de imagen para enviar. Esto suele ser CORS entre el front y el servidor de imágenes. Solución: habilitar CORS en el backend de uploads, o servir la imagen desde el mismo dominio/origen del front."
+        );
+      }
+
+      const fd = new FormData();
+      fd.append("file", effectiveFile);
+
+      const token =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("news_access_token")
+          : null;
+      if (token) fd.append("accessToken", token);
+
+      const footerText = footer.trim() || null;
+
+      const useHorizontal = showLogoHorizontal;
+      const useCircle = showLogoCircle && !showLogoHorizontal;
+
+      const logoOverlay =
+        useHorizontal || useCircle
+          ? {
+            enabled: true,
+            kind: useHorizontal ? "horizontal" : "circle",
+            xPct: useHorizontal ? logoHorizontalXPct : logoCircleXPct,
+            yPct: contentYPctToCanvasYPct({
+              yContentPct: useHorizontal ? logoHorizontalYPct : logoCircleYPct,
+              showHeaderStrip,
+            }),
+            widthPct: useHorizontal
+              ? logoHorizontalWidthPct
+              : logoCircleWidthPct,
+            opacity: useHorizontal ? logoHorizontalOpacity : logoCircleOpacity,
+          }
+          : { enabled: false };
+
+      const brandConfig = {
+        brandName: "CANALIBERTARIO",
+        assets: {
+          // el backend usa paths; dejamos el “primero” (el que te interesa)
+          logoCirclePath: LOGO_CIRCLE_CANDIDATES[0],
+          logoHorizontalPath: LOGO_HORIZONTAL_CANDIDATES[0],
+          footerLockupPath: BRAND_LOCKUP_SRC,
+        },
+      };
+
+      const layout = {
+        textPosition: "custom",
+        blockTopPct,
+        overlayHeightPct,
+        overlayOpacity,
+        titleFontPx: titleSize,
+        subtitleFontPx: subtitleSize,
+
+        headerStrip: showHeaderStrip
+          ? {
+            date: headerDate || null,
+            label: headerLabel || null,
+          }
+          : null,
+
+        // ✅ footer lockup FIJO
+        footerLeft: {
+          enabled: true,
+          kind: "lockup",
+        },
+
+        // ✅ logo flotante real
+        logoOverlay,
+      };
+
+      const colors = {
+        theme: theme === "wine" ? "red" : theme,
+        title: titleColor,
+        subtitle: subtitleColor,
+        handle: brandColor,
+        alertBg: themeColors.footerBg,
+      };
+
+      const options = {
+        title: title.trim() || null,
+        subtitle: subtitle.trim() || null,
+        footer: footerText,
+        brand: brandConfig,
+        alertTag: alertTag || null,
+        useSocialIcons: true,
+        layout,
+        colors,
+      };
+
+      fd.append("optionsJson", JSON.stringify(options));
+
+      const res = await fetch("/api/editor-images/enhance", {
+        method: "POST",
+        body: fd,
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Error HTTP ${res.status} al generar la portada`);
+      }
+
+      const data = await res.json().catch(() => null);
+
+      const finalUrl: string | null =
+        data?.imageUrl ??
+        data?.coverUrl ??
+        data?.enhancedImageUrl ??
+        data?.url ??
+        null;
+
+      if (!finalUrl) {
+        const coverError = data?.coverError?.message
+          ? ` (${data.coverError.message})`
+          : "";
+        throw new Error(`El backend no devolvió imageUrl/coverUrl${coverError}`);
+      }
+
+      setStatusMsg(
+        data?.message ?? "Cover generada. URL copiada al portapapeles."
+      );
+
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        try {
+          await navigator.clipboard.writeText(finalUrl);
+        } catch { }
+      }
+
+      if (typeof window !== "undefined" && window.opener && window.location) {
+        try {
+          window.opener.postMessage(
+            { type: "editor-image-url", url: finalUrl },
+            window.location.origin
+          );
+        } catch { }
+      }
+    } catch (err: any) {
+      console.error("[editor-full] error:", err);
+      setErrorMsg(err?.message ?? "Error al generar la portada.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // px del logo flotante en preview 16:9
+  const previewW =
+    previewRef.current?.getBoundingClientRect().width ?? 1280;
+  const previewH =
+    previewRef.current?.getBoundingClientRect().height ?? 720;
+  const contentW = Math.max(1, previewW);
+  const contentH = Math.max(1, previewH - previewHeaderH - previewFooterH);
+
+  const circleLeft = pctToPx(logoCircleXPct, contentW);
+  const circleTop = previewHeaderH + pctToPx(logoCircleYPct, contentH);
+  const circleW = (logoCircleWidthPct / 100) * contentW;
+
+  const horizLeft = pctToPx(logoHorizontalXPct, contentW);
+  const horizTop = previewHeaderH + pctToPx(logoHorizontalYPct, contentH);
+  const horizW = (logoHorizontalWidthPct / 100) * contentW;
+  const horizH = horizW * 0.28; // ✅ hitbox real para drag vertical
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50">
@@ -876,10 +1283,80 @@ export default function ImageEditorFullPage() {
                   <img
                     src={previewUrl}
                     alt="Imagen base"
+                    draggable={false}
+                    onDragStart={(e) => e.preventDefault()}
                     className="h-full w-full object-cover"
                   />
 
-                  {/* BLOQUE (drag) */}
+                  {/* ✅ LOGOS FLOTANTES (DRAG + RESIZE HANDLE) */}
+                  {showLogoHorizontal && (
+                    <div
+                      className="absolute cursor-move"
+                      style={{
+                        left: horizLeft,
+                        top: horizTop,
+                        width: horizW,
+                        height: horizH,
+                        zIndex: 30,
+
+                        // ✅ hitbox visible suave para que no sea "un punto"
+                        background: "rgba(0,0,0,0.18)",
+                        border: "1px solid rgba(255,255,255,0.18)",
+                        borderRadius: 12,
+                        backdropFilter: "blur(1px)",
+                      }}
+                      onMouseDown={(e) => startDrag("logoHorizontal", e)}
+                    >
+                      <ImgMulti
+                        candidates={LOGO_HORIZONTAL_CANDIDATES}
+                        alt="Logo horizontal (floating)"
+                        className="absolute inset-0 object-contain select-none"
+                        style={{ opacity: logoHorizontalOpacity, pointerEvents: "none" }}
+                      />
+
+                      <div
+                        className="absolute -bottom-2 -right-2 h-4 w-4 cursor-nwse-resize rounded-full border border-white/30 bg-black/60 shadow"
+                        title="Redimensionar"
+                        onMouseDown={(e) => startDrag("logoHorizontalResize", e)}
+                      />
+                    </div>
+                  )}
+
+                  {showLogoCircle && !showLogoHorizontal && (
+                    <div
+                      className="absolute cursor-move rounded-full"
+                      style={{
+                        left: circleLeft,
+                        top: circleTop,
+                        width: circleW,
+                        height: circleW,
+                        zIndex: 30,
+
+                        // ✅ hitbox visible
+                        background: "rgba(0,0,0,0.18)",
+                        border: "1px solid rgba(255,255,255,0.18)",
+                        backdropFilter: "blur(1px)",
+                      }}
+                      onMouseDown={(e) => startDrag("logoCircle", e)}
+                    >
+
+                      <ImgMulti
+                        candidates={LOGO_CIRCLE_CANDIDATES}
+                        alt="Logo circular (floating)"
+                        className="absolute inset-0 rounded-full object-contain select-none"
+                        style={{ opacity: logoCircleOpacity, pointerEvents: "none" }}
+                        rounded
+                      />
+
+                      <div
+                        className="absolute -bottom-2 -right-2 h-4 w-4 cursor-nwse-resize rounded-full border border-white/30 bg-black/60 shadow"
+                        title="Redimensionar"
+                        onMouseDown={(e) => startDrag("logoCircleResize", e)}
+                      />
+                    </div>
+                  )}
+
+                  {/* BLOQUE */}
                   <div
                     className="absolute left-0 right-0 cursor-move"
                     style={{
@@ -887,6 +1364,7 @@ export default function ImageEditorFullPage() {
                       height: blockHeight,
                       background: `linear-gradient(to bottom, ${themeColors.bandFrom} 0%, ${themeColors.bandMid} 40%, ${themeColors.bandTo} 100%)`,
                       opacity: overlayOpacity,
+                      zIndex: 20,
                     }}
                     onMouseDown={(e) => startDrag("block", e)}
                   >
@@ -946,7 +1424,7 @@ export default function ImageEditorFullPage() {
                     </div>
                   </div>
 
-                  {/* FRANJA SUPERIOR (ESCALADA) */}
+                  {/* HEADER */}
                   {showHeaderStrip && (headerDate || headerLabel) && (
                     <div
                       className="absolute inset-x-0 flex items-center justify-between px-6 text-xs"
@@ -955,6 +1433,7 @@ export default function ImageEditorFullPage() {
                         height: previewHeaderH,
                         backgroundColor: themeColors.footerBg,
                         borderBottom: `1px solid ${themeColors.footerBorder}`,
+                        zIndex: 40,
                       }}
                     >
                       <span className="font-semibold text-slate-200">
@@ -968,7 +1447,7 @@ export default function ImageEditorFullPage() {
                     </div>
                   )}
 
-                  {/* FOOTER BRANDING (ESCALADO) */}
+                  {/* ✅ FOOTER FIJO (lockup) */}
                   <div
                     className="absolute inset-x-0 flex items-center justify-between gap-3 px-8"
                     style={{
@@ -976,16 +1455,19 @@ export default function ImageEditorFullPage() {
                       height: previewFooterH,
                       backgroundColor: themeColors.footerBg,
                       borderTop: `1px solid ${themeColors.footerBorder}`,
+                      zIndex: 50,
                     }}
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       <img
-                        src={BRAND_LOGO_SRC}
-                        alt="Canalibertario"
+                        src={BRAND_LOCKUP_SRC}
+                        alt="Canalibertario lockup"
+                        draggable={false}
+                        onDragStart={(e) => e.preventDefault()}
                         className="h-8 w-8 flex-none rounded-full border border-white/10 bg-black/30 object-cover"
                         onError={(e) =>
-                          (((e.currentTarget as HTMLImageElement).style.display =
-                            "none"),
+                        (((e.currentTarget as HTMLImageElement).style.display =
+                          "none"),
                           undefined)
                         }
                       />
@@ -1048,11 +1530,10 @@ export default function ImageEditorFullPage() {
                           key={t}
                           type="button"
                           onClick={() => setTheme(t)}
-                          className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
-                            theme === t
-                              ? "border-sky-400 bg-sky-500/10 text-sky-100"
-                              : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400/70"
-                          }`}
+                          className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${theme === t
+                            ? "border-sky-400 bg-sky-500/10 text-sky-100"
+                            : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400/70"
+                            }`}
                         >
                           {themeLabel(t)}
                         </button>
@@ -1074,11 +1555,10 @@ export default function ImageEditorFullPage() {
                         key={c}
                         type="button"
                         onClick={() => setTitleColor(c)}
-                        className={`h-5 w-5 rounded-full border ${
-                          titleColor === c
-                            ? "border-sky-400 ring-2 ring-sky-400/60"
-                            : "border-slate-600"
-                        }`}
+                        className={`h-5 w-5 rounded-full border ${titleColor === c
+                          ? "border-sky-400 ring-2 ring-sky-400/60"
+                          : "border-slate-600"
+                          }`}
                         style={{ backgroundColor: c }}
                       />
                     ))}
@@ -1094,11 +1574,10 @@ export default function ImageEditorFullPage() {
                         key={c}
                         type="button"
                         onClick={() => setSubtitleColor(c)}
-                        className={`h-5 w-5 rounded-full border ${
-                          subtitleColor === c
-                            ? "border-sky-400 ring-2 ring-sky-400/60"
-                            : "border-slate-600"
-                        }`}
+                        className={`h-5 w-5 rounded-full border ${subtitleColor === c
+                          ? "border-sky-400 ring-2 ring-sky-400/60"
+                          : "border-slate-600"
+                          }`}
                         style={{ backgroundColor: c }}
                       />
                     ))}
@@ -1114,31 +1593,15 @@ export default function ImageEditorFullPage() {
                         key={c}
                         type="button"
                         onClick={() => setBrandColor(c)}
-                        className={`h-5 w-5 rounded-full border ${
-                          brandColor === c
-                            ? "border-sky-400 ring-2 ring-sky-400/60"
-                            : "border-slate-600"
-                        }`}
+                        className={`h-5 w-5 rounded-full border ${brandColor === c
+                          ? "border-sky-400 ring-2 ring-sky-400/60"
+                          : "border-slate-600"
+                          }`}
                         style={{ backgroundColor: c }}
                       />
                     ))}
                   </div>
                   <span className="ml-2 text-slate-400">{brandColor}</span>
-                </div>
-
-                {/* ✅ Etiqueta: fijo por theme (no editable) */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="w-32 text-slate-300">Color etiqueta</span>
-                  <div className="inline-flex items-center gap-2">
-                    <span
-                      className="inline-block h-5 w-5 rounded-full border border-slate-600"
-                      style={{ backgroundColor: themeColors.footerBg }}
-                      title="La etiqueta usa barBg del theme"
-                    />
-                    <span className="text-slate-400">
-                      fijo por theme ({themeColors.footerBg})
-                    </span>
-                  </div>
                 </div>
 
                 <button
@@ -1152,7 +1615,7 @@ export default function ImageEditorFullPage() {
             </div>
           </section>
 
-          {/* ✅ Previews recorte (IMÁGENES) */}
+          {/* Previews recorte */}
           {showSocialPreviews && previewUrl ? (
             <section className="space-y-3 rounded-3xl border border-slate-900 bg-slate-950/70 p-5">
               <div className="flex items-center justify-between">
@@ -1165,7 +1628,6 @@ export default function ImageEditorFullPage() {
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {/* 16:9 */}
                 <div className="space-y-2">
                   <div className="text-[11px] font-semibold text-slate-300">
                     16:9 (X / Facebook / YouTube)
@@ -1174,13 +1636,14 @@ export default function ImageEditorFullPage() {
                     <img
                       src={previewUrl}
                       alt="16:9"
+                      draggable={false}
+                      onDragStart={(e) => e.preventDefault()}
                       className="h-full w-full object-cover"
                     />
                     <OverlayLayer w={1280} h={720} showHeader={showHeaderStrip} />
                   </div>
                 </div>
 
-                {/* 1:1 */}
                 <div className="space-y-2">
                   <div className="text-[11px] font-semibold text-slate-300">
                     1:1 (Instagram feed)
@@ -1189,13 +1652,14 @@ export default function ImageEditorFullPage() {
                     <img
                       src={previewUrl}
                       alt="1:1"
+                      draggable={false}
+                      onDragStart={(e) => e.preventDefault()}
                       className="h-full w-full object-cover"
                     />
                     <OverlayLayer w={1080} h={1080} showHeader={false} />
                   </div>
                 </div>
 
-                {/* 4:5 */}
                 <div className="space-y-2">
                   <div className="text-[11px] font-semibold text-slate-300">
                     4:5 (Instagram feed alto)
@@ -1204,6 +1668,8 @@ export default function ImageEditorFullPage() {
                     <img
                       src={previewUrl}
                       alt="4:5"
+                      draggable={false}
+                      onDragStart={(e) => e.preventDefault()}
                       className="h-full w-full object-cover"
                     />
                     <OverlayLayer w={1080} h={1350} showHeader={false} />
@@ -1220,6 +1686,136 @@ export default function ImageEditorFullPage() {
             <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
               Imagen base
             </h2>
+
+            {/* BRANDING */}
+            <div className="mt-3 space-y-2 border-t border-slate-800 pt-3">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Branding (logos flotantes)
+              </h3>
+
+              <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={showLogoCircle}
+                  onChange={(e) => setShowLogoCircle(e.target.checked)}
+                  className="h-3 w-3 rounded border-slate-600 bg-slate-900"
+                />
+                Mostrar logo circular (overlay)
+              </label>
+
+              <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={showLogoHorizontal}
+                  onChange={(e) => setShowLogoHorizontal(e.target.checked)}
+                  className="h-3 w-3 rounded border-slate-600 bg-slate-900"
+                />
+                Mostrar logo horizontal (overlay)
+              </label>
+
+              <div className="text-[10px] text-slate-500">
+                Tip: arrastrá el logo en la preview. Para agrandar/achicar, usá el
+                handle (esquina) o el slider.
+              </div>
+
+              {/* ✅ controles SOLO tamaño/opacidad */}
+              {(showLogoCircle || showLogoHorizontal) && (
+                <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 text-[11px] text-slate-200">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Logo flotante: tamaño y opacidad
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <div className="mb-1 flex items-center justify-between">
+                        <span>Tamaño (% ancho)</span>
+                        <span className="text-slate-400">
+                          {showLogoHorizontal
+                            ? logoHorizontalWidthPct
+                            : logoCircleWidthPct}
+                          %
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={6}
+                        max={40}
+                        value={
+                          showLogoHorizontal
+                            ? logoHorizontalWidthPct
+                            : logoCircleWidthPct
+                        }
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+
+                          if (showLogoHorizontal) {
+                            setLogoHorizontalWidthPct(v);
+                            const c = clampLogoPct({
+                              xPct: logoHorizontalXPct,
+                              yPct: logoHorizontalYPct,
+                              widthPct: v,
+                              kind: "horizontal",
+                            });
+                            setLogoHorizontalXPct(c.xPct);
+                            setLogoHorizontalYPct(c.yPct);
+                          } else {
+                            setLogoCircleWidthPct(v);
+                            const c = clampLogoPct({
+                              xPct: logoCircleXPct,
+                              yPct: logoCircleYPct,
+                              widthPct: v,
+                              kind: "circle",
+                            });
+                            setLogoCircleXPct(c.xPct);
+                            setLogoCircleYPct(c.yPct);
+                          }
+                        }}
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="mb-1 flex items-center justify-between">
+                        <span>Opacidad</span>
+                        <span className="text-slate-400">
+                          {(
+                            showLogoHorizontal
+                              ? logoHorizontalOpacity
+                              : logoCircleOpacity
+                          ).toFixed(2)}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0.2}
+                        max={1}
+                        step={0.01}
+                        value={
+                          showLogoHorizontal
+                            ? logoHorizontalOpacity
+                            : logoCircleOpacity
+                        }
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          showLogoHorizontal
+                            ? setLogoHorizontalOpacity(v)
+                            : setLogoCircleOpacity(v);
+                        }}
+                        className="w-full"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={resetFloatingLogo}
+                      className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700"
+                    >
+                      Reset logo flotante
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-700/80 bg-slate-800/80 px-4 py-2 text-xs font-medium text-slate-50 hover:border-sky-400/80 hover:bg-slate-800">
               Seleccionar nueva imagen
@@ -1238,6 +1834,7 @@ export default function ImageEditorFullPage() {
               </p>
             )}
 
+            {/* Textos */}
             <div className="mt-3 space-y-3 border-t border-slate-800 pt-3">
               <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 Textos
@@ -1319,7 +1916,9 @@ export default function ImageEditorFullPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] text-slate-300">Etiqueta (opcional)</label>
+                <label className="text-[11px] text-slate-300">
+                  Etiqueta (opcional)
+                </label>
                 <select
                   value={alertTag}
                   onChange={(e) => setAlertTag(e.target.value as AlertTag)}
@@ -1330,10 +1929,6 @@ export default function ImageEditorFullPage() {
                   <option value="ALERTA">ALERTA</option>
                   <option value="ÚLTIMA HORA">ÚLTIMA HORA</option>
                 </select>
-                <div className="text-[10px] text-slate-500">
-                  Color fijo por theme:{" "}
-                  <span className="font-mono">{themeColors.footerBg}</span>
-                </div>
               </div>
 
               <div className="mt-3 space-y-3 border-t border-slate-800 pt-3 text-[11px] text-slate-300">
@@ -1379,7 +1974,9 @@ export default function ImageEditorFullPage() {
                     value={overlayHeightPctUI}
                     onChange={(e) => {
                       const pct = Number(e.target.value);
-                      setBlockHeight(Math.round((pct / 100) * Math.max(1, contentHeight)));
+                      setBlockHeight(
+                        Math.round((pct / 100) * Math.max(1, contentHeight))
+                      );
                     }}
                     className="w-full"
                   />
@@ -1397,7 +1994,9 @@ export default function ImageEditorFullPage() {
                     min={40}
                     max={100}
                     value={Math.round(overlayOpacity * 100)}
-                    onChange={(e) => setOverlayOpacity(Number(e.target.value) / 100)}
+                    onChange={(e) =>
+                      setOverlayOpacity(Number(e.target.value) / 100)
+                    }
                     className="w-full"
                   />
                 </div>
@@ -1418,13 +2017,13 @@ export default function ImageEditorFullPage() {
                 <b>Bajada:</b> {subtitle || "—"}
               </div>
               <div>
-                <b>Etiqueta:</b> {alertTag || "(sin)"}{" "}
-                {alertTag && `· color fijo ${themeColors.footerBg}`}
+                <b>Etiqueta:</b> {alertTag || "(sin)"}
               </div>
               <div>
                 <b>Franja superior:</b>{" "}
                 {showHeaderStrip
-                  ? `${headerDate || "sin fecha"} · ${headerLabel || "sin etiqueta"}`
+                  ? `${headerDate || "sin fecha"} · ${headerLabel || "sin etiqueta"
+                  }`
                   : "desactivada"}
               </div>
               <div>
@@ -1435,27 +2034,30 @@ export default function ImageEditorFullPage() {
                 <b>Tema de color:</b> {themeLabel(theme)}
               </div>
               <div>
-                <b>Posición bloque:</b> {Math.round(blockTop)}px · alto{" "}
-                {Math.round(blockHeight)}px
-              </div>
-              <div>
-                <b>Tipografía (preview):</b> título {titleSize}px · bajada{" "}
-                {subtitleSize}px
-              </div>
-              <div>
-                <b>Fondo:</b> altura {overlayHeightPctUI}% · opacidad{" "}
-                {Math.round(overlayOpacity * 100)}%
-              </div>
-              <div>
                 <b>% enviado al backend:</b> top {blockTopPct.toFixed(1)}% · alto{" "}
                 {overlayHeightPct.toFixed(1)}%
+              </div>
+              <div>
+                <b>Logo flotante:</b>{" "}
+                {showLogoHorizontal
+                  ? `horizontal (w ${logoHorizontalWidthPct.toFixed(
+                    1
+                  )}% · op ${logoHorizontalOpacity.toFixed(2)})`
+                  : showLogoCircle
+                    ? `circular (w ${logoCircleWidthPct.toFixed(
+                      1
+                    )}% · op ${logoCircleOpacity.toFixed(2)})`
+                    : "off"}
+              </div>
+              <div className="text-slate-500">
+                (posición se define arrastrando en la preview)
               </div>
             </div>
 
             <button
               type="button"
               onClick={handleGenerate}
-              disabled={saving || !previewUrl}
+              disabled={saving || (!previewUrl && !file)}
               className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-sky-500 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_18px_35px_rgba(56,189,248,0.45)] hover:bg-sky-400 disabled:bg-slate-700 disabled:text-slate-300"
             >
               {saving ? "Generando cover..." : "Generar / actualizar cover"}
