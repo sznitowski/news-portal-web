@@ -12,7 +12,7 @@ export default function AppShell({ children }: Props) {
   const pathname = usePathname();
 
   // Rutas donde NO queremos header/footer (sólo el bloque del editor)
-  const isImageEditorEmbed = pathname === "/admin/image-editor-embed";
+  const isImageEditorEmbed = pathname === "/admin/multimedia/image-editor-embed";
 
   if (isImageEditorEmbed) {
     // Full-bleed, sin header ni footer

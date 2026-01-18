@@ -339,7 +339,7 @@ export default function SiteHeader() {
                   {/* NUEVO: Editor de imágenes (IA) */}
                   <button
                     type="button"
-                    onClick={() => goTo("/admin/image-editor")}
+                    onClick={() => goTo("/admin/multimedia/image-editor")}
                     style={{
                       width: "100%",
                       textAlign: "left",

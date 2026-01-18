@@ -46,7 +46,7 @@ export default function AdminEditorPage() {
               </Link>
 
               <Link
-                href="/admin/image-editor"
+                href="/admin/multimedia/image-editor"
                 className="inline-flex items-center justify-center rounded-full border border-slate-600 bg-slate-900/70 px-4 py-2 text-xs font-semibold text-slate-100 shadow-[0_16px_35px_rgba(0,0,0,0.55)] transition hover:border-emerald-400/70 hover:text-emerald-200"
               >
                 Editor de imágenes (IA)

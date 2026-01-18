@@ -1,4 +1,4 @@
-// app/admin/image-editor/page.tsx
+// app/admin/multimedia/image-editor/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState, ChangeEvent, ClipboardEvent } from "react";
@@ -532,7 +532,7 @@ export default function ImageEditorEmbedPage() {
       coverVariant: DEFAULT_LOOK.coverVariant,
     });
 
-    window.open(`/admin/image-editor/full?${q.toString()}`, "_blank");
+    window.open(`/admin/multimedia/image-editor/full?${q.toString()}`, "_blank");
   };
 
   // Preview computed

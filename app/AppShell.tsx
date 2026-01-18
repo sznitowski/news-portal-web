@@ -12,7 +12,7 @@ export default function AppShell({ children }: Props) {
   const pathname = usePathname();
 
   // Rutas especiales
-  const isImageEditorEmbed = pathname === "/admin/image-editor-embed";
+  const isImageEditorEmbed = pathname === "/admin/multimedia/image-editor-embed";
   const isFromImageAI = pathname === "/admin/from-image-ai";
 
   // 1) Editor embebido → sin header ni footer

@@ -451,9 +451,9 @@ export default function EditorFromImagePage() {
     editorParams.set("imageUrl", editorSyncData.imageUrl);
   if (editorSyncData.footer) editorParams.set("footer", editorSyncData.footer);
 
-  const editorIframeSrc = `/admin/image-editor-embed?${editorParams.toString()}`;
-  const editorPageUrl = `/admin/image-editor?${editorParams.toString()}`;
-  const fullEditorPageUrl = `/admin/image-editor/full?${editorParams.toString()}`;
+  const editorIframeSrc = `/admin/multimedia/image-editor-embed?${editorParams.toString()}`;
+  const editorPageUrl = `/admin/multimedia/image-editor?${editorParams.toString()}`;
+  const fullEditorPageUrl = `/admin/multimedia/image-editor/full?${editorParams.toString()}`;
 
   return (
     <main className="mx-auto w-full py-10">
