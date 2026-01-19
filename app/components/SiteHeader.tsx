@@ -39,7 +39,11 @@ export default function SiteHeader() {
 
   const [user, setUser] = useState<CurrentUser>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
+
+
   const [panelOpen, setPanelOpen] = useState(false);
+  const [mediaOpen, setMediaOpen] = useState(false);
+
 
   // ======== FLAGS DE SECCIÓN ACTIVA (links de arriba) ========
   const isHome =
@@ -58,6 +62,7 @@ export default function SiteHeader() {
   // Cerrar dropdown de panel cuando cambia la ruta
   useEffect(() => {
     setPanelOpen(false);
+    setMediaOpen(false);
   }, [pathname]);
 
   // Chequeo de sesión
@@ -111,6 +116,7 @@ export default function SiteHeader() {
 
   const goTo = (href: string) => {
     setPanelOpen(false);
+    setMediaOpen(false);
     if (pathname === href) return;
     router.push(href);
   };
@@ -206,6 +212,7 @@ export default function SiteHeader() {
       </header>
 
       {/* Fila para el “Panel editorial” (encima del logo) */}
+      {/* Fila para el “Panel editorial” y “Panel multimedia” (encima del logo) */}
       {!checkingAuth && user && user.role === "ADMIN" && (
         <div
           style={{
@@ -220,13 +227,18 @@ export default function SiteHeader() {
               padding: "6px 16px 4px",
               display: "flex",
               justifyContent: "flex-start",
+              gap: 18,
               position: "relative",
             }}
           >
+            {/* PANEL EDITORIAL */}
             <div style={{ position: "relative" }}>
               <button
                 type="button"
-                onClick={() => setPanelOpen((o) => !o)}
+                onClick={() => {
+                  setPanelOpen((o) => !o);
+                  setMediaOpen(false);
+                }}
                 style={{
                   position: "relative",
                   padding: "4px 2px 8px",
@@ -245,7 +257,6 @@ export default function SiteHeader() {
                   {panelOpen ? "▲" : "▼"}
                 </span>
 
-                {/* subrayado tipo menú de secciones */}
                 <span
                   style={{
                     position: "absolute",
@@ -254,8 +265,7 @@ export default function SiteHeader() {
                     bottom: 0,
                     height: 3,
                     borderRadius: 999,
-                    background:
-                      "linear-gradient(90deg,#38bdf8,#6366f1,#a855f7)",
+                    background: "linear-gradient(90deg,#38bdf8,#6366f1,#a855f7)",
                   }}
                 />
               </button>
@@ -276,7 +286,6 @@ export default function SiteHeader() {
                     zIndex: 80,
                   }}
                 >
-                  {/* Edición de notas */}
                   <button
                     type="button"
                     onClick={() => goTo("/admin/editor")}
@@ -296,20 +305,95 @@ export default function SiteHeader() {
                     <div style={{ fontWeight: 600, marginBottom: 2 }}>
                       Edición de notas
                     </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "#9ca3af",
-                      }}
-                    >
+                    <div style={{ fontSize: 11, color: "#9ca3af" }}>
                       Crear, editar y publicar artículos.
                     </div>
                   </button>
 
-                  {/* Publicar desde imagen IA */}
                   <button
                     type="button"
                     onClick={() => goTo("/admin/from-image-ai")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: "transparent",
+                      color: "#e5e7eb",
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                      Publicar desde imagen (IA)
+                    </div>
+                    <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                      Subir captura y dejar que la IA sugiera la nota.
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* PANEL MULTIMEDIA */}
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setMediaOpen((o) => !o);
+                  setPanelOpen(false);
+                }}
+                style={{
+                  position: "relative",
+                  padding: "4px 2px 8px",
+                  border: "none",
+                  background: "transparent",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  color: "#020617",
+                }}
+              >
+                PANEL MULTIMEDIA{" "}
+                <span style={{ fontSize: 10, marginLeft: 4 }}>
+                  {mediaOpen ? "▲" : "▼"}
+                </span>
+
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 3,
+                    borderRadius: 999,
+                    background: "linear-gradient(90deg,#22c55e,#38bdf8,#a855f7)",
+                  }}
+                />
+              </button>
+
+              {mediaOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 8px)",
+                    left: 0,
+                    minWidth: 300,
+                    borderRadius: 18,
+                    border: "1px solid rgba(15,23,42,0.08)",
+                    backgroundColor: "#020617",
+                    color: "#e5e7eb",
+                    boxShadow: "0 22px 60px rgba(0,0,0,0.55)",
+                    padding: 14,
+                    zIndex: 80,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => goTo("/admin/multimedia/image-editor")}
                     style={{
                       width: "100%",
                       textAlign: "left",
@@ -324,22 +408,16 @@ export default function SiteHeader() {
                     }}
                   >
                     <div style={{ fontWeight: 600, marginBottom: 2 }}>
-                      Publicar desde imagen (IA)
+                      Editor de imágenes (IA)
                     </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "#9ca3af",
-                      }}
-                    >
-                      Subir captura y dejar que la IA sugiera la nota.
+                    <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                      Ajustar imagen para portada.
                     </div>
                   </button>
 
-                  {/* NUEVO: Editor de imágenes (IA) */}
                   <button
                     type="button"
-                    onClick={() => goTo("/admin/multimedia/image-editor")}
+                    onClick={() => goTo("/admin/multimedia/video-processor")}
                     style={{
                       width: "100%",
                       textAlign: "left",
@@ -353,15 +431,10 @@ export default function SiteHeader() {
                     }}
                   >
                     <div style={{ fontWeight: 600, marginBottom: 2 }}>
-                      Editor de imágenes (IA)
+                      Procesador de videos
                     </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "#9ca3af",
-                      }}
-                    >
-                      Ajustar una imagen para usarla como portada.
+                    <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                      Subir, normalizar y renderizar (web/feed/reel).
                     </div>
                   </button>
                 </div>
@@ -370,6 +443,7 @@ export default function SiteHeader() {
           </div>
         </div>
       )}
+
 
       {/* Fila con logo / nombre */}
       {/* Fila con logo / nombre */}
