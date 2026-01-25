@@ -1,11 +1,10 @@
-// app/admin/multimedia/video-processor/page.tsx
 "use client";
 
 import { useMemo, useState } from "react";
 
 type UploadRes = { relPath: string; url: string; bytes: number };
 type NormalizeRes = { outputRelPath: string; outputUrl: string };
-type RenderRes = { web_16x9: string; feed_4x5: string; reel_9x16: string };
+type RenderRes = Partial<{ web_16x9: string; feed_4x5: string; reel_9x16: string }>;
 
 function getToken() {
   if (typeof window === "undefined") return null;
@@ -22,7 +21,8 @@ export default function VideoProcessorPage() {
   const [startSec, setStartSec] = useState(0);
   const [durationSec, setDurationSec] = useState(6);
   const [text, setText] = useState("BATCH");
-  const [mode, setMode] = useState<"cover" | "contain">("cover");
+  const [mode, setMode] = useState<"cover" | "contain_blur">("cover");
+
   const [presets, setPresets] = useState({
     web_16x9: true,
     feed_4x5: true,
@@ -31,6 +31,7 @@ export default function VideoProcessorPage() {
 
   const [busy, setBusy] = useState<null | "upload" | "normalize" | "render" | "pipeline">(null);
   const [err, setErr] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const selectedPresets = useMemo(() => {
     const p: string[] = [];
@@ -40,7 +41,24 @@ export default function VideoProcessorPage() {
     return p;
   }, [presets]);
 
-  async function upload() {
+  // ✅ Assets viven en el backend (5001), no en 3001
+  const ASSET_BASE = useMemo(() => {
+    return process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:5001";
+  }, []);
+
+  const showToast = (m: string) => {
+    setToast(m);
+    setTimeout(() => setToast(null), 1200);
+  };
+
+  const abs = (maybePath: string) => {
+    if (!maybePath) return "";
+    if (maybePath.startsWith("http://") || maybePath.startsWith("https://")) return maybePath;
+    if (maybePath.startsWith("/")) return `${ASSET_BASE}${maybePath}`;
+    return `${ASSET_BASE}/${maybePath}`;
+  };
+
+  async function upload(): Promise<UploadRes | null> {
     setErr(null);
     setUploadRes(null);
     setNormRes(null);
@@ -49,11 +67,11 @@ export default function VideoProcessorPage() {
     const token = getToken();
     if (!token) {
       setErr("No hay token. Volvé a iniciar sesión.");
-      return;
+      return null;
     }
     if (!file) {
       setErr("Elegí un .mp4 primero.");
-      return;
+      return null;
     }
 
     setBusy("upload");
@@ -67,23 +85,25 @@ export default function VideoProcessorPage() {
         body: fd,
       });
 
-      const text = await res.text().catch(() => "");
-      const json = text ? JSON.parse(text) : null;
+      const raw = await res.text().catch(() => "");
+      const json = raw ? JSON.parse(raw) : null;
 
       if (!res.ok) {
         setErr(json?.message ?? `Upload falló (${res.status})`);
-        return;
+        return null;
       }
 
       setUploadRes(json as UploadRes);
+      return json as UploadRes;
     } catch (e: any) {
       setErr(e?.message ?? "Error inesperado en upload");
+      return null;
     } finally {
       setBusy(null);
     }
   }
 
-  async function normalize(inputRelPath: string) {
+  async function normalize(inputRelPath: string): Promise<NormalizeRes | null> {
     setErr(null);
     setNormRes(null);
     setRenderRes(null);
@@ -96,8 +116,8 @@ export default function VideoProcessorPage() {
         body: JSON.stringify({ inputRelPath }),
       });
 
-      const text = await res.text().catch(() => "");
-      const json = text ? JSON.parse(text) : null;
+      const raw = await res.text().catch(() => "");
+      const json = raw ? JSON.parse(raw) : null;
 
       if (!res.ok) {
         setErr(json?.message ?? `Normalize falló (${res.status})`);
@@ -114,7 +134,7 @@ export default function VideoProcessorPage() {
     }
   }
 
-  async function renderBatch(inputRelPath: string) {
+  async function renderBatch(inputRelPath: string): Promise<RenderRes | null> {
     setErr(null);
     setRenderRes(null);
 
@@ -142,8 +162,8 @@ export default function VideoProcessorPage() {
         body: JSON.stringify(payload),
       });
 
-      const textRes = await res.text().catch(() => "");
-      const json = textRes ? JSON.parse(textRes) : null;
+      const raw = await res.text().catch(() => "");
+      const json = raw ? JSON.parse(raw) : null;
 
       if (!res.ok) {
         setErr(json?.message ?? `Render-batch falló (${res.status})`);
@@ -164,14 +184,13 @@ export default function VideoProcessorPage() {
     setErr(null);
     setBusy("pipeline");
     try {
-      await upload();
-      // upload() setea uploadRes async; leemos desde estado:
-      // mejor: si no hay uploadRes aún, re-chequeamos en el siguiente tick
-      const up = await new Promise<UploadRes | null>((resolve) =>
-        setTimeout(() => resolve(uploadRes), 50),
-      );
+      let rel = uploadRes?.relPath ?? null;
 
-      const rel = (up?.relPath ?? uploadRes?.relPath) || null;
+      if (!rel) {
+        const up = await upload(); 
+        rel = up?.relPath ?? null;
+      }
+
       if (!rel) {
         setErr((prev) => prev ?? "No pude obtener relPath del upload.");
         return;
@@ -186,17 +205,26 @@ export default function VideoProcessorPage() {
     }
   }
 
-  const baseUrl = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    return window.location.origin;
-  }, []);
+
+  const outputs = useMemo(() => {
+    if (!renderRes) return [];
+    const list: Array<{ key: string; url: string }> = [];
+    if (renderRes.web_16x9) list.push({ key: "web_16x9", url: renderRes.web_16x9 });
+    if (renderRes.feed_4x5) list.push({ key: "feed_4x5", url: renderRes.feed_4x5 });
+    if (renderRes.reel_9x16) list.push({ key: "reel_9x16", url: renderRes.reel_9x16 });
+    return list;
+  }, [renderRes]);
 
   return (
     <main className="mx-auto max-w-5xl px-4 pt-10 pb-16">
       <h1 className="text-xl font-semibold text-slate-900">Procesador de videos</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        Subí un MP4, normalizalo y generá salidas web/feed/reel.
-      </p>
+      <p className="mt-1 text-sm text-slate-600">Subí un MP4, normalizalo y generá salidas web/feed/reel.</p>
+
+      {toast && (
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+          {toast}
+        </div>
+      )}
 
       {err && (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -207,9 +235,7 @@ export default function VideoProcessorPage() {
       <div className="mt-6 grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Video (.mp4)
-            </label>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">Video (.mp4)</label>
             <input
               type="file"
               accept="video/mp4"
@@ -223,7 +249,7 @@ export default function VideoProcessorPage() {
 
           <button
             type="button"
-            onClick={upload}
+            onClick={() => void upload()}
             disabled={!!busy}
             className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
@@ -234,24 +260,37 @@ export default function VideoProcessorPage() {
         {uploadRes && (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
             <div className="font-semibold text-slate-900">Upload OK</div>
+
             <div className="mt-1 text-xs text-slate-600">
               relPath: <code>{uploadRes.relPath}</code>
             </div>
+
             <div className="mt-1 text-xs text-slate-600">
               URL:{" "}
-              <a className="underline" href={`${baseUrl}${uploadRes.url}`} target="_blank" rel="noreferrer">
+              <a className="underline" href={abs(uploadRes.url)} target="_blank" rel="noreferrer">
                 {uploadRes.url}
               </a>
             </div>
 
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => normalize(uploadRes.relPath)}
+                onClick={() => void normalize(uploadRes.relPath)}
                 disabled={!!busy}
                 className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-900 border border-slate-200 disabled:opacity-60"
               >
                 {busy === "normalize" ? "Normalizando..." : "Normalize"}
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(uploadRes.relPath);
+                  showToast("Copiado: relPath");
+                }}
+                className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-900 border border-slate-200"
+              >
+                Copiar relPath
               </button>
             </div>
           </div>
@@ -260,12 +299,14 @@ export default function VideoProcessorPage() {
         {normRes && (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
             <div className="font-semibold text-slate-900">Normalize OK</div>
+
             <div className="mt-1 text-xs text-slate-600">
               outputRelPath: <code>{normRes.outputRelPath}</code>
             </div>
+
             <div className="mt-1 text-xs text-slate-600">
               URL:{" "}
-              <a className="underline" href={`${baseUrl}${normRes.outputUrl}`} target="_blank" rel="noreferrer">
+              <a className="underline" href={abs(normRes.outputUrl)} target="_blank" rel="noreferrer">
                 {normRes.outputUrl}
               </a>
             </div>
@@ -315,7 +356,7 @@ export default function VideoProcessorPage() {
                       onChange={(e) => setMode(e.target.value as any)}
                     >
                       <option value="cover">cover</option>
-                      <option value="contain">contain</option>
+                      <option value="contain_blur">contain_blur</option>
                     </select>
                   </label>
                 </div>
@@ -356,7 +397,7 @@ export default function VideoProcessorPage() {
                 <div className="mt-3 flex gap-2">
                   <button
                     type="button"
-                    onClick={() => renderBatch(normRes.outputRelPath)}
+                    onClick={() => void renderBatch(normRes.outputRelPath)}
                     disabled={!!busy}
                     className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
                   >
@@ -372,25 +413,53 @@ export default function VideoProcessorPage() {
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
             <div className="font-semibold text-slate-900">Render OK</div>
 
-            <div className="mt-2 grid gap-2 text-xs">
-              <div>
-                web_16x9:{" "}
-                <a className="underline" href={`${baseUrl}${renderRes.web_16x9}`} target="_blank" rel="noreferrer">
-                  {renderRes.web_16x9}
-                </a>
-              </div>
-              <div>
-                feed_4x5:{" "}
-                <a className="underline" href={`${baseUrl}${renderRes.feed_4x5}`} target="_blank" rel="noreferrer">
-                  {renderRes.feed_4x5}
-                </a>
-              </div>
-              <div>
-                reel_9x16:{" "}
-                <a className="underline" href={`${baseUrl}${renderRes.reel_9x16}`} target="_blank" rel="noreferrer">
-                  {renderRes.reel_9x16}
-                </a>
-              </div>
+            <div className="mt-3 grid gap-4 md:grid-cols-3">
+              {outputs.map((o) => {
+                const urlAbs = abs(o.url);
+                return (
+                  <div key={o.key} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">{o.key}</div>
+
+                    <video controls preload="metadata" className="mt-2 w-full rounded-lg border border-slate-200">
+                      <source src={urlAbs} type="video/mp4" />
+                    </video>
+
+                    <div className="mt-2 break-all text-[11px] text-slate-600">
+                      <a className="underline" href={urlAbs} target="_blank" rel="noreferrer">
+                        {o.url}
+                      </a>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(urlAbs);
+                          showToast("Copiado: URL");
+                        }}
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-900"
+                      >
+                        Copiar URL
+                      </button>
+                      <a
+                        href={urlAbs}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-900"
+                      >
+                        Abrir
+                      </a>
+                      <a
+                        href={urlAbs}
+                        download
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-900"
+                      >
+                        Descargar
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -398,7 +467,7 @@ export default function VideoProcessorPage() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={runAll}
+            onClick={() => void runAll()}
             disabled={!!busy}
             className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
