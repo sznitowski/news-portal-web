@@ -1,14 +1,32 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
-type UploadRes = { relPath: string; url: string; bytes: number };
+type UploadRes = { relPath: string; url: string; bytes: number; meta?: any };
 type NormalizeRes = { outputRelPath: string; outputUrl: string };
 type RenderRes = Partial<{ web_16x9: string; feed_4x5: string; reel_9x16: string }>;
 
 function getToken() {
   if (typeof window === "undefined") return null;
   return window.localStorage.getItem("news_access_token");
+}
+
+function humanBytes(n?: number) {
+  if (!n || !Number.isFinite(n)) return "-";
+  const units = ["B", "KB", "MB", "GB"];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function msLabel(ms?: number) {
+  if (ms == null) return "";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 export default function VideoProcessorPage() {
@@ -33,6 +51,11 @@ export default function VideoProcessorPage() {
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  const [timings, setTimings] = useState<{ uploadMs?: number; normalizeMs?: number; renderMs?: number }>({});
+
+  const token = useMemo(() => getToken(), []);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const selectedPresets = useMemo(() => {
     const p: string[] = [];
     if (presets.web_16x9) p.push("web_16x9");
@@ -41,9 +64,9 @@ export default function VideoProcessorPage() {
     return p;
   }, [presets]);
 
-  // ✅ Assets viven en el backend (5001), no en 3001
+  // Backend / assets (5001)
   const ASSET_BASE = useMemo(() => {
-    return process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:5001";
+    return (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:5001").replace(/\/+$/, "");
   }, []);
 
   const showToast = (m: string) => {
@@ -58,14 +81,20 @@ export default function VideoProcessorPage() {
     return `${ASSET_BASE}/${maybePath}`;
   };
 
-  async function upload(): Promise<UploadRes | null> {
+  const resetAll = () => {
     setErr(null);
+    setToast(null);
     setUploadRes(null);
     setNormRes(null);
     setRenderRes(null);
+    setTimings({});
+  };
 
-    const token = getToken();
-    if (!token) {
+  async function upload(): Promise<UploadRes | null> {
+    resetAll();
+
+    const t = getToken();
+    if (!t) {
       setErr("No hay token. Volvé a iniciar sesión.");
       return null;
     }
@@ -75,14 +104,16 @@ export default function VideoProcessorPage() {
     }
 
     setBusy("upload");
+    const t0 = performance.now();
     try {
       const fd = new FormData();
       fd.append("file", file);
 
-      const res = await fetch("/api/uploads/video", {
+      const res = await fetch(`${ASSET_BASE}/admin/video/upload`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${t}` },
         body: fd,
+        credentials: "include",
       });
 
       const raw = await res.text().catch(() => "");
@@ -93,6 +124,7 @@ export default function VideoProcessorPage() {
         return null;
       }
 
+      setTimings((p) => ({ ...p, uploadMs: Math.round(performance.now() - t0) }));
       setUploadRes(json as UploadRes);
       return json as UploadRes;
     } catch (e: any) {
@@ -109,6 +141,7 @@ export default function VideoProcessorPage() {
     setRenderRes(null);
 
     setBusy("normalize");
+    const t0 = performance.now();
     try {
       const res = await fetch("/api/admin/video/normalize", {
         method: "POST",
@@ -124,6 +157,7 @@ export default function VideoProcessorPage() {
         return null;
       }
 
+      setTimings((p) => ({ ...p, normalizeMs: Math.round(performance.now() - t0) }));
       setNormRes(json as NormalizeRes);
       return json as NormalizeRes;
     } catch (e: any) {
@@ -144,6 +178,7 @@ export default function VideoProcessorPage() {
     }
 
     setBusy("render");
+    const t0 = performance.now();
     try {
       const payload = {
         inputRelPath,
@@ -170,6 +205,7 @@ export default function VideoProcessorPage() {
         return null;
       }
 
+      setTimings((p) => ({ ...p, renderMs: Math.round(performance.now() - t0) }));
       setRenderRes(json as RenderRes);
       return json as RenderRes;
     } catch (e: any) {
@@ -184,12 +220,8 @@ export default function VideoProcessorPage() {
     setErr(null);
     setBusy("pipeline");
     try {
-      let rel = uploadRes?.relPath ?? null;
-
-      if (!rel) {
-        const up = await upload(); 
-        rel = up?.relPath ?? null;
-      }
+      const up = await upload();
+      const rel = up?.relPath ?? null;
 
       if (!rel) {
         setErr((prev) => prev ?? "No pude obtener relPath del upload.");
@@ -205,7 +237,6 @@ export default function VideoProcessorPage() {
     }
   }
 
-
   const outputs = useMemo(() => {
     if (!renderRes) return [];
     const list: Array<{ key: string; url: string }> = [];
@@ -215,35 +246,86 @@ export default function VideoProcessorPage() {
     return list;
   }, [renderRes]);
 
+  const hasAnyTiming = timings.uploadMs != null || timings.normalizeMs != null || timings.renderMs != null;
+
   return (
     <main className="mx-auto max-w-5xl px-4 pt-10 pb-16">
-      <h1 className="text-xl font-semibold text-slate-900">Procesador de videos</h1>
-      <p className="mt-1 text-sm text-slate-600">Subí un MP4, normalizalo y generá salidas web/feed/reel.</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">Procesador de videos</h1>
+          <p className="mt-1 text-sm text-slate-600">Subí un MP4, normalizalo y generá salidas web/feed/reel.</p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              resetAll();
+              setFile(null);
+              if (fileInputRef.current) fileInputRef.current.value = "";
+              showToast("Limpio");
+            }}
+            disabled={!!busy}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 disabled:opacity-60"
+          >
+            Limpiar
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void runAll()}
+            disabled={!!busy}
+            className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {busy === "pipeline" ? "Ejecutando..." : "Pipeline completo"}
+          </button>
+        </div>
+      </div>
+
+      {hasAnyTiming && (
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <span className="font-semibold">Tiempos:</span>{" "}
+          {timings.uploadMs != null && <>upload {msLabel(timings.uploadMs)}</>}
+          {timings.normalizeMs != null && <> · normalize {msLabel(timings.normalizeMs)}</>}
+          {timings.renderMs != null && <> · render {msLabel(timings.renderMs)}</>}
+        </div>
+      )}
 
       {toast && (
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+        <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
           {toast}
         </div>
       )}
 
       {err && (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {err}
         </div>
       )}
 
       <div className="mt-6 grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+        {/* UPLOAD */}
+        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_auto] md:items-end">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">Video (.mp4)</label>
+            <div className="flex items-center justify-between gap-3">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">Video (.mp4)</label>
+              {file && (
+                <div className="text-xs text-slate-600">
+                  <span className="font-semibold">{humanBytes(file.size)}</span> · {file.name}
+                </div>
+              )}
+            </div>
+
             <input
+              ref={fileInputRef}
               type="file"
               accept="video/mp4"
               className="mt-2 block w-full text-sm"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
-            <div className="mt-1 text-xs text-slate-500">
-              Se sube vía <code>/api/uploads/video</code>.
+
+            <div className="mt-2 text-xs text-slate-500">
+              Upload directo al backend: <code className="break-all">{ASSET_BASE}/admin/video/upload</code>
             </div>
           </div>
 
@@ -257,19 +339,24 @@ export default function VideoProcessorPage() {
           </button>
         </div>
 
+        {/* UPLOAD RESULT */}
         {uploadRes && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <div className="font-semibold text-slate-900">Upload OK</div>
-
-            <div className="mt-1 text-xs text-slate-600">
-              relPath: <code>{uploadRes.relPath}</code>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-semibold text-slate-900">Upload OK</div>
+              <div className="text-xs text-slate-600">bytes: {humanBytes(uploadRes.bytes)}</div>
             </div>
 
-            <div className="mt-1 text-xs text-slate-600">
-              URL:{" "}
-              <a className="underline" href={abs(uploadRes.url)} target="_blank" rel="noreferrer">
-                {uploadRes.url}
-              </a>
+            <div className="mt-2 grid gap-2 text-xs text-slate-700">
+              <div className="break-all">
+                relPath: <code>{uploadRes.relPath}</code>
+              </div>
+              <div className="break-all">
+                URL:{" "}
+                <a className="underline" href={abs(uploadRes.url)} target="_blank" rel="noreferrer">
+                  {uploadRes.url}
+                </a>
+              </div>
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
@@ -277,7 +364,7 @@ export default function VideoProcessorPage() {
                 type="button"
                 onClick={() => void normalize(uploadRes.relPath)}
                 disabled={!!busy}
-                className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-900 border border-slate-200 disabled:opacity-60"
+                className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
               >
                 {busy === "normalize" ? "Normalizando..." : "Normalize"}
               </button>
@@ -292,27 +379,67 @@ export default function VideoProcessorPage() {
               >
                 Copiar relPath
               </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(abs(uploadRes.url));
+                  showToast("Copiado: URL");
+                }}
+                className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-900 border border-slate-200"
+              >
+                Copiar URL
+              </button>
             </div>
           </div>
         )}
 
+        {/* NORMALIZE */}
         {normRes && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <div className="font-semibold text-slate-900">Normalize OK</div>
-
-            <div className="mt-1 text-xs text-slate-600">
-              outputRelPath: <code>{normRes.outputRelPath}</code>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-semibold text-slate-900">Normalize OK</div>
+              <div className="text-xs text-slate-600">input → normalized listo</div>
             </div>
 
-            <div className="mt-1 text-xs text-slate-600">
-              URL:{" "}
-              <a className="underline" href={abs(normRes.outputUrl)} target="_blank" rel="noreferrer">
-                {normRes.outputUrl}
-              </a>
+            <div className="mt-2 grid gap-2 text-xs text-slate-700">
+              <div className="break-all">
+                outputRelPath: <code>{normRes.outputRelPath}</code>
+              </div>
+              <div className="break-all">
+                URL:{" "}
+                <a className="underline" href={abs(normRes.outputUrl)} target="_blank" rel="noreferrer">
+                  {normRes.outputUrl}
+                </a>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(normRes.outputRelPath);
+                  showToast("Copiado: outputRelPath");
+                }}
+                className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-900 border border-slate-200"
+              >
+                Copiar outputRelPath
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(abs(normRes.outputUrl));
+                  showToast("Copiado: URL normalized");
+                }}
+                className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-900 border border-slate-200"
+              >
+                Copiar URL
+              </button>
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Parámetros</div>
 
                 <div className="mt-2 grid gap-2">
@@ -362,8 +489,24 @@ export default function VideoProcessorPage() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Presets</div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Presets</div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPresets((p) => ({
+                        web_16x9: !p.web_16x9,
+                        feed_4x5: !p.feed_4x5,
+                        reel_9x16: !p.reel_9x16,
+                      }))
+                    }
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-900"
+                    disabled={!!busy}
+                  >
+                    Toggle
+                  </button>
+                </div>
 
                 <div className="mt-2 grid gap-2 text-sm">
                   <label className="flex items-center gap-2">
@@ -409,22 +552,28 @@ export default function VideoProcessorPage() {
           </div>
         )}
 
+        {/* RENDER */}
         {renderRes && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-            <div className="font-semibold text-slate-900">Render OK</div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-semibold text-slate-900">Render OK</div>
+              <div className="text-xs text-slate-600">
+                base: <code className="break-all">{ASSET_BASE}</code>
+              </div>
+            </div>
 
             <div className="mt-3 grid gap-4 md:grid-cols-3">
               {outputs.map((o) => {
                 const urlAbs = abs(o.url);
                 return (
-                  <div key={o.key} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div key={o.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">{o.key}</div>
 
-                    <video controls preload="metadata" className="mt-2 w-full rounded-lg border border-slate-200">
+                    <video controls preload="metadata" className="mt-2 w-full rounded-lg border border-slate-200 bg-black">
                       <source src={urlAbs} type="video/mp4" />
                     </video>
 
-                    <div className="mt-2 break-all text-[11px] text-slate-600">
+                    <div className="mt-2 break-all text-[11px] text-slate-700">
                       <a className="underline" href={urlAbs} target="_blank" rel="noreferrer">
                         {o.url}
                       </a>
@@ -449,13 +598,6 @@ export default function VideoProcessorPage() {
                       >
                         Abrir
                       </a>
-                      <a
-                        href={urlAbs}
-                        download
-                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-900"
-                      >
-                        Descargar
-                      </a>
                     </div>
                   </div>
                 );
@@ -463,17 +605,6 @@ export default function VideoProcessorPage() {
             </div>
           </div>
         )}
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void runAll()}
-            disabled={!!busy}
-            className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {busy === "pipeline" ? "Ejecutando..." : "Pipeline completo (upload → normalize → render)"}
-          </button>
-        </div>
       </div>
     </main>
   );
