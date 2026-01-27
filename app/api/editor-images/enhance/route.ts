@@ -17,6 +17,90 @@ function buildAuthHeaders(req: NextRequest, tokenFromForm?: string | null) {
   return headers;
 }
 
+// ✅ GET:
+// - si viene ?proxyUrl=... => proxy image (evita CORS en el client)
+// - si no => lista biblioteca (/internal/uploads/images)
+export async function GET(req: NextRequest) {
+  try {
+    const u = req.nextUrl;
+
+    const proxyUrl = (u.searchParams.get("proxyUrl") ?? "").trim();
+    if (proxyUrl) {
+      // 🔒 allowlist: solo URLs http(s) o rutas /uploads/*
+      const isHttp = /^https?:\/\//i.test(proxyUrl);
+      const isUploads = proxyUrl.startsWith("/uploads/");
+
+      if (!isHttp && !isUploads) {
+        return NextResponse.json(
+          { message: "proxyUrl inválida (solo http(s) o /uploads/..)" },
+          { status: 400 },
+        );
+      }
+
+      const abs = isUploads ? getPublicUrl(proxyUrl) : proxyUrl;
+
+      const res = await fetch(abs, { method: "GET" });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        return NextResponse.json(
+          {
+            message: "No se pudo descargar la imagen (proxy)",
+            statusCode: res.status,
+            backend: t,
+          },
+          { status: 502 },
+        );
+      }
+
+      const contentType = res.headers.get("content-type") || "application/octet-stream";
+      const buf = Buffer.from(await res.arrayBuffer());
+
+      return new NextResponse(buf, {
+        status: 200,
+        headers: {
+          "content-type": contentType,
+          "cache-control": "public, max-age=60",
+        },
+      });
+    }
+
+    // ✅ biblioteca
+    const scope = (u.searchParams.get("scope") ?? "raw").trim();
+    const q = (u.searchParams.get("q") ?? "").trim();
+    const category = (u.searchParams.get("category") ?? "").trim();
+    const group = (u.searchParams.get("group") ?? "").trim();
+    const limit = (u.searchParams.get("limit") ?? "300").trim();
+
+    const qs = new URLSearchParams();
+    if (scope) qs.set("scope", scope);
+    if (q) qs.set("q", q);
+    if (category) qs.set("category", category);
+    if (group) qs.set("group", group);
+    if (limit) qs.set("limit", limit);
+
+    const headers = buildAuthHeaders(req, null);
+
+    const listRes = await fetch(buildApiUrl(`/internal/uploads/images?${qs.toString()}`), {
+      method: "GET",
+      headers,
+    });
+
+    const rawText = await listRes.text().catch(() => "");
+    if (!listRes.ok) {
+      return NextResponse.json(
+        { message: "Error listando biblioteca", statusCode: listRes.status, backend: rawText },
+        { status: 502 },
+      );
+    }
+
+    const json = rawText ? JSON.parse(rawText) : { items: [] };
+    return NextResponse.json(json, { status: 200 });
+  } catch (err) {
+    console.error("[enhance][GET] error:", err);
+    return NextResponse.json({ message: "Error inesperado" }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();

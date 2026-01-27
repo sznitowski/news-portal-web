@@ -5,10 +5,10 @@ import {
   useEffect,
   useRef,
   MouseEvent as ReactMouseEvent,
+  useMemo,
 } from "react";
 import { useSearchParams } from "next/navigation";
 
-type TextPosition = "top" | "middle" | "bottom";
 type CoverTheme = "purple" | "blue" | "red" | "wine" | "black" | "sunset";
 
 const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
@@ -24,6 +24,8 @@ type DragTarget =
   | "logoHorizontal"
   | "logoCircleResize"
   | "logoHorizontalResize"
+  | "asset"
+  | "assetResize"
   | null;
 
 type DragState = {
@@ -41,7 +43,6 @@ type DragState = {
   alertOffsetX: number;
   alertOffsetY: number;
 
-  // logo
   logoCircleXPct: number;
   logoCircleYPct: number;
   logoCircleWidthPct: number;
@@ -49,6 +50,12 @@ type DragState = {
   logoHorizontalXPct: number;
   logoHorizontalYPct: number;
   logoHorizontalWidthPct: number;
+
+  // ✅ asset overlay
+  assetId?: string | null;
+  assetXPct?: number;
+  assetYPct?: number;
+  assetWidthPct?: number;
 } | null;
 
 const BASE_COLORS = [
@@ -75,18 +82,15 @@ const PREVIEW_HEIGHT_FALLBACK = 360;
 // ✅ footer lockup (FIJO / NO TOCAR)
 const BRAND_LOCKUP_SRC = "/brand/canalibertario.png";
 
-// ✅ logos flotantes (overlay) — probamos varias rutas porque en prod linux el case importa
+// ✅ logos flotantes (overlay)
 const LOGO_CIRCLE_CANDIDATES = [
   "/brand/Logos/logo-circular.png",
   "/brand/logos/logo-circular.png",
   "/brand/logo-circular.png",
   "/brand/logo-circular.webp",
   "/brand/logo-circular.svg",
-
-  // ✅ fallback: si no existe el circular, al menos mostrás ALGO real
   "/brand/canalibertario.png",
 ];
-
 
 const LOGO_HORIZONTAL_CANDIDATES = [
   "/brand/Logos/logo-horizontal.png",
@@ -94,12 +98,9 @@ const LOGO_HORIZONTAL_CANDIDATES = [
   "/brand/logo-horizontal.png",
   "/brand/logo-horizontal.webp",
   "/brand/logo-horizontal.svg",
-
-  // ✅ fallback: si no existe el horizontal, mostrás el lockup
   "/brand/canalibertario.png",
 ];
 
-// Iconos (si los usás en el footer lockup visual del editor)
 const ICON_X = "/brand/icon-twitter.png";
 const ICON_FB = "/brand/icon-facebook.png";
 const ICON_IG = "/brand/icon-instagram.png";
@@ -189,17 +190,11 @@ function normalizeTheme(input: string | null): CoverTheme | null {
   return null;
 }
 
-// Preview bars escalados (coincide backend)
-function getScaledBarsForPreview(args: {
-  previewH: number;
-  showHeaderStrip: boolean;
-}) {
+function getScaledBarsForPreview(args: { previewH: number; showHeaderStrip: boolean }) {
   const h = Math.max(1, args.previewH);
 
   const footerH = Math.round((FOOTER_HEIGHT / 720) * h);
-  const headerH = args.showHeaderStrip
-    ? Math.round((HEADER_STRIP_HEIGHT / 720) * h)
-    : 0;
+  const headerH = args.showHeaderStrip ? Math.round((HEADER_STRIP_HEIGHT / 720) * h) : 0;
 
   const contentTopOffset = headerH;
   const contentHeight = Math.max(1, h - footerH - headerH);
@@ -207,7 +202,6 @@ function getScaledBarsForPreview(args: {
   return { footerH, headerH, contentTopOffset, contentHeight };
 }
 
-// ✅ Conversión CORRECTA: blockTopPct/overlayHeightPct como % de contentHeight
 function getBackendLayoutPct(args: {
   previewEl: HTMLDivElement | null;
   previewHeightFallback: number;
@@ -243,25 +237,16 @@ function pctToPx(pct: number, size: number) {
   return (clamp(pct, 0, 100) / 100) * Math.max(1, size);
 }
 
-/**
- * ✅ El backend interpreta logoOverlay.xPct/yPct como % del canvas completo (width/height),
- * pero el editor guarda Y como % del "content box".
- * Convierte Y content->canvas usando baseline 720.
- */
-function contentYPctToCanvasYPct(args: {
-  yContentPct: number;
-  showHeaderStrip: boolean;
-}) {
+function contentYPctToCanvasYPct(args: { yContentPct: number; showHeaderStrip: boolean }) {
   const headerH = args.showHeaderStrip ? HEADER_STRIP_HEIGHT : 0;
   const footerH = FOOTER_HEIGHT;
   const contentH = 720 - headerH - footerH;
 
-  const yPxInCanvas =
-    headerH + (clamp(args.yContentPct, 0, 100) / 100) * contentH;
+  const yPxInCanvas = headerH + (clamp(args.yContentPct, 0, 100) / 100) * contentH;
   return (yPxInCanvas / 720) * 100;
 }
 
-// ✅ Img que intenta múltiples paths. Si falla todo, muestra placeholder (NO desaparece).
+// ✅ Img que intenta múltiples paths
 function ImgMulti(props: {
   candidates: string[];
   alt: string;
@@ -273,7 +258,6 @@ function ImgMulti(props: {
   const { candidates, alt, className, style, onMouseDown, rounded } = props;
   const [idx, setIdx] = useState(0);
   const src = candidates[idx] ?? "";
-
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -314,26 +298,72 @@ function ImgMulti(props: {
   );
 }
 
+// -----------------------
+// ✅ Biblioteca
+// -----------------------
+type LibraryItem = {
+  scope: "raw" | "cover" | "screen";
+  relPath: string;
+  filename: string;
+  url: string;
+  bytes: number;
+  mtimeMs: number;
+  category: string | null;
+  group: string | null;
+  tokens: string[];
+};
+
+type LibrarySelectMode = "base" | "overlay";
+
+type AssetOverlay = {
+  id: string;
+  item: LibraryItem;
+  // % dentro del CONTENT BOX (igual que tus logos)
+  xPct: number;
+  yPct: number;
+  widthPct: number; // % del ancho del content
+  opacity: number;  // 0..1
+};
+
+function bytesToHuman(n: number) {
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
+  const u = ["B", "KB", "MB", "GB"];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < u.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
+}
+
 export default function ImageEditorFullPage() {
   const searchParams = useSearchParams();
-  const containerRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
 
   const [previewHeight, setPreviewHeight] = useState(PREVIEW_HEIGHT_FALLBACK);
+
+  // ✅ Backend assets base (para thumbs)
+  const ASSET_BASE = useMemo(() => {
+    return (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:5001").replace(/\/+$/, "");
+  }, []);
+
+  const abs = (maybePath: string) => {
+    if (!maybePath) return "";
+    if (maybePath.startsWith("http://") || maybePath.startsWith("https://")) return maybePath;
+    if (maybePath.startsWith("/")) return `${ASSET_BASE}${maybePath}`;
+    return `${ASSET_BASE}/${maybePath}`;
+  };
 
   // Imagen base
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  // ✅ branding
+  // branding
   const [showLogoCircle, setShowLogoCircle] = useState(true);
   const [showLogoHorizontal, setShowLogoHorizontal] = useState(false);
 
-  // ⚠️ footer lockup SIEMPRE activo (fijo / NO se toca)
-  const showFooterLockup = true;
-
-  // ✅ logo overlay: posición/size (en % del CONTENT BOX)
-  // (X/Y internos para drag, NO hay sliders X/Y)
+  // logo overlay
   const [logoCircleXPct, setLogoCircleXPct] = useState(82);
   const [logoCircleYPct, setLogoCircleYPct] = useState(10);
   const [logoCircleWidthPct, setLogoCircleWidthPct] = useState(10);
@@ -371,8 +401,6 @@ export default function ImageEditorFullPage() {
   const [blockTop, setBlockTop] = useState(260);
   const [blockHeight, setBlockHeight] = useState(DEFAULT_BLOCK_HEIGHT);
   const [initialBlockTop, setInitialBlockTop] = useState(260);
-  const [textPosition, setTextPosition] = useState<TextPosition>("bottom");
-
   const [overlayOpacity, setOverlayOpacity] = useState(1);
 
   // Offsets dentro del bloque
@@ -399,7 +427,119 @@ export default function ImageEditorFullPage() {
 
   const themeColors = getThemePreviewColors(theme);
 
-  // ✅ mutual exclusive
+  // ✅ Biblioteca state
+  const [libOpen, setLibOpen] = useState(true);
+  const [libScope, setLibScope] = useState<"raw" | "covers" | "screens" | "all">("raw");
+  const [libQ, setLibQ] = useState("");
+  const [libCategory, setLibCategory] = useState("");
+  const [libGroup, setLibGroup] = useState("");
+  const [libBusy, setLibBusy] = useState(false);
+  const [libItems, setLibItems] = useState<LibraryItem[]>([]);
+  const [libErr, setLibErr] = useState<string | null>(null);
+  const [libSelectMode, setLibSelectMode] = useState<LibrarySelectMode>("base");
+  // overlays (banderas / símbolos / etc) arriba de la imagen base
+  const [assetOverlays, setAssetOverlays] = useState<AssetOverlay[]>([]);
+
+  const libCategories = useMemo(() => {
+    const s = new Set<string>();
+    for (const it of libItems) if (it.category) s.add(it.category);
+    return Array.from(s).sort();
+  }, [libItems]);
+
+  const libGroups = useMemo(() => {
+    const s = new Set<string>();
+    for (const it of libItems) if (it.group) s.add(it.group);
+    return Array.from(s).sort();
+  }, [libItems]);
+
+  const peopleGroups = useMemo(() => {
+    const s = new Set<string>();
+    for (const it of libItems) if (it.category === "personas" && it.group) s.add(it.group);
+    return Array.from(s).sort();
+  }, [libItems]);
+
+  const assetsCategories = useMemo(() => {
+    // categorías típicas para “assets”
+    const wanted = new Set(["simbolos", "mapas", "graficos", "caras-circulares", "caras_circulares"]);
+    return libCategories.filter((c) => wanted.has(c));
+  }, [libCategories]);
+
+  async function fetchLibrary() {
+    setLibBusy(true);
+    setLibErr(null);
+    try {
+      const qs = new URLSearchParams();
+      qs.set("scope", libScope);
+      if (libQ.trim()) qs.set("q", libQ.trim());
+      if (libCategory.trim()) qs.set("category", libCategory.trim());
+      if (libGroup.trim()) qs.set("group", libGroup.trim());
+      qs.set("limit", "800");
+
+      const res = await fetch(`/api/editor-images/enhance?${qs.toString()}`, { method: "GET" });
+      const raw = await res.text().catch(() => "");
+      const json = raw ? JSON.parse(raw) : null;
+
+      if (!res.ok) {
+        setLibErr(json?.message ?? `Error biblioteca (${res.status})`);
+        setLibItems([]);
+        return;
+      }
+
+      setLibItems((json?.items ?? []) as LibraryItem[]);
+    } catch (e: any) {
+      setLibErr(e?.message ?? "Error inesperado en biblioteca");
+      setLibItems([]);
+    } finally {
+      setLibBusy(false);
+    }
+  }
+
+  function selectBaseFromLibrary(item: LibraryItem) {
+    const u = abs(item.url);
+    setPreviewUrl(u);
+    setFile(null);
+    setStatusMsg(`Imagen base: ${item.relPath}`);
+    setErrorMsg(null);
+  }
+
+  function addOverlayFromLibrary(item: LibraryItem) {
+    const id = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+    setAssetOverlays((prev) => [
+      ...prev,
+      {
+        id,
+        item,
+        xPct: 8,
+        yPct: 8,
+        widthPct: 22,
+        opacity: 1,
+      },
+    ]);
+
+    setStatusMsg(`Overlay agregado: ${item.relPath}`);
+    setErrorMsg(null);
+  }
+
+  function clearLibraryFilters() {
+    setLibQ("");
+    setLibCategory("");
+    setLibGroup("");
+  }
+
+  function quickPeopleSelect(group: string) {
+    setLibScope("raw");
+    setLibCategory("personas");
+    setLibGroup(group || "");
+  }
+
+  function quickAssetsSelect(category: string, group?: string) {
+    setLibScope("raw");
+    setLibCategory(category || "");
+    setLibGroup(group || "");
+  }
+
+  // mutual exclusive logos
   useEffect(() => {
     if (showLogoHorizontal && showLogoCircle) setShowLogoCircle(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -421,7 +561,7 @@ export default function ImageEditorFullPage() {
     return () => window.removeEventListener("resize", updateHeight);
   }, [previewUrl, showHeaderStrip]);
 
-  // INIT desde querystring
+  // init desde querystring
   useEffect(() => {
     const imageUrl = searchParams.get("imageUrl");
     const initialTitle = searchParams.get("title") ?? "";
@@ -430,8 +570,7 @@ export default function ImageEditorFullPage() {
     const initialFooterRaw = (searchParams.get("footer") ?? "").trim();
     const initialFooter = isUrlLike(initialFooterRaw) ? "" : initialFooterRaw;
 
-    const initialAlert =
-      (searchParams.get("alertTag") as AlertTag | null) ?? "";
+    const initialAlert = (searchParams.get("alertTag") as AlertTag | null) ?? "";
     const qpTheme = normalizeTheme(searchParams.get("theme"));
 
     const qpHeaderEnabled = searchParams.get("headerEnabled") === "1";
@@ -449,22 +588,11 @@ export default function ImageEditorFullPage() {
 
     if (qpTheme) setTheme(qpTheme);
 
-    const textPosParam = searchParams.get("textPosition") as
-      | TextPosition
-      | null;
-
-    let pos: TextPosition = "bottom";
+    const textPosParam = searchParams.get("textPosition");
     let startTop = 260;
+    if (textPosParam === "top") startTop = 90;
+    else if (textPosParam === "middle") startTop = 170;
 
-    if (textPosParam === "top") {
-      pos = "top";
-      startTop = 90;
-    } else if (textPosParam === "middle") {
-      pos = "middle";
-      startTop = 170;
-    }
-
-    setTextPosition(pos);
     setBlockTop(startTop);
     setInitialBlockTop(startTop);
     setBlockHeight(DEFAULT_BLOCK_HEIGHT);
@@ -482,18 +610,6 @@ export default function ImageEditorFullPage() {
       try {
         setLoadingImage(true);
         setErrorMsg(null);
-
-        const res = await fetch(imageUrl);
-        if (!res.ok) throw new Error("No se pudo descargar la imagen base");
-
-        const blob = await res.blob();
-        const mime = blob.type || "image/jpeg";
-
-        const f = new File([blob], `image-from-url.jpg`, { type: mime });
-        setFile(f);
-        setPreviewUrl(imageUrl);
-      } catch (err: any) {
-        console.error("[editor-full] error al cargar imagen inicial:", err);
         setPreviewUrl(imageUrl);
         setFile(null);
       } finally {
@@ -501,6 +617,14 @@ export default function ImageEditorFullPage() {
       }
     })();
   }, [searchParams]);
+
+  // auto-load biblioteca al abrir (una vez)
+  useEffect(() => {
+    if (!libOpen) return;
+    if (libItems.length > 0) return;
+    void fetchLibrary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [libOpen]);
 
   // IMAGEN LOCAL
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -513,12 +637,9 @@ export default function ImageEditorFullPage() {
     setPreviewUrl(url);
   };
 
-  // Área útil (content box)
+  // Área útil preview 16:9
   const effectiveHeight = previewHeight || PREVIEW_HEIGHT_FALLBACK;
-  const bars = getScaledBarsForPreview({
-    previewH: effectiveHeight,
-    showHeaderStrip,
-  });
+  const bars = getScaledBarsForPreview({ previewH: effectiveHeight, showHeaderStrip });
 
   const contentTopOffset = bars.contentTopOffset;
   const contentHeight = bars.contentHeight;
@@ -526,18 +647,13 @@ export default function ImageEditorFullPage() {
   const previewFooterH = bars.footerH;
 
   function getPreviewSizes() {
-    const previewW =
-      previewRef.current?.getBoundingClientRect().width ?? 1280;
-    const previewH =
-      previewRef.current?.getBoundingClientRect().height ?? 720;
-
+    const previewW = previewRef.current?.getBoundingClientRect().width ?? 1280;
+    const previewH = previewRef.current?.getBoundingClientRect().height ?? 720;
     const contentW = Math.max(1, previewW);
     const contentH = Math.max(1, previewH - previewHeaderH - previewFooterH);
-
     return { previewW, previewH, contentW, contentH };
   }
 
-  // clamp de logo dentro del content box (0..contentW-logoW, 0..contentH-logoH)
   function clampLogoPct(args: {
     xPct: number;
     yPct: number;
@@ -546,8 +662,6 @@ export default function ImageEditorFullPage() {
   }) {
     const { contentW, contentH } = getPreviewSizes();
     const wPx = (args.widthPct / 100) * contentW;
-
-    // altura estimada para hitbox / clamp
     const hPx = args.kind === "circle" ? wPx : wPx * 0.28;
 
     const xPx = pctToPx(args.xPct, contentW);
@@ -559,13 +673,9 @@ export default function ImageEditorFullPage() {
     const xClamped = clamp(xPx, 0, maxX);
     const yClamped = clamp(yPx, 0, maxY);
 
-    return {
-      xPct: pxToPct(xClamped, contentW),
-      yPct: pxToPct(yClamped, contentH),
-    };
+    return { xPct: pxToPct(xClamped, contentW), yPct: pxToPct(yClamped, contentH) };
   }
 
-  // DRAG start
   const startDrag = (target: DragTarget, e: ReactMouseEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -594,7 +704,6 @@ export default function ImageEditorFullPage() {
     });
   };
 
-  // DRAG move
   useEffect(() => {
     if (!drag) return;
 
@@ -632,32 +741,21 @@ export default function ImageEditorFullPage() {
           setAlertOffsetY(drag.alertOffsetY + dy);
           break;
         }
-
-        // ✅ LOGO DRAG (en % del content box) — libre X/Y
         case "logoCircle": {
           const { contentW, contentH } = getPreviewSizes();
-
           const startXpx = pctToPx(drag.logoCircleXPct, contentW);
           const startYpx = pctToPx(drag.logoCircleYPct, contentH);
 
           const xPct = pxToPct(startXpx + dx, contentW);
           const yPct = pxToPct(startYpx + dy, contentH);
 
-          const clamped = clampLogoPct({
-            xPct,
-            yPct,
-            widthPct: logoCircleWidthPct,
-            kind: "circle",
-          });
-
+          const clamped = clampLogoPct({ xPct, yPct, widthPct: logoCircleWidthPct, kind: "circle" });
           setLogoCircleXPct(clamped.xPct);
           setLogoCircleYPct(clamped.yPct);
           break;
         }
-
         case "logoHorizontal": {
           const { contentW, contentH } = getPreviewSizes();
-
           const startXpx = pctToPx(drag.logoHorizontalXPct, contentW);
           const startYpx = pctToPx(drag.logoHorizontalYPct, contentH);
 
@@ -670,13 +768,10 @@ export default function ImageEditorFullPage() {
             widthPct: logoHorizontalWidthPct,
             kind: "horizontal",
           });
-
           setLogoHorizontalXPct(clamped.xPct);
           setLogoHorizontalYPct(clamped.yPct);
           break;
         }
-
-        // ✅ LOGO RESIZE (drag desde handle)
         case "logoCircleResize": {
           const { contentW } = getPreviewSizes();
           const startWpx = (drag.logoCircleWidthPct / 100) * contentW;
@@ -684,17 +779,11 @@ export default function ImageEditorFullPage() {
           const newPct = clamp((newWpx / contentW) * 100, 6, 40);
           setLogoCircleWidthPct(newPct);
 
-          const clamped = clampLogoPct({
-            xPct: logoCircleXPct,
-            yPct: logoCircleYPct,
-            widthPct: newPct,
-            kind: "circle",
-          });
+          const clamped = clampLogoPct({ xPct: logoCircleXPct, yPct: logoCircleYPct, widthPct: newPct, kind: "circle" });
           setLogoCircleXPct(clamped.xPct);
           setLogoCircleYPct(clamped.yPct);
           break;
         }
-
         case "logoHorizontalResize": {
           const { contentW } = getPreviewSizes();
           const startWpx = (drag.logoHorizontalWidthPct / 100) * contentW;
@@ -710,6 +799,71 @@ export default function ImageEditorFullPage() {
           });
           setLogoHorizontalXPct(clamped.xPct);
           setLogoHorizontalYPct(clamped.yPct);
+          break;
+        }
+        case "asset": {
+          const assetId = drag.assetId;
+          if (!assetId) break;
+
+          const { contentW, contentH } = getPreviewSizes();
+
+          const startXPct = drag.assetXPct ?? 0;
+          const startYPct = drag.assetYPct ?? 0;
+          const widthPct = assetOverlays.find((o) => o.id === assetId)?.widthPct ?? (drag.assetWidthPct ?? 20);
+
+          // mover en px y volver a % (content box)
+          const startXpx = pctToPx(startXPct, contentW);
+          const startYpx = pctToPx(startYPct, contentH);
+
+          const xPct = pxToPct(startXpx + dx, contentW);
+          const yPct = pxToPct(startYpx + dy, contentH);
+
+          // clamp para que no se salga
+          const wPx = (widthPct / 100) * contentW;
+          const hPx = wPx * 0.66;
+
+          const maxX = Math.max(0, contentW - wPx);
+          const maxY = Math.max(0, contentH - hPx);
+
+          const xClampedPct = pxToPct(clamp(pctToPx(xPct, contentW), 0, maxX), contentW);
+          const yClampedPct = pxToPct(clamp(pctToPx(yPct, contentH), 0, maxY), contentH);
+
+          setAssetOverlays((prev) =>
+            prev.map((o) => (o.id === assetId ? { ...o, xPct: xClampedPct, yPct: yClampedPct } : o)),
+          );
+          break;
+        }
+
+        case "assetResize": {
+          const assetId = drag.assetId;
+          if (!assetId) break;
+
+          const { contentW, contentH } = getPreviewSizes();
+          const startW = drag.assetWidthPct ?? assetOverlays.find((o) => o.id === assetId)?.widthPct ?? 20;
+
+          const startWpx = (startW / 100) * contentW;
+          const newWpx = Math.max(24, startWpx + dx);
+          const newPct = clamp((newWpx / contentW) * 100, 6, 60);
+
+          // clamp posición después de resize
+          const ov = assetOverlays.find((o) => o.id === assetId);
+          const xPct = ov?.xPct ?? (drag.assetXPct ?? 0);
+          const yPct = ov?.yPct ?? (drag.assetYPct ?? 0);
+
+          const wPx = (newPct / 100) * contentW;
+          const hPx = wPx * 0.66;
+
+          const maxX = Math.max(0, contentW - wPx);
+          const maxY = Math.max(0, contentH - hPx);
+
+          const xClampedPct = pxToPct(clamp(pctToPx(xPct, contentW), 0, maxX), contentW);
+          const yClampedPct = pxToPct(clamp(pctToPx(yPct, contentH), 0, maxY), contentH);
+
+          setAssetOverlays((prev) =>
+            prev.map((o) =>
+              o.id === assetId ? { ...o, widthPct: newPct, xPct: xClampedPct, yPct: yClampedPct } : o,
+            ),
+          );
           break;
         }
       }
@@ -735,6 +889,7 @@ export default function ImageEditorFullPage() {
     logoCircleYPct,
     logoHorizontalXPct,
     logoHorizontalYPct,
+    assetOverlays
   ]);
 
   function resetPositions() {
@@ -772,7 +927,6 @@ export default function ImageEditorFullPage() {
     setLogoCircleOpacity(0.95);
   }
 
-  // ✅ % para backend (contentHeight)
   const live = getBackendLayoutPct({
     previewEl: previewRef.current,
     previewHeightFallback: PREVIEW_HEIGHT_FALLBACK,
@@ -786,17 +940,12 @@ export default function ImageEditorFullPage() {
   const blockTopPct = live.blockTopPct;
   const overlayHeightPct = live.overlayHeightPct;
 
-  // offsets para previews (baseline)
   const titleXFrac = clamp(titleOffsetX / 1280, 0, 1);
   const subtitleXFrac = clamp(subtitleOffsetX / 1280, 0, 1);
   const alertXFrac = clamp(alertOffsetX / 1280, 0, 1);
 
   const titleYInBlockFrac = clamp(titleOffsetY / Math.max(1, blockHeight), 0, 1);
-  const subtitleYInBlockFrac = clamp(
-    subtitleOffsetY / Math.max(1, blockHeight),
-    0,
-    1
-  );
+  const subtitleYInBlockFrac = clamp(subtitleOffsetY / Math.max(1, blockHeight), 0, 1);
   const alertYInBlockFrac = clamp(alertOffsetY / Math.max(1, blockHeight), 0, 1);
 
   function SocialIcons() {
@@ -808,10 +957,7 @@ export default function ImageEditorFullPage() {
           draggable={false}
           onDragStart={(e) => e.preventDefault()}
           className="h-6 w-6 rounded-full bg-black/60 p-1"
-          onError={(e) =>
-          (((e.currentTarget as HTMLImageElement).style.display = "none"),
-            undefined)
-          }
+          onError={(e) => (((e.currentTarget as HTMLImageElement).style.display = "none"), undefined)}
         />
         <img
           src={ICON_FB}
@@ -819,10 +965,7 @@ export default function ImageEditorFullPage() {
           draggable={false}
           onDragStart={(e) => e.preventDefault()}
           className="h-6 w-6 rounded-full bg-black/60 p-1"
-          onError={(e) =>
-          (((e.currentTarget as HTMLImageElement).style.display = "none"),
-            undefined)
-          }
+          onError={(e) => (((e.currentTarget as HTMLImageElement).style.display = "none"), undefined)}
         />
         <img
           src={ICON_IG}
@@ -830,23 +973,17 @@ export default function ImageEditorFullPage() {
           draggable={false}
           onDragStart={(e) => e.preventDefault()}
           className="h-6 w-6 rounded-full bg-black/60 p-1"
-          onError={(e) =>
-          (((e.currentTarget as HTMLImageElement).style.display = "none"),
-            undefined)
-          }
+          onError={(e) => (((e.currentTarget as HTMLImageElement).style.display = "none"), undefined)}
         />
       </div>
     );
   }
 
-  // ✅ Preview overlays para otras proporciones
   function OverlayLayer(props: { w: number; h: number; showHeader: boolean }) {
     const { w, h, showHeader } = props;
 
     const footerH = Math.round((FOOTER_HEIGHT / 720) * h);
-    const headerH = showHeader
-      ? Math.round((HEADER_STRIP_HEIGHT / 720) * h)
-      : 0;
+    const headerH = showHeader ? Math.round((HEADER_STRIP_HEIGHT / 720) * h) : 0;
     const contentH = Math.max(1, h - footerH - headerH);
     const contentW = Math.max(1, w);
 
@@ -866,7 +1003,6 @@ export default function ImageEditorFullPage() {
     const subtitleTop = topPx + subtitleYInBlockFrac * heightPx;
     const alertTop = topPx + alertYInBlockFrac * heightPx;
 
-    // ✅ logos flotantes (NO en footer)
     const circleLeft = pctToPx(logoCircleXPct, contentW);
     const circleTop = headerH + pctToPx(logoCircleYPct, contentH);
     const circleW = (logoCircleWidthPct / 100) * contentW;
@@ -879,15 +1015,7 @@ export default function ImageEditorFullPage() {
     return (
       <>
         {showLogoHorizontal && (
-          <div
-            className="absolute"
-            style={{
-              left: horizLeft,
-              top: horizTop,
-              width: horizW,
-              height: horizH,
-            }}
-          >
+          <div className="absolute" style={{ left: horizLeft, top: horizTop, width: horizW, height: horizH }}>
             <ImgMulti
               candidates={LOGO_HORIZONTAL_CANDIDATES}
               alt="Logo horizontal (preview)"
@@ -898,15 +1026,7 @@ export default function ImageEditorFullPage() {
         )}
 
         {showLogoCircle && !showLogoHorizontal && (
-          <div
-            className="absolute"
-            style={{
-              left: circleLeft,
-              top: circleTop,
-              width: circleW,
-              height: circleW,
-            }}
-          >
+          <div className="absolute" style={{ left: circleLeft, top: circleTop, width: circleW, height: circleW }}>
             <ImgMulti
               candidates={LOGO_CIRCLE_CANDIDATES}
               alt="Logo circular (preview)"
@@ -927,9 +1047,7 @@ export default function ImageEditorFullPage() {
               borderBottom: `1px solid ${themeColors.footerBorder}`,
             }}
           >
-            <span className="font-semibold text-slate-200">
-              {headerDate || "Fecha"}
-            </span>
+            <span className="font-semibold text-slate-200">{headerDate || "Fecha"}</span>
             {headerLabel && (
               <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200">
                 {headerLabel}
@@ -968,10 +1086,7 @@ export default function ImageEditorFullPage() {
                 style={{
                   left: titleLeft,
                   top: titleTop - topPx,
-                  fontSize: `${Math.max(
-                    18,
-                    Math.round((titleSize / 1280) * w)
-                  )}px`,
+                  fontSize: `${Math.max(18, Math.round((titleSize / 1280) * w))}px`,
                   color: titleColor,
                   whiteSpace: "pre-line",
                   maxWidth: "86%",
@@ -987,10 +1102,7 @@ export default function ImageEditorFullPage() {
                 style={{
                   left: subtitleLeft,
                   top: subtitleTop - topPx,
-                  fontSize: `${Math.max(
-                    12,
-                    Math.round((subtitleSize / 1280) * w)
-                  )}px`,
+                  fontSize: `${Math.max(12, Math.round((subtitleSize / 1280) * w))}px`,
                   color: subtitleColor,
                   whiteSpace: "pre-line",
                   maxWidth: "75%",
@@ -1002,7 +1114,7 @@ export default function ImageEditorFullPage() {
           </div>
         </div>
 
-        {/* ✅ Footer FIJO (lockup) */}
+        {/* Footer fijo */}
         <div
           className="absolute inset-x-0 flex items-center justify-between gap-3 px-4"
           style={{
@@ -1012,56 +1124,53 @@ export default function ImageEditorFullPage() {
             borderTop: `1px solid ${themeColors.footerBorder}`,
           }}
         >
-          {showFooterLockup ? (
-            <div className="flex min-w-0 items-center gap-3">
-              <img
-                src={BRAND_LOCKUP_SRC}
-                alt="Canalibertario lockup"
-                draggable={false}
-                onDragStart={(e) => e.preventDefault()}
-                className="h-7 w-7 flex-none rounded-full border border-white/10 bg-black/30 object-cover"
-                onError={(e) =>
-                (((e.currentTarget as HTMLImageElement).style.display =
-                  "none"),
-                  undefined)
-                }
-              />
-              <div className="min-w-0">
-                <div className="truncate text-xs font-extrabold tracking-tight text-slate-100">
-                  CANALIBERTARIO
-                </div>
-                <div className="truncate text-[10px] text-slate-300">
-                  Noticias y análisis (mirada libertaria)
-                </div>
-              </div>
+          <div className="flex min-w-0 items-center gap-3">
+            <img
+              src={BRAND_LOCKUP_SRC}
+              alt="Canalibertario lockup"
+              draggable={false}
+              onDragStart={(e) => e.preventDefault()}
+              className="h-7 w-7 flex-none rounded-full border border-white/10 bg-black/30 object-cover"
+              onError={(e) => (((e.currentTarget as HTMLImageElement).style.display = "none"), undefined)}
+            />
+            <div className="min-w-0">
+              <div className="truncate text-xs font-extrabold tracking-tight text-slate-100">CANALIBERTARIO</div>
+              <div className="truncate text-[10px] text-slate-300">Noticias y análisis (mirada libertaria)</div>
             </div>
-          ) : (
-            <div />
-          )}
+          </div>
 
           <div className="flex flex-none items-center gap-3">
             <div className="opacity-95" style={{ color: brandColor }}>
               <SocialIcons />
             </div>
-            {footer.trim() ? (
-              <span className="text-[10px] text-slate-300">{footer.trim()}</span>
-            ) : null}
+            {footer.trim() ? <span className="text-[10px] text-slate-300">{footer.trim()}</span> : null}
           </div>
         </div>
       </>
     );
   }
 
-  // slider altura fondo (barra) sobre contentHeight
-  const overlayHeightPctUI = Math.round(
-    (blockHeight / Math.max(1, contentHeight)) * 100
-  );
+  const overlayHeightPctUI = Math.round((blockHeight / Math.max(1, contentHeight)) * 100);
 
+  // ✅ PROXY same-origin para evitar CORS al bajar una imagen del backend
   async function ensureFileFromPreviewUrl(): Promise<File | null> {
     if (!previewUrl) return null;
+
     try {
-      const res = await fetch(previewUrl);
+      if (previewUrl.startsWith("blob:")) {
+        const res = await fetch(previewUrl);
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        const mime = blob.type || "image/jpeg";
+        return new File([blob], "image-from-preview.jpg", { type: mime });
+      }
+
+      const qs = new URLSearchParams();
+      qs.set("proxyUrl", previewUrl);
+
+      const res = await fetch(`/api/editor-images/enhance?${qs.toString()}`, { method: "GET" });
       if (!res.ok) return null;
+
       const blob = await res.blob();
       const mime = blob.type || "image/jpeg";
       return new File([blob], "image-from-preview.jpg", { type: mime });
@@ -1072,9 +1181,7 @@ export default function ImageEditorFullPage() {
 
   const handleGenerate = async () => {
     if (!previewUrl && !file) {
-      setErrorMsg(
-        "Primero seleccioná una imagen base (o asegurate que se haya cargado la del artículo)."
-      );
+      setErrorMsg("Primero seleccioná una imagen base (o usá la biblioteca).");
       return;
     }
 
@@ -1089,11 +1196,8 @@ export default function ImageEditorFullPage() {
         if (effectiveFile) setFile(effectiveFile);
       }
 
-      if (!effectiveFile) {
-        throw new Error(
-          "No pude armar el archivo de imagen para enviar. Esto suele ser CORS entre el front y el servidor de imágenes. Solución: habilitar CORS en el backend de uploads, o servir la imagen desde el mismo dominio/origen del front."
-        );
-      }
+      if (!effectiveFile)
+        throw new Error("No pude descargar la imagen base para enviar (proxy falló).");
 
       const fd = new FormData();
       fd.append("file", effectiveFile);
@@ -1119,9 +1223,7 @@ export default function ImageEditorFullPage() {
               yContentPct: useHorizontal ? logoHorizontalYPct : logoCircleYPct,
               showHeaderStrip,
             }),
-            widthPct: useHorizontal
-              ? logoHorizontalWidthPct
-              : logoCircleWidthPct,
+            widthPct: useHorizontal ? logoHorizontalWidthPct : logoCircleWidthPct,
             opacity: useHorizontal ? logoHorizontalOpacity : logoCircleOpacity,
           }
           : { enabled: false };
@@ -1129,7 +1231,6 @@ export default function ImageEditorFullPage() {
       const brandConfig = {
         brandName: "CANALIBERTARIO",
         assets: {
-          // el backend usa paths; dejamos el “primero” (el que te interesa)
           logoCirclePath: LOGO_CIRCLE_CANDIDATES[0],
           logoHorizontalPath: LOGO_HORIZONTAL_CANDIDATES[0],
           footerLockupPath: BRAND_LOCKUP_SRC,
@@ -1145,20 +1246,24 @@ export default function ImageEditorFullPage() {
         subtitleFontPx: subtitleSize,
 
         headerStrip: showHeaderStrip
-          ? {
-            date: headerDate || null,
-            label: headerLabel || null,
-          }
+          ? { date: headerDate || null, label: headerLabel || null }
           : null,
 
-        // ✅ footer lockup FIJO
-        footerLeft: {
-          enabled: true,
-          kind: "lockup",
-        },
-
-        // ✅ logo flotante real
+        footerLeft: { enabled: true, kind: "lockup" },
         logoOverlay,
+
+        // ✅ NUEVO: overlays (banderas / símbolos / mapas / caras-circulares)
+        // Espera que el backend implemente layout.imageOverlays en cover.renderer.ts
+        imageOverlays: (assetOverlays ?? []).map((o) => ({
+          path: o.item.url, // ej: "/uploads/raw/xxx.png" o "/brand/..."
+          xPct: o.xPct, // % del CONTENT (x) == % del canvas en X
+          yPct: contentYPctToCanvasYPct({
+            yContentPct: o.yPct, // y está en % del content box
+            showHeaderStrip,
+          }),
+          widthPct: o.widthPct, // % del ancho del content/canvas
+          opacity: o.opacity ?? 1,
+        })),
       };
 
       const colors = {
@@ -1186,7 +1291,6 @@ export default function ImageEditorFullPage() {
         method: "POST",
         body: fd,
       });
-
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(text || `Error HTTP ${res.status} al generar la portada`);
@@ -1195,22 +1299,14 @@ export default function ImageEditorFullPage() {
       const data = await res.json().catch(() => null);
 
       const finalUrl: string | null =
-        data?.imageUrl ??
-        data?.coverUrl ??
-        data?.enhancedImageUrl ??
-        data?.url ??
-        null;
+        data?.imageUrl ?? data?.coverUrl ?? data?.enhancedImageUrl ?? data?.url ?? null;
 
       if (!finalUrl) {
-        const coverError = data?.coverError?.message
-          ? ` (${data.coverError.message})`
-          : "";
+        const coverError = data?.coverError?.message ? ` (${data.coverError.message})` : "";
         throw new Error(`El backend no devolvió imageUrl/coverUrl${coverError}`);
       }
 
-      setStatusMsg(
-        data?.message ?? "Cover generada. URL copiada al portapapeles."
-      );
+      setStatusMsg(data?.message ?? "Cover generada. URL copiada al portapapeles.");
 
       if (typeof navigator !== "undefined" && navigator.clipboard) {
         try {
@@ -1222,7 +1318,7 @@ export default function ImageEditorFullPage() {
         try {
           window.opener.postMessage(
             { type: "editor-image-url", url: finalUrl },
-            window.location.origin
+            window.location.origin,
           );
         } catch { }
       }
@@ -1234,11 +1330,10 @@ export default function ImageEditorFullPage() {
     }
   };
 
-  // px del logo flotante en preview 16:9
-  const previewW =
-    previewRef.current?.getBoundingClientRect().width ?? 1280;
-  const previewH =
-    previewRef.current?.getBoundingClientRect().height ?? 720;
+
+  // coords logo preview 16:9
+  const previewW = previewRef.current?.getBoundingClientRect().width ?? 1280;
+  const previewH = previewRef.current?.getBoundingClientRect().height ?? 720;
   const contentW = Math.max(1, previewW);
   const contentH = Math.max(1, previewH - previewHeaderH - previewFooterH);
 
@@ -1249,833 +1344,1174 @@ export default function ImageEditorFullPage() {
   const horizLeft = pctToPx(logoHorizontalXPct, contentW);
   const horizTop = previewHeaderH + pctToPx(logoHorizontalYPct, contentH);
   const horizW = (logoHorizontalWidthPct / 100) * contentW;
-  const horizH = horizW * 0.28; // ✅ hitbox real para drag vertical
+  const horizH = horizW * 0.28;
 
+  // layout columns: preview / controls / library
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-50">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 lg:flex-row lg:py-8">
-        {/* IZQUIERDA */}
-        <div className="flex-1 space-y-4">
-          <header className="mb-2 space-y-2">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
-              Editor de portadas · Pantalla completa
+    <main className="fixed inset-0 z-[9999] overflow-auto bg-slate-950 text-slate-50">
+      {/* ✅ full width real (sin “blanco” alrededor) */}
+      <div className="w-screen px-4 py-6">
+        {/* ✅ max ancho grande pero sin centrar “chico” */}
+        <div className="mx-auto max-w-[2200px]">
+          <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
+                Editor de portadas · Full
+              </div>
+              <h1 className="text-2xl font-semibold leading-tight md:text-3xl">
+                Editá la portada con preview grande + controles + biblioteca.
+              </h1>
             </div>
-            <h1 className="text-2xl font-semibold leading-tight md:text-3xl">
-              Ajustá textos y vista previa en grande antes de generar la cover.
-            </h1>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={resetPositions}
+                className="rounded-full border border-slate-800 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-100 hover:border-sky-400"
+              >
+                Reset todo
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={saving || (!previewUrl && !file)}
+                className="rounded-full bg-sky-500 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_18px_35px_rgba(56,189,248,0.45)] hover:bg-sky-400 disabled:bg-slate-700 disabled:text-slate-300"
+              >
+                {saving ? "Generando..." : "Generar cover"}
+              </button>
+            </div>
           </header>
 
-          <section
-            ref={containerRef}
-            className="relative overflow-hidden rounded-3xl border border-slate-900 bg-slate-900/90 shadow-[0_32px_90px_rgba(15,23,42,0.95)]"
-          >
-            <div className="flex items-center justify-between px-6 pt-4 text-[11px] uppercase tracking-[0.18em] text-slate-400">
-              <span>Vista previa 16:9</span>
-              <span>Base ideal para X / Facebook / YouTube</span>
+          {statusMsg && (
+            <div className="mb-3 rounded-xl border border-emerald-400/60 bg-emerald-500/10 px-3 py-2 text-[12px] text-emerald-100">
+              {statusMsg}
             </div>
-
-            <div
-              ref={previewRef}
-              className="relative mt-3 aspect-[16/9] w-full overflow-hidden rounded-2xl border border-slate-800 bg-black/60"
-            >
-              {previewUrl ? (
-                <>
-                  <img
-                    src={previewUrl}
-                    alt="Imagen base"
-                    draggable={false}
-                    onDragStart={(e) => e.preventDefault()}
-                    className="h-full w-full object-cover"
-                  />
-
-                  {/* ✅ LOGOS FLOTANTES (DRAG + RESIZE HANDLE) */}
-                  {showLogoHorizontal && (
-                    <div
-                      className="absolute cursor-move"
-                      style={{
-                        left: horizLeft,
-                        top: horizTop,
-                        width: horizW,
-                        height: horizH,
-                        zIndex: 30,
-
-                        // ✅ hitbox visible suave para que no sea "un punto"
-                        background: "rgba(0,0,0,0.18)",
-                        border: "1px solid rgba(255,255,255,0.18)",
-                        borderRadius: 12,
-                        backdropFilter: "blur(1px)",
-                      }}
-                      onMouseDown={(e) => startDrag("logoHorizontal", e)}
-                    >
-                      <ImgMulti
-                        candidates={LOGO_HORIZONTAL_CANDIDATES}
-                        alt="Logo horizontal (floating)"
-                        className="absolute inset-0 object-contain select-none"
-                        style={{ opacity: logoHorizontalOpacity, pointerEvents: "none" }}
-                      />
-
-                      <div
-                        className="absolute -bottom-2 -right-2 h-4 w-4 cursor-nwse-resize rounded-full border border-white/30 bg-black/60 shadow"
-                        title="Redimensionar"
-                        onMouseDown={(e) => startDrag("logoHorizontalResize", e)}
-                      />
-                    </div>
-                  )}
-
-                  {showLogoCircle && !showLogoHorizontal && (
-                    <div
-                      className="absolute cursor-move rounded-full"
-                      style={{
-                        left: circleLeft,
-                        top: circleTop,
-                        width: circleW,
-                        height: circleW,
-                        zIndex: 30,
-
-                        // ✅ hitbox visible
-                        background: "rgba(0,0,0,0.18)",
-                        border: "1px solid rgba(255,255,255,0.18)",
-                        backdropFilter: "blur(1px)",
-                      }}
-                      onMouseDown={(e) => startDrag("logoCircle", e)}
-                    >
-
-                      <ImgMulti
-                        candidates={LOGO_CIRCLE_CANDIDATES}
-                        alt="Logo circular (floating)"
-                        className="absolute inset-0 rounded-full object-contain select-none"
-                        style={{ opacity: logoCircleOpacity, pointerEvents: "none" }}
-                        rounded
-                      />
-
-                      <div
-                        className="absolute -bottom-2 -right-2 h-4 w-4 cursor-nwse-resize rounded-full border border-white/30 bg-black/60 shadow"
-                        title="Redimensionar"
-                        onMouseDown={(e) => startDrag("logoCircleResize", e)}
-                      />
-                    </div>
-                  )}
-
-                  {/* BLOQUE */}
-                  <div
-                    className="absolute left-0 right-0 cursor-move"
-                    style={{
-                      top: blockTop,
-                      height: blockHeight,
-                      background: `linear-gradient(to bottom, ${themeColors.bandFrom} 0%, ${themeColors.bandMid} 40%, ${themeColors.bandTo} 100%)`,
-                      opacity: overlayOpacity,
-                      zIndex: 20,
-                    }}
-                    onMouseDown={(e) => startDrag("block", e)}
-                  >
-                    <div className="relative h-full w-full">
-                      {alertTag && (
-                        <div
-                          className="absolute inline-flex cursor-move select-none items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
-                          style={{
-                            left: alertOffsetX,
-                            top: alertOffsetY,
-                            backgroundColor: themeColors.footerBg,
-                            color: "#ffffff",
-                          }}
-                          onMouseDown={(e) => startDrag("alert", e)}
-                        >
-                          {alertTag}
-                        </div>
-                      )}
-
-                      {title && (
-                        <span
-                          className="absolute cursor-move select-none font-extrabold tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
-                          style={{
-                            left: titleOffsetX,
-                            top: titleOffsetY,
-                            fontSize: `${titleSize}px`,
-                            color: titleColor,
-                            whiteSpace: "pre-line",
-                            maxWidth: "80%",
-                          }}
-                          onMouseDown={(e) => startDrag("title", e)}
-                        >
-                          {title}
-                        </span>
-                      )}
-
-                      {subtitle && (
-                        <span
-                          className="absolute max-w-[65%] cursor-move select-none font-medium drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]"
-                          style={{
-                            left: subtitleOffsetX,
-                            top: subtitleOffsetY,
-                            fontSize: `${subtitleSize}px`,
-                            color: subtitleColor,
-                            whiteSpace: "pre-line",
-                          }}
-                          onMouseDown={(e) => startDrag("subtitle", e)}
-                        >
-                          {subtitle}
-                        </span>
-                      )}
-
-                      <div
-                        className="absolute bottom-2 left-[10%] right-[10%] h-1.5 cursor-ns-resize rounded-full bg-slate-200/80"
-                        onMouseDown={(e) => startDrag("resize", e)}
-                      />
-                    </div>
-                  </div>
-
-                  {/* HEADER */}
-                  {showHeaderStrip && (headerDate || headerLabel) && (
-                    <div
-                      className="absolute inset-x-0 flex items-center justify-between px-6 text-xs"
-                      style={{
-                        top: 0,
-                        height: previewHeaderH,
-                        backgroundColor: themeColors.footerBg,
-                        borderBottom: `1px solid ${themeColors.footerBorder}`,
-                        zIndex: 40,
-                      }}
-                    >
-                      <span className="font-semibold text-slate-200">
-                        {headerDate || "Fecha / contexto"}
-                      </span>
-                      {headerLabel && (
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200">
-                          {headerLabel}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ✅ FOOTER FIJO (lockup) */}
-                  <div
-                    className="absolute inset-x-0 flex items-center justify-between gap-3 px-8"
-                    style={{
-                      bottom: 0,
-                      height: previewFooterH,
-                      backgroundColor: themeColors.footerBg,
-                      borderTop: `1px solid ${themeColors.footerBorder}`,
-                      zIndex: 50,
-                    }}
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <img
-                        src={BRAND_LOCKUP_SRC}
-                        alt="Canalibertario lockup"
-                        draggable={false}
-                        onDragStart={(e) => e.preventDefault()}
-                        className="h-8 w-8 flex-none rounded-full border border-white/10 bg-black/30 object-cover"
-                        onError={(e) =>
-                        (((e.currentTarget as HTMLImageElement).style.display =
-                          "none"),
-                          undefined)
-                        }
-                      />
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-extrabold tracking-tight text-slate-100">
-                          CANALIBERTARIO
-                        </div>
-                        <div className="truncate text-[11px] text-slate-300">
-                          Noticias y análisis (mirada libertaria)
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-none items-center gap-3">
-                      <div style={{ color: brandColor }}>
-                        <SocialIcons />
-                      </div>
-                      {footer.trim() ? (
-                        <span className="text-[11px] text-slate-300">
-                          {footer.trim()}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="flex h-full items-center justify-center text-sm text-slate-400">
-                  {loadingImage
-                    ? "Cargando imagen..."
-                    : "No hay imagen base. Volvé desde el panel principal o seleccioná una imagen nueva."}
-                </div>
-              )}
+          )}
+          {errorMsg && (
+            <div className="mb-3 rounded-xl border border-red-400/60 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
+              {errorMsg}
             </div>
+          )}
 
-            {/* COLORES */}
-            <div className="mt-4 rounded-b-3xl border-t border-slate-800 bg-slate-950/80 px-6 py-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* ✅ layout nuevo: CONTROLES (izq) / PREVIEW (centro) / BIBLIOTECA (der) */}
+          <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)_360px] xl:grid-cols-[380px_minmax(0,1fr)_380px]">
+
+            {/* =======================
+            COL 1: CONTROLES (izq)
+        ======================= */}
+            <aside className="space-y-4 lg:sticky lg:top-4 lg:h-[calc(100vh-32px)] lg:overflow-auto">
+              {/* Imagen base + branding */}
+              <section className="mx-auto w-full max-w-[1100px] overflow-hidden rounded-3xl border border-slate-900 bg-slate-900/60 shadow-[0_32px_90px_rgba(15,23,42,0.55)]">
                 <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Colores y tema
+                  Controles
                 </h2>
 
-                <label className="flex items-center gap-2 text-[11px] text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={showSocialPreviews}
-                    onChange={(e) => setShowSocialPreviews(e.target.checked)}
-                    className="h-3 w-3 rounded border-slate-600 bg-slate-900"
-                  />
-                  Mostrar previews de recorte (imágenes)
-                </label>
-              </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-700/80 bg-slate-800/80 px-4 py-2 text-xs font-medium text-slate-50 hover:border-sky-400/80 hover:bg-slate-800">
+                    Subir imagen local
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
+                  </label>
 
-              <div className="mt-3 space-y-3 text-[11px]">
-                <div className="space-y-2">
-                  <span className="block text-slate-300">Tema oficial</span>
-                  <div className="flex flex-wrap gap-2">
-                    {(["purple", "red", "blue", "black"] as CoverTheme[]).map(
-                      (t) => (
+                  <button
+                    type="button"
+                    onClick={handleGenerate}
+                    disabled={saving || (!previewUrl && !file)}
+                    className="rounded-xl bg-sky-500 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-sky-400 disabled:bg-slate-700 disabled:text-slate-300"
+                  >
+                    {saving ? "Generando..." : "Generar"}
+                  </button>
+                </div>
+
+                {previewUrl && (
+                  <p className="truncate text-[11px] text-slate-400">
+                    Base:{" "}
+                    <span className="font-mono text-slate-300">{previewUrl}</span>
+                  </p>
+                )}
+
+                <div className="space-y-2 border-t border-slate-800 pt-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Branding (logos flotantes)
+                  </h3>
+
+                  <div className="grid gap-2">
+                    <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={showLogoCircle}
+                        onChange={(e) => setShowLogoCircle(e.target.checked)}
+                        className="h-3 w-3 rounded border-slate-600 bg-slate-900"
+                      />
+                      Logo circular
+                    </label>
+
+                    <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={showLogoHorizontal}
+                        onChange={(e) => setShowLogoHorizontal(e.target.checked)}
+                        className="h-3 w-3 rounded border-slate-600 bg-slate-900"
+                      />
+                      Logo horizontal
+                    </label>
+                  </div>
+
+                  {(showLogoCircle || showLogoHorizontal) && (
+                    <div className="mt-2 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 text-[11px] text-slate-200">
+                      <div className="space-y-3">
+                        <div>
+                          <div className="mb-1 flex items-center justify-between">
+                            <span>Tamaño (% ancho)</span>
+                            <span className="text-slate-400">
+                              {showLogoHorizontal
+                                ? logoHorizontalWidthPct
+                                : logoCircleWidthPct}
+                              %
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={6}
+                            max={40}
+                            value={
+                              showLogoHorizontal
+                                ? logoHorizontalWidthPct
+                                : logoCircleWidthPct
+                            }
+                            onChange={(e) => {
+                              const v = Number(e.target.value);
+                              if (showLogoHorizontal) {
+                                setLogoHorizontalWidthPct(v);
+                                const c = clampLogoPct({
+                                  xPct: logoHorizontalXPct,
+                                  yPct: logoHorizontalYPct,
+                                  widthPct: v,
+                                  kind: "horizontal",
+                                });
+                                setLogoHorizontalXPct(c.xPct);
+                                setLogoHorizontalYPct(c.yPct);
+                              } else {
+                                setLogoCircleWidthPct(v);
+                                const c = clampLogoPct({
+                                  xPct: logoCircleXPct,
+                                  yPct: logoCircleYPct,
+                                  widthPct: v,
+                                  kind: "circle",
+                                });
+                                setLogoCircleXPct(c.xPct);
+                                setLogoCircleYPct(c.yPct);
+                              }
+                            }}
+                            className="w-full"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="mb-1 flex items-center justify-between">
+                            <span>Opacidad</span>
+                            <span className="text-slate-400">
+                              {(
+                                showLogoHorizontal
+                                  ? logoHorizontalOpacity
+                                  : logoCircleOpacity
+                              ).toFixed(2)}
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0.2}
+                            max={1}
+                            step={0.01}
+                            value={
+                              showLogoHorizontal
+                                ? logoHorizontalOpacity
+                                : logoCircleOpacity
+                            }
+                            onChange={(e) => {
+                              const v = Number(e.target.value);
+                              showLogoHorizontal
+                                ? setLogoHorizontalOpacity(v)
+                                : setLogoCircleOpacity(v);
+                            }}
+                            className="w-full"
+                          />
+                        </div>
+
                         <button
-                          key={t}
                           type="button"
-                          onClick={() => setTheme(t)}
-                          className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${theme === t
-                            ? "border-sky-400 bg-sky-500/10 text-sky-100"
-                            : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400/70"
-                            }`}
+                          onClick={resetFloatingLogo}
+                          className="inline-flex w-full items-center justify-center rounded-full bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700"
                         >
-                          {themeLabel(t)}
+                          Reset logo flotante
                         </button>
-                      )
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Textos */}
+                <div className="space-y-3 border-t border-slate-800 pt-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Textos
+                  </h3>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-slate-300">
+                      Título{" "}
+                      <span className="ml-1 text-[10px] text-slate-500">
+                        (Enter agrega salto)
+                      </span>
+                    </label>
+                    <textarea
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      rows={3}
+                      className="w-full resize-y rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-slate-300">
+                      Bajada{" "}
+                      <span className="ml-1 text-[10px] text-slate-500">
+                        (acepta saltos)
+                      </span>
+                    </label>
+                    <textarea
+                      value={subtitle}
+                      onChange={(e) => setSubtitle(e.target.value)}
+                      rows={2}
+                      className="w-full resize-y rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={showHeaderStrip}
+                        onChange={(e) => setShowHeaderStrip(e.target.checked)}
+                        className="h-3 w-3 rounded border-slate-600 bg-slate-900"
+                      />
+                      Franja superior
+                    </label>
+
+                    {showHeaderStrip && (
+                      <div className="grid gap-2">
+                        <input
+                          type="text"
+                          value={headerDate}
+                          onChange={(e) => setHeaderDate(e.target.value)}
+                          placeholder="24/12/2025 - 11:48"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                        />
+                        <input
+                          type="text"
+                          value={headerLabel}
+                          onChange={(e) => setHeaderLabel(e.target.value)}
+                          placeholder="ECONOMÍA / POLÍTICA"
+                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                        />
+                      </div>
                     )}
                   </div>
 
-                  <div className="mt-2 rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-[11px] text-slate-300">
-                    <b>Regla:</b> Header / Footer / Etiqueta usan el mismo color
-                    del theme (barBg).
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-slate-300">
+                      Footer{" "}
+                      <span className="ml-1 text-[10px] text-slate-500">
+                        (sin URL)
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      value={footer}
+                      onChange={(e) => setFooter(e.target.value)}
+                      placeholder="24/12/2025 · 11:48"
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                    />
                   </div>
-                </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="w-32 text-slate-300">Color título</span>
-                  <div className="flex items-center gap-1">
-                    {TITLE_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setTitleColor(c)}
-                        className={`h-5 w-5 rounded-full border ${titleColor === c
-                          ? "border-sky-400 ring-2 ring-sky-400/60"
-                          : "border-slate-600"
-                          }`}
-                        style={{ backgroundColor: c }}
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-slate-300">Etiqueta</label>
+                    <select
+                      value={alertTag}
+                      onChange={(e) => setAlertTag(e.target.value as AlertTag)}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                    >
+                      <option value="">Sin etiqueta</option>
+                      <option value="URGENTE">URGENTE</option>
+                      <option value="ALERTA">ALERTA</option>
+                      <option value="ÚLTIMA HORA">ÚLTIMA HORA</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-3 border-t border-slate-800 pt-3 text-[11px] text-slate-300">
+                    <div>
+                      <div className="mb-1 flex items-center justify-between">
+                        <span>Tamaño título</span>
+                        <span className="text-slate-400">{titleSize}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={24}
+                        max={48}
+                        value={titleSize}
+                        onChange={(e) => setTitleSize(Number(e.target.value))}
+                        className="w-full"
                       />
-                    ))}
-                  </div>
-                  <span className="ml-2 text-slate-400">{titleColor}</span>
-                </div>
+                    </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="w-32 text-slate-300">Color bajada</span>
-                  <div className="flex items-center gap-1">
-                    {SUBTITLE_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setSubtitleColor(c)}
-                        className={`h-5 w-5 rounded-full border ${subtitleColor === c
-                          ? "border-sky-400 ring-2 ring-sky-400/60"
-                          : "border-slate-600"
-                          }`}
-                        style={{ backgroundColor: c }}
+                    <div>
+                      <div className="mb-1 flex items-center justify-between">
+                        <span>Tamaño bajada</span>
+                        <span className="text-slate-400">{subtitleSize}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={16}
+                        max={32}
+                        value={subtitleSize}
+                        onChange={(e) => setSubtitleSize(Number(e.target.value))}
+                        className="w-full"
                       />
-                    ))}
-                  </div>
-                  <span className="ml-2 text-slate-400">{subtitleColor}</span>
-                </div>
+                    </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="w-32 text-slate-300">Color iconos</span>
-                  <div className="flex items-center gap-1">
-                    {BRAND_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setBrandColor(c)}
-                        className={`h-5 w-5 rounded-full border ${brandColor === c
-                          ? "border-sky-400 ring-2 ring-sky-400/60"
-                          : "border-slate-600"
-                          }`}
-                        style={{ backgroundColor: c }}
+                    <div className="border-t border-slate-800 pt-2">
+                      <div className="mb-1 flex items-center justify-between">
+                        <span>Altura del fondo</span>
+                        <span className="text-slate-400">{overlayHeightPctUI}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={25}
+                        max={65}
+                        value={overlayHeightPctUI}
+                        onChange={(e) => {
+                          const pct = Number(e.target.value);
+                          setBlockHeight(
+                            Math.round((pct / 100) * Math.max(1, contentHeight)),
+                          );
+                        }}
+                        className="w-full"
                       />
-                    ))}
-                  </div>
-                  <span className="ml-2 text-slate-400">{brandColor}</span>
-                </div>
+                    </div>
 
-                <button
-                  type="button"
-                  onClick={resetPositions}
-                  className="mt-2 inline-flex items-center rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:border-sky-400 hover:bg-slate-800"
+                    <div>
+                      <div className="mb-1 flex items-center justify-between">
+                        <span>Opacidad del fondo</span>
+                        <span className="text-slate-400">
+                          {Math.round(overlayOpacity * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={40}
+                        max={100}
+                        value={Math.round(overlayOpacity * 100)}
+                        onChange={(e) =>
+                          setOverlayOpacity(Number(e.target.value) / 100)
+                        }
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Resumen */}
+              <section className="space-y-3 rounded-3xl border border-slate-900 bg-slate-950/90 p-5 text-[11px]">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Resumen
+                </h3>
+
+                <div className="space-y-1 text-slate-300">
+                  <div>
+                    <b>Título:</b> {title || "—"}
+                  </div>
+                  <div>
+                    <b>Bajada:</b> {subtitle || "—"}
+                  </div>
+                  <div>
+                    <b>Etiqueta:</b> {alertTag || "(sin)"}
+                  </div>
+                  <div>
+                    <b>Franja superior:</b>{" "}
+                    {showHeaderStrip
+                      ? `${headerDate || "sin fecha"} · ${headerLabel || "sin etiqueta"}`
+                      : "desactivada"}
+                  </div>
+                  <div>
+                    <b>Footer:</b> {footer.trim() || "(vacío)"}{" "}
+                    <span className="text-slate-500">(sin URL)</span>
+                  </div>
+                  <div>
+                    <b>Tema:</b> {themeLabel(theme)}
+                  </div>
+                  <div>
+                    <b>% backend:</b> top {blockTopPct.toFixed(1)}% · alto{" "}
+                    {overlayHeightPct.toFixed(1)}%
+                  </div>
+                  <div className="text-slate-500">
+                    (posición se define arrastrando en la preview)
+                  </div>
+                </div>
+              </section>
+            </aside>
+
+            {/* =======================
+            COL 2: PREVIEW (centro)
+        ======================= */}
+            <section className="overflow-hidden rounded-3xl border border-slate-900 bg-slate-900/60 shadow-[0_32px_90px_rgba(15,23,42,0.55)]">
+              <div className="flex items-center justify-between px-6 pt-4 text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                <span>Vista previa 16:9</span>
+                <span>Base ideal para X / Facebook / YouTube</span>
+              </div>
+
+              {/* ✅ wrapper para que el preview crezca y use el alto de pantalla */}
+              <div className="px-6 pb-6">
+                <div
+                  ref={previewRef}
+                  className="relative mt-3 w-full overflow-hidden rounded-2xl border border-slate-800 bg-black/60"
+                  style={{
+                    aspectRatio: "16 / 9",
+                    maxHeight: "calc(100vh - 220px)",
+                  }}
                 >
-                  Reiniciar posiciones
-                </button>
-              </div>
-            </div>
-          </section>
+                  {previewUrl ? (
+                    <>
+                      <img
+                        src={previewUrl}
+                        alt="Imagen base"
+                        draggable={false}
+                        onDragStart={(e) => e.preventDefault()}
+                        className="h-full w-full object-cover"
+                      />
 
-          {/* Previews recorte */}
-          {showSocialPreviews && previewUrl ? (
-            <section className="space-y-3 rounded-3xl border border-slate-900 bg-slate-950/70 p-5">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Previews recorte (imágenes)
-                </h2>
-                <span className="text-[11px] text-slate-500">
-                  Visual. La generación final la hace el backend.
-                </span>
+                      {assetOverlays.map((ov) => {
+                        const left = pctToPx(ov.xPct, contentW);
+                        const top = previewHeaderH + pctToPx(ov.yPct, contentH);
+                        const w = (ov.widthPct / 100) * contentW;
+                        const h = w * 0.66;
+
+                        return (
+                          <div
+                            key={ov.id}
+                            className="absolute cursor-move"
+                            style={{
+                              left,
+                              top,
+                              width: w,
+                              height: h,
+                              zIndex: 25,
+                              background: "rgba(0,0,0,0.12)",
+                              border: "1px solid rgba(255,255,255,0.18)",
+                              borderRadius: 14,
+                              backdropFilter: "blur(1px)",
+                            }}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setDrag({
+                                target: "asset",
+                                startX: e.clientX,
+                                startY: e.clientY,
+
+                                blockTop,
+                                blockHeight,
+                                titleOffsetX,
+                                titleOffsetY,
+                                subtitleOffsetX,
+                                subtitleOffsetY,
+                                alertOffsetX,
+                                alertOffsetY,
+
+                                logoCircleXPct,
+                                logoCircleYPct,
+                                logoCircleWidthPct,
+
+                                logoHorizontalXPct,
+                                logoHorizontalYPct,
+                                logoHorizontalWidthPct,
+
+                                assetId: ov.id,
+                                assetXPct: ov.xPct,
+                                assetYPct: ov.yPct,
+                                assetWidthPct: ov.widthPct,
+                              });
+                            }}
+                            title={ov.item.relPath}
+                          >
+                            <img
+                              src={abs(ov.item.url)}
+                              alt={ov.item.filename}
+                              className="absolute inset-0 h-full w-full select-none object-contain"
+                              style={{ opacity: ov.opacity, pointerEvents: "none" }}
+                              draggable={false}
+                              onDragStart={(e) => e.preventDefault()}
+                            />
+
+                            <div
+                              className="absolute -bottom-2 -right-2 h-4 w-4 cursor-nwse-resize rounded-full border border-white/30 bg-black/60 shadow"
+                              title="Redimensionar overlay"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setDrag((prev) =>
+                                  prev && prev.assetId === ov.id
+                                    ? { ...prev, target: "assetResize" }
+                                    : {
+                                      target: "assetResize",
+                                      startX: e.clientX,
+                                      startY: e.clientY,
+
+                                      blockTop,
+                                      blockHeight,
+                                      titleOffsetX,
+                                      titleOffsetY,
+                                      subtitleOffsetX,
+                                      subtitleOffsetY,
+                                      alertOffsetX,
+                                      alertOffsetY,
+
+                                      logoCircleXPct,
+                                      logoCircleYPct,
+                                      logoCircleWidthPct,
+
+                                      logoHorizontalXPct,
+                                      logoHorizontalYPct,
+                                      logoHorizontalWidthPct,
+
+                                      assetId: ov.id,
+                                      assetXPct: ov.xPct,
+                                      assetYPct: ov.yPct,
+                                      assetWidthPct: ov.widthPct,
+                                    },
+                                );
+                              }}
+                            />
+
+                            <button
+                              type="button"
+                              className="absolute -top-2 -right-2 rounded-full border border-white/20 bg-black/60 px-2 py-0.5 text-[10px] text-white/80 hover:bg-black/80"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setAssetOverlays((prev) =>
+                                  prev.filter((x) => x.id !== ov.id),
+                                );
+                              }}
+                              title="Quitar overlay"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        );
+                      })}
+
+                      {/* LOGO H */}
+                      {showLogoHorizontal && (
+                        <div
+                          className="absolute cursor-move"
+                          style={{
+                            left: horizLeft,
+                            top: horizTop,
+                            width: horizW,
+                            height: horizH,
+                            zIndex: 30,
+                            background: "rgba(0,0,0,0.18)",
+                            border: "1px solid rgba(255,255,255,0.18)",
+                            borderRadius: 12,
+                            backdropFilter: "blur(1px)",
+                          }}
+                          onMouseDown={(e) => startDrag("logoHorizontal", e)}
+                        >
+                          <ImgMulti
+                            candidates={LOGO_HORIZONTAL_CANDIDATES}
+                            alt="Logo horizontal (floating)"
+                            className="absolute inset-0 object-contain select-none"
+                            style={{
+                              opacity: logoHorizontalOpacity,
+                              pointerEvents: "none",
+                            }}
+                          />
+                          <div
+                            className="absolute -bottom-2 -right-2 h-4 w-4 cursor-nwse-resize rounded-full border border-white/30 bg-black/60 shadow"
+                            title="Redimensionar"
+                            onMouseDown={(e) => startDrag("logoHorizontalResize", e)}
+                          />
+                        </div>
+                      )}
+
+                      {/* LOGO CIRCLE */}
+                      {showLogoCircle && !showLogoHorizontal && (
+                        <div
+                          className="absolute cursor-move rounded-full"
+                          style={{
+                            left: circleLeft,
+                            top: circleTop,
+                            width: circleW,
+                            height: circleW,
+                            zIndex: 30,
+                            background: "rgba(0,0,0,0.18)",
+                            border: "1px solid rgba(255,255,255,0.18)",
+                            backdropFilter: "blur(1px)",
+                          }}
+                          onMouseDown={(e) => startDrag("logoCircle", e)}
+                        >
+                          <ImgMulti
+                            candidates={LOGO_CIRCLE_CANDIDATES}
+                            alt="Logo circular (floating)"
+                            className="absolute inset-0 rounded-full object-contain select-none"
+                            style={{
+                              opacity: logoCircleOpacity,
+                              pointerEvents: "none",
+                            }}
+                            rounded
+                          />
+                          <div
+                            className="absolute -bottom-2 -right-2 h-4 w-4 cursor-nwse-resize rounded-full border border-white/30 bg-black/60 shadow"
+                            title="Redimensionar"
+                            onMouseDown={(e) => startDrag("logoCircleResize", e)}
+                          />
+                        </div>
+                      )}
+
+                      {/* BLOQUE */}
+                      <div
+                        className="absolute left-0 right-0 cursor-move"
+                        style={{
+                          top: blockTop,
+                          height: blockHeight,
+                          background: `linear-gradient(to bottom, ${themeColors.bandFrom} 0%, ${themeColors.bandMid} 40%, ${themeColors.bandTo} 100%)`,
+                          opacity: overlayOpacity,
+                          zIndex: 20,
+                        }}
+                        onMouseDown={(e) => startDrag("block", e)}
+                      >
+                        <div className="relative h-full w-full">
+                          {alertTag && (
+                            <div
+                              className="absolute inline-flex cursor-move select-none items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
+                              style={{
+                                left: alertOffsetX,
+                                top: alertOffsetY,
+                                backgroundColor: themeColors.footerBg,
+                                color: "#ffffff",
+                              }}
+                              onMouseDown={(e) => startDrag("alert", e)}
+                            >
+                              {alertTag}
+                            </div>
+                          )}
+
+                          {title && (
+                            <span
+                              className="absolute cursor-move select-none font-extrabold tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
+                              style={{
+                                left: titleOffsetX,
+                                top: titleOffsetY,
+                                fontSize: `${titleSize}px`,
+                                color: titleColor,
+                                whiteSpace: "pre-line",
+                                maxWidth: "80%",
+                              }}
+                              onMouseDown={(e) => startDrag("title", e)}
+                            >
+                              {title}
+                            </span>
+                          )}
+
+                          {subtitle && (
+                            <span
+                              className="absolute max-w-[65%] cursor-move select-none font-medium drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]"
+                              style={{
+                                left: subtitleOffsetX,
+                                top: subtitleOffsetY,
+                                fontSize: `${subtitleSize}px`,
+                                color: subtitleColor,
+                                whiteSpace: "pre-line",
+                              }}
+                              onMouseDown={(e) => startDrag("subtitle", e)}
+                            >
+                              {subtitle}
+                            </span>
+                          )}
+
+                          <div
+                            className="absolute bottom-2 left-[10%] right-[10%] h-1.5 cursor-ns-resize rounded-full bg-slate-200/80"
+                            onMouseDown={(e) => startDrag("resize", e)}
+                          />
+                        </div>
+                      </div>
+
+                      {/* HEADER */}
+                      {showHeaderStrip && (headerDate || headerLabel) && (
+                        <div
+                          className="absolute inset-x-0 flex items-center justify-between px-6 text-xs"
+                          style={{
+                            top: 0,
+                            height: previewHeaderH,
+                            backgroundColor: themeColors.footerBg,
+                            borderBottom: `1px solid ${themeColors.footerBorder}`,
+                            zIndex: 40,
+                          }}
+                        >
+                          <span className="font-semibold text-slate-200">
+                            {headerDate || "Fecha / contexto"}
+                          </span>
+                          {headerLabel && (
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-200">
+                              {headerLabel}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* FOOTER FIJO */}
+                      <div
+                        className="absolute inset-x-0 flex items-center justify-between gap-3 px-8"
+                        style={{
+                          bottom: 0,
+                          height: previewFooterH,
+                          backgroundColor: themeColors.footerBg,
+                          borderTop: `1px solid ${themeColors.footerBorder}`,
+                          zIndex: 50,
+                        }}
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <img
+                            src={BRAND_LOCKUP_SRC}
+                            alt="Canalibertario lockup"
+                            draggable={false}
+                            onDragStart={(e) => e.preventDefault()}
+                            className="h-8 w-8 flex-none rounded-full border border-white/10 bg-black/30 object-cover"
+                          />
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-extrabold tracking-tight text-slate-100">
+                              CANALIBERTARIO
+                            </div>
+                            <div className="truncate text-[11px] text-slate-300">
+                              Noticias y análisis (mirada libertaria)
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-none items-center gap-3">
+                          <div style={{ color: brandColor }}>
+                            <SocialIcons />
+                          </div>
+                          {footer.trim() ? (
+                            <span className="text-[11px] text-slate-300">
+                              {footer.trim()}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                      {loadingImage
+                        ? "Cargando imagen..."
+                        : "No hay imagen base. Seleccioná una imagen o usá la biblioteca."}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold text-slate-300">
-                    16:9 (X / Facebook / YouTube)
-                  </div>
-                  <div className="relative aspect-[16/9] overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
-                    <img
-                      src={previewUrl}
-                      alt="16:9"
-                      draggable={false}
-                      onDragStart={(e) => e.preventDefault()}
-                      className="h-full w-full object-cover"
+              {/* THEME + COLORS (debajo del preview) */}
+              <div className="border-t border-slate-800 bg-slate-950/70 px-6 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Tema y colores
+                  </h2>
+                  <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={showSocialPreviews}
+                      onChange={(e) => setShowSocialPreviews(e.target.checked)}
+                      className="h-3 w-3 rounded border-slate-600 bg-slate-900"
                     />
-                    <OverlayLayer w={1280} h={720} showHeader={showHeaderStrip} />
-                  </div>
+                    Mostrar previews recorte
+                  </label>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold text-slate-300">
-                    1:1 (Instagram feed)
+                <div className="mt-3 space-y-3 text-[11px]">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      {(["purple", "red", "blue", "black"] as CoverTheme[]).map(
+                        (t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setTheme(t)}
+                            className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${theme === t
+                              ? "border-sky-400 bg-sky-500/10 text-sky-100"
+                              : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400/70"
+                              }`}
+                          >
+                            {themeLabel(t)}
+                          </button>
+                        ),
+                      )}
+                    </div>
                   </div>
-                  <div className="relative aspect-square overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
-                    <img
-                      src={previewUrl}
-                      alt="1:1"
-                      draggable={false}
-                      onDragStart={(e) => e.preventDefault()}
-                      className="h-full w-full object-cover"
-                    />
-                    <OverlayLayer w={1080} h={1080} showHeader={false} />
-                  </div>
-                </div>
 
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold text-slate-300">
-                    4:5 (Instagram feed alto)
+                  <div className="grid gap-2 md:grid-cols-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-slate-300">Título</span>
+                      <div className="flex items-center gap-1">
+                        {TITLE_COLORS.map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setTitleColor(c)}
+                            className={`h-5 w-5 rounded-full border ${titleColor === c
+                              ? "border-sky-400 ring-2 ring-sky-400/60"
+                              : "border-slate-600"
+                              }`}
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-slate-300">Bajada</span>
+                      <div className="flex items-center gap-1">
+                        {SUBTITLE_COLORS.map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setSubtitleColor(c)}
+                            className={`h-5 w-5 rounded-full border ${subtitleColor === c
+                              ? "border-sky-400 ring-2 ring-sky-400/60"
+                              : "border-slate-600"
+                              }`}
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-slate-300">Iconos</span>
+                      <div className="flex items-center gap-1">
+                        {BRAND_COLORS.map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setBrandColor(c)}
+                            className={`h-5 w-5 rounded-full border ${brandColor === c
+                              ? "border-sky-400 ring-2 ring-sky-400/60"
+                              : "border-slate-600"
+                              }`}
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
-                    <img
-                      src={previewUrl}
-                      alt="4:5"
-                      draggable={false}
-                      onDragStart={(e) => e.preventDefault()}
-                      className="h-full w-full object-cover"
-                    />
-                    <OverlayLayer w={1080} h={1350} showHeader={false} />
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={resetPositions}
+                      className="rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:border-sky-400"
+                    >
+                      Reset posiciones
+                    </button>
                   </div>
                 </div>
               </div>
             </section>
-          ) : null}
-        </div>
 
-        {/* DERECHA */}
-        <aside className="w-full max-w-md space-y-4">
-          <section className="space-y-4 rounded-3xl border border-slate-900 bg-slate-950/90 p-5">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-              Imagen base
-            </h2>
-
-            {/* BRANDING */}
-            <div className="mt-3 space-y-2 border-t border-slate-800 pt-3">
-              <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Branding (logos flotantes)
-              </h3>
-
-              <label className="flex items-center gap-2 text-[11px] text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={showLogoCircle}
-                  onChange={(e) => setShowLogoCircle(e.target.checked)}
-                  className="h-3 w-3 rounded border-slate-600 bg-slate-900"
-                />
-                Mostrar logo circular (overlay)
-              </label>
-
-              <label className="flex items-center gap-2 text-[11px] text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={showLogoHorizontal}
-                  onChange={(e) => setShowLogoHorizontal(e.target.checked)}
-                  className="h-3 w-3 rounded border-slate-600 bg-slate-900"
-                />
-                Mostrar logo horizontal (overlay)
-              </label>
-
-              <div className="text-[10px] text-slate-500">
-                Tip: arrastrá el logo en la preview. Para agrandar/achicar, usá el
-                handle (esquina) o el slider.
-              </div>
-
-              {/* ✅ controles SOLO tamaño/opacidad */}
-              {(showLogoCircle || showLogoHorizontal) && (
-                <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 text-[11px] text-slate-200">
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Logo flotante: tamaño y opacidad
-                  </div>
-
-                  <div className="space-y-3">
-                    <div>
-                      <div className="mb-1 flex items-center justify-between">
-                        <span>Tamaño (% ancho)</span>
-                        <span className="text-slate-400">
-                          {showLogoHorizontal
-                            ? logoHorizontalWidthPct
-                            : logoCircleWidthPct}
-                          %
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min={6}
-                        max={40}
-                        value={
-                          showLogoHorizontal
-                            ? logoHorizontalWidthPct
-                            : logoCircleWidthPct
-                        }
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-
-                          if (showLogoHorizontal) {
-                            setLogoHorizontalWidthPct(v);
-                            const c = clampLogoPct({
-                              xPct: logoHorizontalXPct,
-                              yPct: logoHorizontalYPct,
-                              widthPct: v,
-                              kind: "horizontal",
-                            });
-                            setLogoHorizontalXPct(c.xPct);
-                            setLogoHorizontalYPct(c.yPct);
-                          } else {
-                            setLogoCircleWidthPct(v);
-                            const c = clampLogoPct({
-                              xPct: logoCircleXPct,
-                              yPct: logoCircleYPct,
-                              widthPct: v,
-                              kind: "circle",
-                            });
-                            setLogoCircleXPct(c.xPct);
-                            setLogoCircleYPct(c.yPct);
-                          }
-                        }}
-                        className="w-full"
-                      />
-                    </div>
-
-                    <div>
-                      <div className="mb-1 flex items-center justify-between">
-                        <span>Opacidad</span>
-                        <span className="text-slate-400">
-                          {(
-                            showLogoHorizontal
-                              ? logoHorizontalOpacity
-                              : logoCircleOpacity
-                          ).toFixed(2)}
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0.2}
-                        max={1}
-                        step={0.01}
-                        value={
-                          showLogoHorizontal
-                            ? logoHorizontalOpacity
-                            : logoCircleOpacity
-                        }
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          showLogoHorizontal
-                            ? setLogoHorizontalOpacity(v)
-                            : setLogoCircleOpacity(v);
-                        }}
-                        className="w-full"
-                      />
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={resetFloatingLogo}
-                      className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700"
-                    >
-                      Reset logo flotante
-                    </button>
-                  </div>
+            {/* =======================
+            COL 3: BIBLIOTECA (der)
+        ======================= */}
+            <aside className="space-y-4 lg:sticky lg:top-4 lg:h-[calc(100vh-32px)] lg:overflow-auto">
+              <section className="space-y-3 rounded-3xl border border-slate-900 bg-slate-950/90 p-5">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Biblioteca
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setLibOpen((v) => !v)}
+                    className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-[11px] font-semibold text-slate-100"
+                  >
+                    {libOpen ? "Cerrar" : "Abrir"}
+                  </button>
                 </div>
-              )}
-            </div>
 
-            <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-700/80 bg-slate-800/80 px-4 py-2 text-xs font-medium text-slate-50 hover:border-sky-400/80 hover:bg-slate-800">
-              Seleccionar nueva imagen
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleFileChange}
-              />
-            </label>
+                {libOpen && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        value={libScope}
+                        onChange={(e) => setLibScope(e.target.value as any)}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-50"
+                      >
+                        <option value="raw">RAW</option>
+                        <option value="covers">Covers</option>
+                        <option value="screens">Screens</option>
+                        <option value="all">All</option>
+                      </select>
 
-            {previewUrl && (
-              <p className="truncate text-[11px] text-slate-400">
-                Usando como base:{" "}
-                <span className="font-mono text-slate-300">{previewUrl}</span>
-              </p>
-            )}
+                      <button
+                        type="button"
+                        onClick={() => void fetchLibrary()}
+                        disabled={libBusy}
+                        className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700 disabled:opacity-60"
+                      >
+                        {libBusy ? "Cargando..." : "Refrescar"}
+                      </button>
+                    </div>
 
-            {/* Textos */}
-            <div className="mt-3 space-y-3 border-t border-slate-800 pt-3">
-              <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Textos
-              </h3>
+                    {/* Quick selectors */}
+                    <div className="grid gap-2 rounded-2xl border border-slate-800 bg-slate-900/40 p-3 text-[11px]">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Selectores rápidos
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setLibSelectMode("base")}
+                          className={`rounded-lg px-3 py-2 text-xs font-semibold ${libSelectMode === "base"
+                            ? "bg-sky-500 text-slate-950"
+                            : "bg-slate-800 text-slate-100 hover:bg-slate-700"
+                            }`}
+                        >
+                          Seleccionar como base
+                        </button>
 
-              <div className="space-y-1">
-                <label className="text-[11px] text-slate-300">
-                  Título principal{" "}
-                  <span className="ml-1 text-[10px] text-slate-500">
-                    (Enter agrega salto de línea)
-                  </span>
-                </label>
-                <textarea
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  rows={3}
-                  className="w-full resize-y rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                />
-              </div>
+                        <button
+                          type="button"
+                          onClick={() => setLibSelectMode("overlay")}
+                          className={`rounded-lg px-3 py-2 text-xs font-semibold ${libSelectMode === "overlay"
+                            ? "bg-sky-500 text-slate-950"
+                            : "bg-slate-800 text-slate-100 hover:bg-slate-700"
+                            }`}
+                        >
+                          Agregar como overlay
+                        </button>
+                      </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] text-slate-300">
-                  Bajada / descripción{" "}
-                  <span className="ml-1 text-[10px] text-slate-500">
-                    (también acepta saltos de línea)
-                  </span>
-                </label>
-                <textarea
-                  value={subtitle}
-                  onChange={(e) => setSubtitle(e.target.value)}
-                  rows={2}
-                  className="w-full resize-y rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                />
-              </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          value={libCategory}
+                          onChange={(e) => setLibCategory(e.target.value)}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-50"
+                        >
+                          <option value="">(category)</option>
+                          {libCategories.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
 
-              <div className="space-y-1">
-                <label className="flex items-center gap-2 text-[11px] text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={showHeaderStrip}
-                    onChange={(e) => setShowHeaderStrip(e.target.checked)}
-                    className="h-3 w-3 rounded border-slate-600 bg-slate-900"
-                  />
-                  Mostrar franja superior (fecha / contexto)
-                </label>
+                        <select
+                          value={libGroup}
+                          onChange={(e) => setLibGroup(e.target.value)}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-50"
+                        >
+                          <option value="">(group)</option>
+                          {libGroups.map((g) => (
+                            <option key={g} value={g}>
+                              {g}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                {showHeaderStrip && (
-                  <div className="space-y-1">
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          value={libCategory === "personas" ? libGroup : ""}
+                          onChange={(e) => quickPeopleSelect(e.target.value)}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-50"
+                        >
+                          <option value="">Personas (grupo)</option>
+                          {peopleGroups.map((g) => (
+                            <option key={g} value={g}>
+                              {g}
+                            </option>
+                          ))}
+                        </select>
+
+                        <select
+                          value={assetsCategories.includes(libCategory) ? libCategory : ""}
+                          onChange={(e) => quickAssetsSelect(e.target.value)}
+                          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-50"
+                        >
+                          <option value="">Assets (cat)</option>
+                          {assetsCategories.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={clearLibraryFilters}
+                        className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-100 hover:border-sky-400"
+                      >
+                        Limpiar filtros
+                      </button>
+                    </div>
+
                     <input
-                      type="text"
-                      value={headerDate}
-                      onChange={(e) => setHeaderDate(e.target.value)}
-                      placeholder="24/12/2025 - 11:48"
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
+                      value={libQ}
+                      onChange={(e) => setLibQ(e.target.value)}
+                      placeholder="Buscar (milei, trump, dolar, bandera...)"
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-50"
                     />
-                    <input
-                      type="text"
-                      value={headerLabel}
-                      onChange={(e) => setHeaderLabel(e.target.value)}
-                      placeholder="Ej: ECONOMÍA / POLÍTICA, etc."
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                    />
-                  </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void fetchLibrary()}
+                        disabled={libBusy}
+                        className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700 disabled:opacity-60"
+                      >
+                        {libBusy ? "Buscando..." : "Buscar"}
+                      </button>
+
+                      <span className="text-[11px] text-slate-500">
+                        {libItems.length ? `${libItems.length} items` : "—"}
+                      </span>
+                    </div>
+
+                    {libErr && (
+                      <div className="rounded-xl border border-red-400/60 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+                        {libErr}
+                      </div>
+                    )}
+
+                    <div className="grid max-h-[640px] grid-cols-2 gap-2 overflow-auto rounded-2xl border border-slate-900 bg-black/20 p-2">
+                      {libItems.map((it) => {
+                        const thumb = abs(it.url);
+                        return (
+                          <button
+                            key={`${it.scope}:${it.relPath}`}
+                            type="button"
+                            onClick={() =>
+                              libSelectMode === "base"
+                                ? selectBaseFromLibrary(it)
+                                : addOverlayFromLibrary(it)
+                            }
+                            className="group overflow-hidden rounded-xl border border-slate-800 bg-slate-900/40 text-left hover:border-sky-500"
+                            title={it.relPath}
+                          >
+                            <div className="aspect-[4/3] w-full overflow-hidden bg-black/40">
+                              <img
+                                src={thumb}
+                                alt={it.filename}
+                                className="h-full w-full object-cover opacity-90 group-hover:opacity-100"
+                                loading="lazy"
+                              />
+                            </div>
+                            <div className="p-2">
+                              <div className="truncate text-[11px] font-semibold text-slate-100">
+                                {it.filename}
+                              </div>
+                              <div className="truncate text-[10px] text-slate-400">
+                                {it.category ?? "—"}/{it.group ?? "—"} ·{" "}
+                                {bytesToHuman(it.bytes)}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="text-[10px] text-slate-500">
+                      Seleccionás una imagen → queda como base. Al generar, se baja por
+                      proxy (sin CORS).
+                    </div>
+                  </>
                 )}
-              </div>
+              </section>
 
-              <div className="space-y-1">
-                <label className="text-[11px] text-slate-300">
-                  Footer (fecha / contexto corto){" "}
-                  <span className="ml-1 text-[10px] text-slate-500">(sin URL)</span>
-                </label>
-                <input
-                  type="text"
-                  value={footer}
-                  onChange={(e) => setFooter(e.target.value)}
-                  placeholder="24/12/2025 · 11:48"
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] text-slate-300">
-                  Etiqueta (opcional)
-                </label>
-                <select
-                  value={alertTag}
-                  onChange={(e) => setAlertTag(e.target.value as AlertTag)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
-                >
-                  <option value="">Sin etiqueta</option>
-                  <option value="URGENTE">URGENTE</option>
-                  <option value="ALERTA">ALERTA</option>
-                  <option value="ÚLTIMA HORA">ÚLTIMA HORA</option>
-                </select>
-              </div>
-
-              <div className="mt-3 space-y-3 border-t border-slate-800 pt-3 text-[11px] text-slate-300">
-                <div>
-                  <div className="mb-1 flex items-center justify-between">
-                    <span>Tamaño título</span>
-                    <span className="text-slate-400">{titleSize}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={24}
-                    max={48}
-                    value={titleSize}
-                    onChange={(e) => setTitleSize(Number(e.target.value))}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <div className="mb-1 flex items-center justify-between">
-                    <span>Tamaño bajada</span>
-                    <span className="text-slate-400">{subtitleSize}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={16}
-                    max={32}
-                    value={subtitleSize}
-                    onChange={(e) => setSubtitleSize(Number(e.target.value))}
-                    className="w-full"
-                  />
-                </div>
-
-                <div className="border-t border-slate-800 pt-2">
-                  <div className="mb-1 flex items-center justify-between">
-                    <span>Altura del fondo (barra)</span>
-                    <span className="text-slate-400">{overlayHeightPctUI}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={25}
-                    max={65}
-                    value={overlayHeightPctUI}
-                    onChange={(e) => {
-                      const pct = Number(e.target.value);
-                      setBlockHeight(
-                        Math.round((pct / 100) * Math.max(1, contentHeight))
-                      );
-                    }}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <div className="mb-1 flex items-center justify-between">
-                    <span>Opacidad del fondo</span>
-                    <span className="text-slate-400">
-                      {Math.round(overlayOpacity * 100)}%
+              {/* Social previews (opcional) */}
+              {showSocialPreviews && previewUrl ? (
+                <section className="space-y-3 rounded-3xl border border-slate-900 bg-slate-950/70 p-5">
+                  
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Previews recorte (imágenes)
+                    </h2>
+                    <span className="text-[11px] text-slate-500">
+                      Visual (backend genera final)
                     </span>
                   </div>
-                  <input
-                    type="range"
-                    min={40}
-                    max={100}
-                    value={Math.round(overlayOpacity * 100)}
-                    onChange={(e) =>
-                      setOverlayOpacity(Number(e.target.value) / 100)
-                    }
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            </div>
-          </section>
 
-          <section className="space-y-3 rounded-3xl border border-slate-900 bg-slate-950/90 p-5 text-[11px]">
-            <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-              Resumen a enviar
-            </h3>
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-semibold text-slate-300">
+                        16:9
+                      </div>
+                      <div className="relative aspect-[16/9] overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
+                        <img
+                          src={previewUrl}
+                          alt="16:9"
+                          draggable={false}
+                          onDragStart={(e) => e.preventDefault()}
+                          className="h-full w-full object-cover"
+                        />
+                        <OverlayLayer w={1280} h={720} showHeader={showHeaderStrip} />
+                      </div>
+                    </div>
 
-            <div className="space-y-1 text-slate-300">
-              <div>
-                <b>Título:</b> {title || "—"}
-              </div>
-              <div>
-                <b>Bajada:</b> {subtitle || "—"}
-              </div>
-              <div>
-                <b>Etiqueta:</b> {alertTag || "(sin)"}
-              </div>
-              <div>
-                <b>Franja superior:</b>{" "}
-                {showHeaderStrip
-                  ? `${headerDate || "sin fecha"} · ${headerLabel || "sin etiqueta"
-                  }`
-                  : "desactivada"}
-              </div>
-              <div>
-                <b>Footer:</b> {footer.trim() || "(vacío)"}{" "}
-                <span className="text-slate-500">(sin URL)</span>
-              </div>
-              <div>
-                <b>Tema de color:</b> {themeLabel(theme)}
-              </div>
-              <div>
-                <b>% enviado al backend:</b> top {blockTopPct.toFixed(1)}% · alto{" "}
-                {overlayHeightPct.toFixed(1)}%
-              </div>
-              <div>
-                <b>Logo flotante:</b>{" "}
-                {showLogoHorizontal
-                  ? `horizontal (w ${logoHorizontalWidthPct.toFixed(
-                    1
-                  )}% · op ${logoHorizontalOpacity.toFixed(2)})`
-                  : showLogoCircle
-                    ? `circular (w ${logoCircleWidthPct.toFixed(
-                      1
-                    )}% · op ${logoCircleOpacity.toFixed(2)})`
-                    : "off"}
-              </div>
-              <div className="text-slate-500">
-                (posición se define arrastrando en la preview)
-              </div>
-            </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-semibold text-slate-300">
+                          1:1
+                        </div>
+                        <div className="relative aspect-square overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
+                          <img
+                            src={previewUrl}
+                            alt="1:1"
+                            draggable={false}
+                            onDragStart={(e) => e.preventDefault()}
+                            className="h-full w-full object-cover"
+                          />
+                          <OverlayLayer w={1080} h={1080} showHeader={false} />
+                        </div>
+                      </div>
 
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={saving || (!previewUrl && !file)}
-              className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-sky-500 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_18px_35px_rgba(56,189,248,0.45)] hover:bg-sky-400 disabled:bg-slate-700 disabled:text-slate-300"
-            >
-              {saving ? "Generando cover..." : "Generar / actualizar cover"}
-            </button>
-
-            {statusMsg && (
-              <div className="rounded-xl border border-emerald-400/60 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-100">
-                {statusMsg}
-              </div>
-            )}
-            {errorMsg && (
-              <div className="rounded-xl border border-red-400/60 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
-                {errorMsg}
-              </div>
-            )}
-          </section>
-        </aside>
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-semibold text-slate-300">
+                          4:5
+                        </div>
+                        <div className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-slate-800 bg-black/60">
+                          <img
+                            src={previewUrl}
+                            alt="4:5"
+                            draggable={false}
+                            onDragStart={(e) => e.preventDefault()}
+                            className="h-full w-full object-cover"
+                          />
+                          <OverlayLayer w={1080} h={1350} showHeader={false} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+            </aside>
+          </div>
+        </div>
       </div>
     </main>
+
   );
 }
