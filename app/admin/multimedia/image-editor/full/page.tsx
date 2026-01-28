@@ -327,7 +327,13 @@ type AssetOverlay = {
   yPct: number;
   widthPct: number; // % del ancho del content
   opacity: number;  // 0..1
+
+  label?: {
+    line1?: string; // ej: "JAVIER MILEI"
+    line2?: string; // ej: "PRESIDENTE ARGENTINO"
+  };
 };
+
 
 function bytesToHuman(n: number) {
   if (!Number.isFinite(n) || n <= 0) return "0 B";
@@ -443,6 +449,8 @@ export default function ImageEditorFullPage() {
   const [libSelectMode, setLibSelectMode] = useState<LibrarySelectMode>("base");
   // overlays (banderas / símbolos / etc) arriba de la imagen base
   const [assetOverlays, setAssetOverlays] = useState<AssetOverlay[]>([]);
+  const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+
 
   const libCategories = useMemo(() => {
     const s = new Set<string>();
@@ -1428,6 +1436,7 @@ export default function ImageEditorFullPage() {
           }),
           widthPct: o.widthPct, // % del ancho del content/canvas
           opacity: o.opacity ?? 1,
+          label: o.label ?? null,
         })),
       };
 
@@ -1742,6 +1751,66 @@ export default function ImageEditorFullPage() {
                     />
                   </div>
 
+                  {(() => {
+                    const selected = assetOverlays.find((o) => o.id === selectedOverlayId) ?? null;
+                    if (!selected) return null;
+
+                    const isFaceCircle =
+                      (selected.item.group ?? "").toLowerCase() === "caras-circulares" ||
+                      (selected.item.relPath ?? "").toLowerCase().includes("caras-circulares");
+
+                    if (!isFaceCircle) return null;
+
+                    return (
+                      <section className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                          Texto del círculo
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="space-y-1">
+                            <label className="text-[11px] text-slate-300">Nombre</label>
+                            <input
+                              value={selected.label?.line1 ?? ""}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setAssetOverlays((prev) =>
+                                  prev.map((o) =>
+                                    o.id === selected.id
+                                      ? { ...o, label: { ...(o.label ?? {}), line1: v } }
+                                      : o,
+                                  ),
+                                );
+                              }}
+                              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-50 outline-none focus:border-sky-400"
+                              placeholder="JAVIER MILEI"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[11px] text-slate-300">Cargo</label>
+                            <input
+                              value={selected.label?.line2 ?? ""}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setAssetOverlays((prev) =>
+                                  prev.map((o) =>
+                                    o.id === selected.id
+                                      ? { ...o, label: { ...(o.label ?? {}), line2: v } }
+                                      : o,
+                                  ),
+                                );
+                              }}
+                              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-50 outline-none focus:border-sky-400"
+                              placeholder="PRESIDENTE ARGENTINO"
+                            />
+                          </div>
+                        </div>
+                      </section>
+                    );
+                  })()}
+
+
                   <div className="space-y-1">
                     <label className="text-[11px] text-slate-300">
                       Bajada{" "}
@@ -1983,13 +2052,16 @@ export default function ImageEditorFullPage() {
                               height: h,
                               zIndex: 25,
                               background: "rgba(0,0,0,0.12)",
-                              border: "1px solid rgba(255,255,255,0.18)",
+                              border: selectedOverlayId === ov.id
+                                ? "2px solid rgba(56,189,248,0.9)"
+                                : "1px solid rgba(255,255,255,0.18)",
                               borderRadius: 14,
                               backdropFilter: "blur(1px)",
                             }}
                             onMouseDown={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
+                              setSelectedOverlayId(ov.id);
                               setDrag({
                                 target: "asset",
                                 startX: e.clientX,
@@ -2028,6 +2100,31 @@ export default function ImageEditorFullPage() {
                               draggable={false}
                               onDragStart={(e) => e.preventDefault()}
                             />
+                            {(ov.label?.line1 || ov.label?.line2) ? (
+                              <div
+                                className="absolute left-2 right-2"
+                                style={{
+                                  top: "100%",
+                                  marginTop: 8,
+                                  padding: "8px 10px",
+                                  borderRadius: 12,
+                                  background: "rgba(0,0,0,0.40)",
+                                  border: "1px solid rgba(255,255,255,0.18)",
+                                  backdropFilter: "blur(2px)",
+                                }}
+                              >
+                                {ov.label?.line1 ? (
+                                  <div className="text-[11px] font-extrabold uppercase tracking-wide text-white">
+                                    {ov.label.line1}
+                                  </div>
+                                ) : null}
+                                {ov.label?.line2 ? (
+                                  <div className="text-[10px] font-semibold uppercase tracking-wide text-white/80">
+                                    {ov.label.line2}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
 
                             <div
                               className="absolute -bottom-2 -right-2 h-4 w-4 cursor-nwse-resize rounded-full border border-white/30 bg-black/60 shadow"
@@ -2075,14 +2172,17 @@ export default function ImageEditorFullPage() {
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                setAssetOverlays((prev) =>
-                                  prev.filter((x) => x.id !== ov.id),
-                                );
+
+                                setAssetOverlays((prev) => prev.filter((x) => x.id !== ov.id));
+
+                                // ✅ si era el seleccionado, limpiar selección
+                                setSelectedOverlayId((cur) => (cur === ov.id ? null : cur));
                               }}
                               title="Quitar overlay"
                             >
                               ×
                             </button>
+
                           </div>
                         );
                       })}
@@ -2617,7 +2717,7 @@ export default function ImageEditorFullPage() {
               </section>
 
               {/* Social previews (opcional) */}
-              {showSocialPreviews && previewUrl ? (
+              {/*    {showSocialPreviews && previewUrl ? (
                 <section className="space-y-3 rounded-3xl border border-slate-900 bg-slate-950/70 p-5">
 
                   <div className="flex items-center justify-between">
@@ -2681,7 +2781,7 @@ export default function ImageEditorFullPage() {
                     </div>
                   </div>
                 </section>
-              ) : null}
+              ) : null} */}
             </aside>
           </div>
         </div>
