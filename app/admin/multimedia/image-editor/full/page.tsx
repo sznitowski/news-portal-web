@@ -207,8 +207,6 @@ function getBackendLayoutPct(args: {
   previewHeightFallback: number;
 
   showHeaderStrip: boolean;
-  headerStripHeightPx: number;
-  footerHeightPx: number;
 
   blockTopPx: number;
   blockHeightPx: number;
@@ -219,8 +217,13 @@ function getBackendLayoutPct(args: {
       ? args.previewEl.getBoundingClientRect().height
       : args.previewHeightFallback;
 
-  const headerH = args.showHeaderStrip ? args.headerStripHeightPx : 0;
-  const contentH = Math.max(1, liveH - args.footerHeightPx - headerH);
+  // ✅ recalcular igual que backend (proporcional a liveH)
+  const footerH = Math.round((FOOTER_HEIGHT / 720) * liveH);
+  const headerH = args.showHeaderStrip
+    ? Math.round((HEADER_STRIP_HEIGHT / 720) * liveH)
+    : 0;
+
+  const contentH = Math.max(1, liveH - footerH - headerH);
 
   const topInsideContentPx = args.blockTopPx - headerH;
 
@@ -229,6 +232,7 @@ function getBackendLayoutPct(args: {
 
   return { blockTopPct, overlayHeightPct, liveH, contentH, headerH };
 }
+
 
 function pxToPct(px: number, size: number) {
   return clamp((px / Math.max(1, size)) * 100, 0, 100);
@@ -360,7 +364,7 @@ export default function ImageEditorFullPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // branding
-  const [showLogoCircle, setShowLogoCircle] = useState(true);
+  const [showLogoCircle, setShowLogoCircle] = useState(false);
   const [showLogoHorizontal, setShowLogoHorizontal] = useState(false);
 
   // logo overlay
@@ -398,9 +402,9 @@ export default function ImageEditorFullPage() {
   const [subtitleSize, setSubtitleSize] = useState(20);
 
   // Bloque
-  const [blockTop, setBlockTop] = useState(260);
+  const [blockTop, setBlockTop] = useState(0);
   const [blockHeight, setBlockHeight] = useState(DEFAULT_BLOCK_HEIGHT);
-  const [initialBlockTop, setInitialBlockTop] = useState(260);
+  const [initialBlockTop, setInitialBlockTop] = useState(0);
   const [overlayOpacity, setOverlayOpacity] = useState(1);
 
   // Offsets dentro del bloque
@@ -589,13 +593,26 @@ export default function ImageEditorFullPage() {
     if (qpTheme) setTheme(qpTheme);
 
     const textPosParam = searchParams.get("textPosition");
-    let startTop = 260;
-    if (textPosParam === "top") startTop = 90;
-    else if (textPosParam === "middle") startTop = 170;
+
+    // ✅ default: pegado al footer (bottom real)
+    const footerTop = contentTopOffset + contentHeight;
+    let startTop = footerTop - DEFAULT_BLOCK_HEIGHT;
+
+    // si viene textPosition por query, respetarlo
+    if (textPosParam === "top") startTop = contentTopOffset;
+    else if (textPosParam === "middle") {
+      startTop = contentTopOffset + Math.round((contentHeight - DEFAULT_BLOCK_HEIGHT) / 2);
+    }
+
+    // clamp final
+    const minTop = contentTopOffset;
+    const maxTop = contentTopOffset + contentHeight - DEFAULT_BLOCK_HEIGHT;
+    startTop = Math.min(maxTop, Math.max(minTop, startTop));
 
     setBlockTop(startTop);
     setInitialBlockTop(startTop);
     setBlockHeight(DEFAULT_BLOCK_HEIGHT);
+
 
     setTitleOffsetX(40);
     setTitleOffsetY(30);
@@ -654,6 +671,20 @@ export default function ImageEditorFullPage() {
     return { previewW, previewH, contentW, contentH };
   }
 
+  function getLiveContentBox() {
+    const previewW = previewRef.current?.getBoundingClientRect().width ?? 1280;
+    const previewH = previewRef.current?.getBoundingClientRect().height ?? 720;
+
+    const footerH = Math.round((FOOTER_HEIGHT / 720) * previewH);
+    const headerH = showHeaderStrip ? Math.round((HEADER_STRIP_HEIGHT / 720) * previewH) : 0;
+
+    const contentTop = headerH;
+    const contentH = Math.max(1, previewH - headerH - footerH);
+
+    return { previewW, previewH, contentW: previewW, footerH, headerH, contentTop, contentH };
+  }
+
+
   function clampLogoPct(args: {
     xPct: number;
     yPct: number;
@@ -705,7 +736,53 @@ export default function ImageEditorFullPage() {
   };
 
   useEffect(() => {
+    // solo seteo inicial, no pisar si ya fue seteado
+    if (initialBlockTop !== 0) return;
+
+    const el = previewRef.current;
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
+    if (!rect.height || rect.height < 50) return;
+
+    const previewH = rect.height;
+
+    const footerH = Math.round((FOOTER_HEIGHT / 720) * previewH);
+    const headerH = showHeaderStrip ? Math.round((HEADER_STRIP_HEIGHT / 720) * previewH) : 0;
+
+    const contentTop = headerH;
+    const contentH = Math.max(1, previewH - headerH - footerH);
+
+    const minTop = contentTop;
+    const maxTop = contentTop + contentH - DEFAULT_BLOCK_HEIGHT;
+
+    // ✅ bottom real
+    const startTop = Math.min(maxTop, Math.max(minTop, contentTop + contentH - DEFAULT_BLOCK_HEIGHT));
+
+    setBlockTop(startTop);
+    setInitialBlockTop(startTop);
+    setBlockHeight(DEFAULT_BLOCK_HEIGHT);
+  }, [showHeaderStrip, initialBlockTop]);
+
+
+  useEffect(() => {
     if (!drag) return;
+
+    // ✅ medidas LIVE del preview (para que el clamp coincida con backend)
+    const getLiveContentBox = () => {
+      const previewW = previewRef.current?.getBoundingClientRect().width ?? 1280;
+      const previewH = previewRef.current?.getBoundingClientRect().height ?? 720;
+
+      const footerH = Math.round((FOOTER_HEIGHT / 720) * previewH);
+      const headerH = showHeaderStrip
+        ? Math.round((HEADER_STRIP_HEIGHT / 720) * previewH)
+        : 0;
+
+      const contentTop = headerH;
+      const contentH = Math.max(1, previewH - headerH - footerH);
+
+      return { previewW, previewH, contentW: previewW, footerH, headerH, contentTop, contentH };
+    };
 
     const handleMove = (ev: MouseEvent) => {
       const dx = ev.clientX - drag.startX;
@@ -713,34 +790,52 @@ export default function ImageEditorFullPage() {
 
       switch (drag.target) {
         case "block": {
-          const minTop = contentTopOffset + 12;
-          const maxTop = contentTopOffset + contentHeight - drag.blockHeight;
+          const { contentTop, contentH } = getLiveContentBox();
+
+          // ✅ clamp real (sin +12)
+          const minTop = contentTop;
+          const maxTop = contentTop + contentH - drag.blockHeight;
+
           const newTop = drag.blockTop + dy;
           setBlockTop(Math.min(maxTop, Math.max(minTop, newTop)));
           break;
         }
+
         case "resize": {
+          const { contentTop, contentH } = getLiveContentBox();
+
           const minHeight = 90;
-          const maxHeight = Math.min(260, contentHeight);
-          const newH = drag.blockHeight + dy;
-          setBlockHeight(Math.min(maxHeight, Math.max(minHeight, newH)));
+          const maxHeight = Math.min(260, contentH);
+
+          const newH = Math.min(maxHeight, Math.max(minHeight, drag.blockHeight + dy));
+          setBlockHeight(newH);
+
+          // ✅ si agrandás/achicás, re-clamp top para que no se salga del content
+          const minTop = contentTop;
+          const maxTop = contentTop + contentH - newH;
+          setBlockTop((prev) => Math.min(maxTop, Math.max(minTop, prev)));
+
           break;
         }
+
         case "title": {
           setTitleOffsetX(drag.titleOffsetX + dx);
           setTitleOffsetY(drag.titleOffsetY + dy);
           break;
         }
+
         case "subtitle": {
           setSubtitleOffsetX(drag.subtitleOffsetX + dx);
           setSubtitleOffsetY(drag.subtitleOffsetY + dy);
           break;
         }
+
         case "alert": {
           setAlertOffsetX(drag.alertOffsetX + dx);
           setAlertOffsetY(drag.alertOffsetY + dy);
           break;
         }
+
         case "logoCircle": {
           const { contentW, contentH } = getPreviewSizes();
           const startXpx = pctToPx(drag.logoCircleXPct, contentW);
@@ -749,11 +844,17 @@ export default function ImageEditorFullPage() {
           const xPct = pxToPct(startXpx + dx, contentW);
           const yPct = pxToPct(startYpx + dy, contentH);
 
-          const clamped = clampLogoPct({ xPct, yPct, widthPct: logoCircleWidthPct, kind: "circle" });
+          const clamped = clampLogoPct({
+            xPct,
+            yPct,
+            widthPct: logoCircleWidthPct,
+            kind: "circle",
+          });
           setLogoCircleXPct(clamped.xPct);
           setLogoCircleYPct(clamped.yPct);
           break;
         }
+
         case "logoHorizontal": {
           const { contentW, contentH } = getPreviewSizes();
           const startXpx = pctToPx(drag.logoHorizontalXPct, contentW);
@@ -772,6 +873,7 @@ export default function ImageEditorFullPage() {
           setLogoHorizontalYPct(clamped.yPct);
           break;
         }
+
         case "logoCircleResize": {
           const { contentW } = getPreviewSizes();
           const startWpx = (drag.logoCircleWidthPct / 100) * contentW;
@@ -779,11 +881,17 @@ export default function ImageEditorFullPage() {
           const newPct = clamp((newWpx / contentW) * 100, 6, 40);
           setLogoCircleWidthPct(newPct);
 
-          const clamped = clampLogoPct({ xPct: logoCircleXPct, yPct: logoCircleYPct, widthPct: newPct, kind: "circle" });
+          const clamped = clampLogoPct({
+            xPct: logoCircleXPct,
+            yPct: logoCircleYPct,
+            widthPct: newPct,
+            kind: "circle",
+          });
           setLogoCircleXPct(clamped.xPct);
           setLogoCircleYPct(clamped.yPct);
           break;
         }
+
         case "logoHorizontalResize": {
           const { contentW } = getPreviewSizes();
           const startWpx = (drag.logoHorizontalWidthPct / 100) * contentW;
@@ -801,6 +909,7 @@ export default function ImageEditorFullPage() {
           setLogoHorizontalYPct(clamped.yPct);
           break;
         }
+
         case "asset": {
           const assetId = drag.assetId;
           if (!assetId) break;
@@ -809,16 +918,16 @@ export default function ImageEditorFullPage() {
 
           const startXPct = drag.assetXPct ?? 0;
           const startYPct = drag.assetYPct ?? 0;
-          const widthPct = assetOverlays.find((o) => o.id === assetId)?.widthPct ?? (drag.assetWidthPct ?? 20);
+          const widthPct =
+            assetOverlays.find((o) => o.id === assetId)?.widthPct ??
+            (drag.assetWidthPct ?? 20);
 
-          // mover en px y volver a % (content box)
           const startXpx = pctToPx(startXPct, contentW);
           const startYpx = pctToPx(startYPct, contentH);
 
           const xPct = pxToPct(startXpx + dx, contentW);
           const yPct = pxToPct(startYpx + dy, contentH);
 
-          // clamp para que no se salga
           const wPx = (widthPct / 100) * contentW;
           const hPx = wPx * 0.66;
 
@@ -829,7 +938,9 @@ export default function ImageEditorFullPage() {
           const yClampedPct = pxToPct(clamp(pctToPx(yPct, contentH), 0, maxY), contentH);
 
           setAssetOverlays((prev) =>
-            prev.map((o) => (o.id === assetId ? { ...o, xPct: xClampedPct, yPct: yClampedPct } : o)),
+            prev.map((o) =>
+              o.id === assetId ? { ...o, xPct: xClampedPct, yPct: yClampedPct } : o,
+            ),
           );
           break;
         }
@@ -839,13 +950,15 @@ export default function ImageEditorFullPage() {
           if (!assetId) break;
 
           const { contentW, contentH } = getPreviewSizes();
-          const startW = drag.assetWidthPct ?? assetOverlays.find((o) => o.id === assetId)?.widthPct ?? 20;
+          const startW =
+            drag.assetWidthPct ??
+            assetOverlays.find((o) => o.id === assetId)?.widthPct ??
+            20;
 
           const startWpx = (startW / 100) * contentW;
           const newWpx = Math.max(24, startWpx + dx);
           const newPct = clamp((newWpx / contentW) * 100, 6, 60);
 
-          // clamp posición después de resize
           const ov = assetOverlays.find((o) => o.id === assetId);
           const xPct = ov?.xPct ?? (drag.assetXPct ?? 0);
           const yPct = ov?.yPct ?? (drag.assetYPct ?? 0);
@@ -861,7 +974,9 @@ export default function ImageEditorFullPage() {
 
           setAssetOverlays((prev) =>
             prev.map((o) =>
-              o.id === assetId ? { ...o, widthPct: newPct, xPct: xClampedPct, yPct: yClampedPct } : o,
+              o.id === assetId
+                ? { ...o, widthPct: newPct, xPct: xClampedPct, yPct: yClampedPct }
+                : o,
             ),
           );
           break;
@@ -879,6 +994,10 @@ export default function ImageEditorFullPage() {
     };
   }, [
     drag,
+    // ✅ ahora depende de showHeaderStrip (porque getLiveContentBox lo usa)
+    showHeaderStrip,
+
+    // resto como estaba
     contentHeight,
     contentTopOffset,
     previewHeaderH,
@@ -889,12 +1008,51 @@ export default function ImageEditorFullPage() {
     logoCircleYPct,
     logoHorizontalXPct,
     logoHorizontalYPct,
-    assetOverlays
+    assetOverlays,
   ]);
 
+
+  useEffect(() => {
+    console.log("imageOverlays", assetOverlays);
+  }, [assetOverlays]);
+
+
   function resetPositions() {
-    setBlockTop(initialBlockTop);
+    // ✅ reset del bloque: bottom real (pegado al footer), no "initialBlockTop"
+    const el = previewRef.current;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const previewH = rect.height || 720;
+
+      const footerH = Math.round((FOOTER_HEIGHT / 720) * previewH);
+      const headerH = showHeaderStrip
+        ? Math.round((HEADER_STRIP_HEIGHT / 720) * previewH)
+        : 0;
+
+      const contentTop = headerH;
+      const contentH = Math.max(1, previewH - headerH - footerH);
+
+      const minTop = contentTop;
+      const maxTop = contentTop + contentH - DEFAULT_BLOCK_HEIGHT;
+
+      const startTop = Math.min(
+        maxTop,
+        Math.max(minTop, contentTop + contentH - DEFAULT_BLOCK_HEIGHT),
+      );
+
+      setBlockTop(startTop);
+      setInitialBlockTop(startTop);
+    } else {
+      // fallback
+      setBlockTop(0);
+      setInitialBlockTop(0);
+    }
+    setShowLogoCircle(false);
+    setShowLogoHorizontal(false);
+
+
     setBlockHeight(DEFAULT_BLOCK_HEIGHT);
+
     setTitleOffsetX(40);
     setTitleOffsetY(30);
     setSubtitleOffsetX(40);
@@ -912,6 +1070,7 @@ export default function ImageEditorFullPage() {
     setLogoHorizontalWidthPct(24);
     setLogoHorizontalOpacity(0.95);
   }
+
 
   function resetFloatingLogo() {
     if (showLogoHorizontal) {
@@ -931,8 +1090,6 @@ export default function ImageEditorFullPage() {
     previewEl: previewRef.current,
     previewHeightFallback: PREVIEW_HEIGHT_FALLBACK,
     showHeaderStrip,
-    headerStripHeightPx: previewHeaderH,
-    footerHeightPx: previewFooterH,
     blockTopPx: blockTop,
     blockHeightPx: blockHeight,
   });
@@ -1179,6 +1336,14 @@ export default function ImageEditorFullPage() {
     }
   }
 
+  function toBackendPath(u: string) {
+    if (!u) return "";
+    try {
+      if (u.startsWith("http://") || u.startsWith("https://")) return new URL(u).pathname;
+    } catch { }
+    return u; // ya es "/uploads/..." o "/brand/..."
+  } 0
+
   const handleGenerate = async () => {
     if (!previewUrl && !file) {
       setErrorMsg("Primero seleccioná una imagen base (o usá la biblioteca).");
@@ -1255,7 +1420,7 @@ export default function ImageEditorFullPage() {
         // ✅ NUEVO: overlays (banderas / símbolos / mapas / caras-circulares)
         // Espera que el backend implemente layout.imageOverlays en cover.renderer.ts
         imageOverlays: (assetOverlays ?? []).map((o) => ({
-          path: o.item.url, // ej: "/uploads/raw/xxx.png" o "/brand/..."
+          path: toBackendPath(o.item.url),
           xPct: o.xPct, // % del CONTENT (x) == % del canvas en X
           yPct: contentYPctToCanvasYPct({
             yContentPct: o.yPct, // y está en % del content box
@@ -1284,6 +1449,7 @@ export default function ImageEditorFullPage() {
         layout,
         colors,
       };
+
 
       fd.append("optionsJson", JSON.stringify(options));
 
@@ -1695,9 +1861,15 @@ export default function ImageEditorFullPage() {
                         value={overlayHeightPctUI}
                         onChange={(e) => {
                           const pct = Number(e.target.value);
-                          setBlockHeight(
-                            Math.round((pct / 100) * Math.max(1, contentHeight)),
-                          );
+
+                          // mismo contentHeight que ya usás
+                          const newH = Math.round((pct / 100) * Math.max(1, contentHeight));
+                          setBlockHeight(newH);
+
+                          // ✅ re-clamp top para que no pueda quedar afuera
+                          const minTop = contentTopOffset; // si querés, +0 (sin margen)
+                          const maxTop = contentTopOffset + contentHeight - newH;
+                          setBlockTop((prev) => Math.min(maxTop, Math.max(minTop, prev)));
                         }}
                         className="w-full"
                       />
@@ -1992,6 +2164,9 @@ export default function ImageEditorFullPage() {
                           background: `linear-gradient(to bottom, ${themeColors.bandFrom} 0%, ${themeColors.bandMid} 40%, ${themeColors.bandTo} 100%)`,
                           opacity: overlayOpacity,
                           zIndex: 20,
+                          borderTop: "2px solid rgba(255,255,255,0.28)",
+                          boxShadow: "0 -2px 14px rgba(0,0,0,0.35)",
+                          backdropFilter: "blur(1px)"
                         }}
                         onMouseDown={(e) => startDrag("block", e)}
                       >
@@ -2444,7 +2619,7 @@ export default function ImageEditorFullPage() {
               {/* Social previews (opcional) */}
               {showSocialPreviews && previewUrl ? (
                 <section className="space-y-3 rounded-3xl border border-slate-900 bg-slate-950/70 p-5">
-                  
+
                   <div className="flex items-center justify-between">
                     <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                       Previews recorte (imágenes)

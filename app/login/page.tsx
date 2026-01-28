@@ -8,7 +8,7 @@ const LOGIN_URL = buildApiUrl("/auth/login");
 const ME_URL = buildApiUrl("/auth/me");
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("valentin@example.com");
+  const [email, setEmail] = useState("vsznitowski@gmail.com");
   const [password, setPassword] = useState("123456");
   const [remember, setRemember] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -137,7 +137,7 @@ export default function LoginPage() {
                 <div>
                   <span className="text-slate-500">Email:&nbsp;</span>
                   <code className="font-mono text-slate-900">
-                    valentin@example.com
+                    vsznitowski@gmail.com
                   </code>
                 </div>
                 <div>
