@@ -1,4 +1,4 @@
-// app/admin/multimedia/image-editor/page.tsx
+// app/admin/multimedia/image-editor-embed/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState, ChangeEvent, ClipboardEvent } from "react";
@@ -15,11 +15,26 @@ type ImageKind = "raw" | "cover";
 type ImageItem = {
   filename: string;
   url: string;
+  relPath?: string;
   createdAt?: string;
   kind?: "raw" | "cover" | "other";
 };
 
+
 type CoverTheme = "purple" | "sunset" | "black";
+
+type LibraryItem = {
+  scope: "raw" | "cover" | "screen";
+  relPath: string;
+  filename: string;
+  url: string;
+  bytes: number;
+  mtimeMs: number;
+  category: string | null;
+  group: string | null;
+  tokens: string[];
+};
+
 
 const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
 type AlertTag = (typeof ALERT_TAGS)[number];
@@ -130,6 +145,18 @@ function getBottomOverlay(theme: CoverTheme): string {
 export default function ImageEditorEmbedPage() {
   const searchParams = useSearchParams();
 
+  const ASSET_BASE = useMemo(() => {
+    return (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:5001").replace(/\/+$/, "");
+  }, []);
+
+  const abs = (maybePath: string) => {
+    if (!maybePath) return "";
+    if (maybePath.startsWith("http://") || maybePath.startsWith("https://")) return maybePath;
+    if (maybePath.startsWith("/")) return `${ASSET_BASE}${maybePath}`;
+    return `${ASSET_BASE}/${maybePath}`;
+  };
+
+
   // Assets
   const BRAND_LOGO_HORIZONTAL = getBrandUrl("/brand/logo-horizontal.png");
   const BRAND_LOCKUP = getBrandUrl("/brand/canalibertario.png");
@@ -164,7 +191,7 @@ export default function ImageEditorEmbedPage() {
   const [showSafeArea, setShowSafeArea] = useState(false);
 
   // Library
-  const [images, setImages] = useState<ImageItem[]>([]);
+  const [images, setImages] = useState<LibraryItem[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -174,8 +201,8 @@ export default function ImageEditorEmbedPage() {
   const DEFAULT_LOOK = useMemo(
     () => ({
       overlayHeightPct: 30,
-      titleFontPx: 42,
-      subtitleFontPx: 16,
+      titleFontPx: 30,
+      subtitleFontPx: 14,
       pillFontPx: 12,
       footerFontPx: 12,
 
@@ -276,7 +303,7 @@ export default function ImageEditorEmbedPage() {
 
     if (qTitle) setTitle(qTitle);
     if (qSubtitle) {
-      setUseSubtitle(true);
+      setUseSubtitle(false);
       setSubtitle(qSubtitle);
     }
     if (qAlert && ALERT_TAGS.includes(qAlert)) setAlertTag(qAlert);
@@ -311,38 +338,34 @@ export default function ImageEditorEmbedPage() {
   const loadImages = async () => {
     setListLoading(true);
     setListError(null);
+
     try {
-      const headers: HeadersInit = { Accept: "application/json" };
+      const qs = new URLSearchParams();
+      qs.set("scope", "raw");
+      qs.set("category", "personas");
+      qs.set("limit", "800");
+      if (searchTerm.trim()) qs.set("q", searchTerm.trim());
 
-      if (typeof window !== "undefined") {
-        const token = window.localStorage.getItem("news_access_token");
-        if (token) headers["authorization"] = `Bearer ${token}`;
-      }
+      const res = await fetch(`/api/editor-images/enhance?${qs.toString()}`, { method: "GET" });
 
-      const res = await fetch("/api/editor-images/list", { method: "GET", headers });
+      const raw = await res.text().catch(() => "");
+      const json = raw ? JSON.parse(raw) : null;
+
       if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || `Error HTTP ${res.status} al obtener la lista de imágenes`);
+        throw new Error(json?.message ?? `Error HTTP ${res.status} al cargar personas`);
       }
 
-      const data = await res.json();
-
-      // soporta items | data | images | results
-      const items =
-        data?.items ??
-        data?.data ??
-        data?.images ??
-        data?.results ??
-        [];
-
+      const items = (json?.items ?? []) as LibraryItem[];
       setImages(Array.isArray(items) ? items : []);
     } catch (err: any) {
-      console.error("[image-editor-embed] Error al cargar imágenes:", err);
-      setListError(err.message ?? "Error al obtener la lista de imágenes.");
+      console.error("[image-editor-embed] Error al cargar personas:", err);
+      setListError(err?.message ?? "Error al obtener personas.");
+      setImages([]);
     } finally {
       setListLoading(false);
     }
   };
+
 
   useEffect(() => {
     void loadImages();
@@ -350,27 +373,24 @@ export default function ImageEditorEmbedPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, typeFilter, images.length]);
+  }, [searchTerm, images.length]);
 
   const filteredImages = images.filter((img) => {
-    const nameMatch =
-      !searchTerm || img.filename?.toLowerCase().includes(searchTerm.toLowerCase());
+    const q = searchTerm.trim().toLowerCase();
+    const nameOk = !q || (img.filename ?? "").toLowerCase().includes(q);
 
-    const imgType = resolveImageType(img);
-    const typeMatch =
-      typeFilter === "all"
-        ? true
-        : typeFilter === "raw"
-          ? imgType === "raw"
-          : imgType === "cover";
+    const p = (img.relPath ?? img.url ?? "").toLowerCase();
+    const notCircular = !p.includes("/caras-circulares/") && !p.includes("caras-circulares");
 
-    return nameMatch && typeMatch;
+    return nameOk && notCircular;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredImages.length / PAGE_SIZE));
+
+  const totalPages = Math.max(1, Math.ceil(images.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const pagedImages = filteredImages.slice(startIndex, startIndex + PAGE_SIZE);
+  const pagedImages = images.slice(startIndex, startIndex + PAGE_SIZE);
+
 
   const selectExistingAsBase = async (img: ImageItem) => {
     try {
@@ -378,7 +398,8 @@ export default function ImageEditorEmbedPage() {
       setSuccessMsg(null);
       setResultUrl(null);
 
-      const res = await fetch(img.url);
+      const src = abs(img.url);
+      const res = await fetch(src);
       if (!res.ok) throw new Error("No se pudo descargar la imagen seleccionada.");
 
       const blob = await res.blob();
@@ -391,7 +412,7 @@ export default function ImageEditorEmbedPage() {
       const name = img.filename || `image-from-library.${ext}`;
       const f = new File([blob], name, { type: mime });
 
-      applyBaseFile(f, img.url);
+      applyBaseFile(f, src);
 
       if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {
@@ -483,13 +504,21 @@ export default function ImageEditorEmbedPage() {
         throw new Error(text || `Error HTTP ${res.status} al procesar la imagen`);
       }
 
-      const data = (await res.json()) as EnhanceResponse;
+      const data = (await res.json().catch(() => null)) as any;
 
-      if (!data.enhancedImageUrl) {
-        throw new Error("La respuesta no contiene una URL de imagen procesada.");
+      const finalUrl: string | null =
+        data?.enhancedImageUrl ??
+        data?.imageUrl ??
+        data?.coverUrl ??
+        data?.url ??
+        null;
+
+      if (!finalUrl) {
+        throw new Error("El backend no devolvió URL (enhancedImageUrl/imageUrl/coverUrl/url).");
       }
 
-      setResultUrl(data.enhancedImageUrl);
+      setResultUrl(finalUrl);
+
 
       const urlLower = data.enhancedImageUrl.toLowerCase();
       const isCover =
@@ -499,9 +528,9 @@ export default function ImageEditorEmbedPage() {
 
       setSuccessMsg(
         data.message ??
-          (isCover
-            ? "Cover generada correctamente (lista para publicar)."
-            : "Imagen subida como RAW (no se pudo generar cover)."),
+        (isCover
+          ? "Cover generada correctamente (lista para publicar)."
+          : "Imagen subida como RAW (no se pudo generar cover)."),
       );
 
       void loadImages();
@@ -536,7 +565,7 @@ export default function ImageEditorEmbedPage() {
   };
 
   // Preview computed
-  const mainPreviewUrl = previewUrl;
+  const mainPreviewUrl = resultUrl || previewUrl;
   const hasBaseImage = !!mainPreviewUrl;
 
   const displayTitle = title.trim() || "Título de la portada";
@@ -943,11 +972,10 @@ export default function ImageEditorEmbedPage() {
                         key={t}
                         type="button"
                         onClick={() => setTheme(t)}
-                        className={`rounded-full border px-3 py-1 font-semibold ${
-                          theme === t
-                            ? "border-sky-400 bg-sky-500/10 text-sky-200"
-                            : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400 hover:bg-slate-800"
-                        }`}
+                        className={`rounded-full border px-3 py-1 font-semibold ${theme === t
+                          ? "border-sky-400 bg-sky-500/10 text-sky-200"
+                          : "border-slate-700 bg-slate-900 text-slate-200 hover:border-sky-400 hover:bg-slate-800"
+                          }`}
                       >
                         {themeLabel(t)}
                       </button>
@@ -1036,18 +1064,17 @@ export default function ImageEditorEmbedPage() {
                           className="flex flex-col rounded-xl border border-slate-800 bg-slate-950/80 p-3 text-[11px]"
                         >
                           <div className="mb-2 aspect-video overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
-                            <img src={img.url} alt={img.filename} className="h-full w-full object-cover" />
+                            <img src={abs(img.url)} alt={img.filename} className="h-full w-full object-cover" />
                           </div>
 
                           <div className="mb-1 flex items-center justify-between gap-2">
                             <span className="truncate text-slate-100">{img.filename}</span>
 
                             <span
-                              className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${
-                                imgType === "raw"
-                                  ? "border border-amber-400/70 bg-amber-500/10 text-amber-200"
-                                  : "border border-sky-400/70 bg-sky-500/10 text-sky-200"
-                              }`}
+                              className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${imgType === "raw"
+                                ? "border border-amber-400/70 bg-amber-500/10 text-amber-200"
+                                : "border border-sky-400/70 bg-sky-500/10 text-sky-200"
+                                }`}
                             >
                               {imgType === "raw" ? "RAW" : "COVER"}
                             </span>
@@ -1067,7 +1094,7 @@ export default function ImageEditorEmbedPage() {
                             <div className="flex gap-2">
                               <button
                                 type="button"
-                                onClick={() => window.open(img.url, "_blank")}
+                                onClick={() => window.open(abs(img.url), "_blank")}
                                 className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-semibold hover:border-sky-400 hover:bg-slate-800"
                               >
                                 Abrir
@@ -1077,7 +1104,7 @@ export default function ImageEditorEmbedPage() {
                                 type="button"
                                 onClick={async () => {
                                   try {
-                                    await navigator.clipboard.writeText(img.url);
+                                    await navigator.clipboard.writeText(abs(img.url))
                                     alert("URL copiada al portapapeles");
                                   } catch {
                                     // ignore
