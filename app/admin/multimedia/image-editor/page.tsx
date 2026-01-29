@@ -195,7 +195,7 @@ export default function ImageEditorEmbedPage() {
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | "raw" | "cover">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "raw" | "covers">("all");
   const [page, setPage] = useState(1);
 
   const DEFAULT_LOOK = useMemo(
@@ -341,25 +341,48 @@ export default function ImageEditorEmbedPage() {
 
     try {
       const qs = new URLSearchParams();
-      qs.set("scope", "raw");
-      qs.set("category", "personas");
       qs.set("limit", "800");
+
       if (searchTerm.trim()) qs.set("q", searchTerm.trim());
 
-      const res = await fetch(`/api/editor-images/enhance?${qs.toString()}`, { method: "GET" });
+      // ✅ según filtro, cambiamos el scope
+      if (typeFilter === "raw") {
+        qs.set("scope", "raw");
+        qs.set("category", "personas");
+      } else if (typeFilter === "covers") {
+        qs.set("scope", "covers");
+        // NO category=personas (covers no tienen esa categoria)
+      } else {
+        // "all": traemos ambas y las unimos (porque el backend quizá no soporta scope=all)
+        const qsRaw = new URLSearchParams(qs);
+        qsRaw.set("scope", "raw");
+        qsRaw.set("category", "personas");
 
-      const raw = await res.text().catch(() => "");
-      const json = raw ? JSON.parse(raw) : null;
+        const qsCover = new URLSearchParams(qs);
+        qsCover.set("scope", "cover");
 
-      if (!res.ok) {
-        throw new Error(json?.message ?? `Error HTTP ${res.status} al cargar personas`);
+        const [r1, r2] = await Promise.all([
+          fetch(`/api/editor-images/enhance?${qsRaw.toString()}`),
+          fetch(`/api/editor-images/enhance?${qsCover.toString()}`),
+        ]);
+
+        const j1 = await r1.json();
+        const j2 = await r2.json();
+
+        const items = [...(j1?.items ?? []), ...(j2?.items ?? [])];
+        setImages(items);
+        return;
       }
 
-      const items = (json?.items ?? []) as LibraryItem[];
-      setImages(Array.isArray(items) ? items : []);
+      const res = await fetch(`/api/editor-images/enhance?${qs.toString()}`);
+      const json = await res.json();
+
+      if (!res.ok) throw new Error(json?.message ?? `Error HTTP ${res.status}`);
+
+      setImages(Array.isArray(json?.items) ? json.items : []);
     } catch (err: any) {
-      console.error("[image-editor-embed] Error al cargar personas:", err);
-      setListError(err?.message ?? "Error al obtener personas.");
+      console.error("[embed] loadImages error:", err);
+      setListError(err?.message ?? "Error al cargar imágenes.");
       setImages([]);
     } finally {
       setListLoading(false);
@@ -369,21 +392,18 @@ export default function ImageEditorEmbedPage() {
 
   useEffect(() => {
     void loadImages();
-  }, []);
+    setPage(1);
+  }, [typeFilter, searchTerm]);
 
   useEffect(() => {
     setPage(1);
   }, [searchTerm, images.length]);
 
-  const filteredImages = images.filter((img) => {
-    const q = searchTerm.trim().toLowerCase();
-    const nameOk = !q || (img.filename ?? "").toLowerCase().includes(q);
-
+  const filteredImages = images.filter((img: any) => {
     const p = (img.relPath ?? img.url ?? "").toLowerCase();
-    const notCircular = !p.includes("/caras-circulares/") && !p.includes("caras-circulares");
-
-    return nameOk && notCircular;
+    return !p.includes("caras-circulares");
   });
+
 
 
   const totalPages = Math.max(1, Math.ceil(images.length / PAGE_SIZE));
@@ -1019,12 +1039,12 @@ export default function ImageEditorEmbedPage() {
 
                   <select
                     value={typeFilter}
-                    onChange={(e) => setTypeFilter(e.target.value as "all" | "raw" | "cover")}
+                    onChange={(e) => setTypeFilter(e.target.value as "all" | "raw" | "covers")}
                     className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px]"
                   >
                     <option value="all">Todas</option>
                     <option value="raw">RAW</option>
-                    <option value="cover">Covers</option>
+                    <option value="covers">Covers</option>
                   </select>
 
                   <button

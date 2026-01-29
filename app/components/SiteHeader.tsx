@@ -43,6 +43,7 @@ export default function SiteHeader() {
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
+  const [radarOpen, setRadarOpen] = useState(false);
 
 
   // ======== FLAGS DE SECCIÓN ACTIVA (links de arriba) ========
@@ -63,6 +64,7 @@ export default function SiteHeader() {
   useEffect(() => {
     setPanelOpen(false);
     setMediaOpen(false);
+    setRadarOpen(false);
   }, [pathname]);
 
   // Chequeo de sesión
@@ -212,7 +214,6 @@ export default function SiteHeader() {
       </header>
 
       {/* Fila para el “Panel editorial” (encima del logo) */}
-      {/* Fila para el “Panel editorial” y “Panel multimedia” (encima del logo) */}
       {!checkingAuth && user && user.role === "ADMIN" && (
         <div
           style={{
@@ -238,6 +239,7 @@ export default function SiteHeader() {
                 onClick={() => {
                   setPanelOpen((o) => !o);
                   setMediaOpen(false);
+                  setRadarOpen(false);
                 }}
                 style={{
                   position: "relative",
@@ -343,6 +345,7 @@ export default function SiteHeader() {
                 onClick={() => {
                   setMediaOpen((o) => !o);
                   setPanelOpen(false);
+                  setRadarOpen(false);
                 }}
                 style={{
                   position: "relative",
@@ -440,12 +443,94 @@ export default function SiteHeader() {
                 </div>
               )}
             </div>
+
+            {/* PANEL RADAR */}
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setRadarOpen((o) => !o);
+                  setPanelOpen(false);
+                  setMediaOpen(false);
+                }}
+                style={{
+                  position: "relative",
+                  padding: "4px 2px 8px",
+                  border: "none",
+                  background: "transparent",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  color: "#020617",
+                }}
+              >
+                PANEL RADAR{" "}
+                <span style={{ fontSize: 10, marginLeft: 4 }}>
+                  {radarOpen ? "▲" : "▼"}
+                </span>
+
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 3,
+                    borderRadius: 999,
+                    background: "linear-gradient(90deg,#f59e0b,#ef4444,#a855f7)",
+                  }}
+                />
+              </button>
+
+              {radarOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 8px)",
+                    left: 0,
+                    minWidth: 300,
+                    borderRadius: 18,
+                    border: "1px solid rgba(15,23,42,0.08)",
+                    backgroundColor: "#020617",
+                    color: "#e5e7eb",
+                    boxShadow: "0 22px 60px rgba(0,0,0,0.55)",
+                    padding: 14,
+                    zIndex: 80,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => goTo("/admin/news-inbox")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: "transparent",
+                      color: "#e5e7eb",
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                      Bandeja de noticias
+                    </div>
+                    <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                      Noticias detectadas para procesar con IA.
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
 
-      {/* Fila con logo / nombre */}
+
       {/* Fila con logo / nombre */}
       <div
         style={{
