@@ -15,6 +15,7 @@ import {
   buildInstagramCaption,
 } from "../../lib/instagram";
 import { stripHtml } from "../../lib/text";
+import { useSearchParams } from "next/navigation";
 
 type FormState = {
   title: string;
@@ -123,6 +124,35 @@ export default function EditorFromImagePage() {
   const [publishToInstagram, setPublishToInstagram] = useState(true);
   const [igErrorMsg, setIgErrorMsg] = useState<string | null>(null);
 
+  // 🔹 Procesar URL con IA
+  const [sourceUrlInput, setSourceUrlInput] = useState<string>("");
+  const [sourceNameInput, setSourceNameInput] = useState<string>("");
+
+  // 🔹 Procesar Panel Radar de Noticias (viene por query params)
+
+  const sp = useSearchParams();
+  useEffect(() => {
+    const sourceUrl = sp.get("sourceUrl") ?? "";
+    const title = sp.get("title") ?? "";
+    const sourceName = sp.get("sourceName") ?? "";
+    const topic = sp.get("topic") ?? "";
+
+    if (title) setForm((p) => ({ ...p, title }));
+    if (sourceUrl) setSourceUrlInput(sourceUrl);
+
+    if (sourceName) setSourceNameInput(sourceName); 
+
+    // opcional: si querés autocompletar el summary
+    if (sourceName || sourceUrl) {
+      setForm((p) => ({
+        ...p,
+        summary: p.summary || `${sourceName ? sourceName + " - " : ""}${sourceUrl}`,
+      }));
+    }
+  }, [sp]);
+
+
+
   // limpiar URL de objeto cuando cambie la captura
   useEffect(() => {
     return () => {
@@ -225,6 +255,58 @@ export default function EditorFromImagePage() {
       };
     });
   };
+
+  const handleProcessUrl = async () => {
+    if (!sourceUrlInput.trim()) {
+      setErrorMsg("Falta sourceUrl para procesar.");
+      return;
+    }
+
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    setImageLoading(true);
+
+    try {
+      const res = await fetch("/api/editor-articles/from-url-ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          url: sourceUrlInput.trim(),
+          hintTitle: form.title,
+          hintSourceName: sourceNameInput.trim() || undefined,
+          publishedAt: form.publishedAt,
+          category: form.category,
+          ideology: form.ideology,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || `Error HTTP ${res.status}`);
+      }
+
+      const suggested = await res.json();
+
+      setForm((prev) => ({
+        ...prev,
+        ...suggested,
+        ideology: prev.ideology,
+        status: prev.status,
+        imageUrl: prev.imageUrl,
+      }));
+
+      setSuccessMsg("Nota generada desde URL con IA. Revisá y ajustá antes de publicar.");
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err?.message ?? "Error al procesar la URL con la IA.");
+    } finally {
+      setImageLoading(false);
+    }
+  };
+
 
   const handleProcessImage = async () => {
     if (!imageFile) {
@@ -353,7 +435,7 @@ export default function EditorFromImagePage() {
           console.error("Error al publicar en Facebook", err);
           setFbErrorMsg(
             err?.message ||
-              "La nota se creó, pero falló la publicación en Facebook.",
+            "La nota se creó, pero falló la publicación en Facebook.",
           );
         }
       }
@@ -385,7 +467,7 @@ export default function EditorFromImagePage() {
           console.error("Error al publicar en Instagram", err);
           setIgErrorMsg(
             err?.message ||
-              "La nota se creó, pero falló la publicación en Instagram.",
+            "La nota se creó, pero falló la publicación en Instagram.",
           );
         }
       }
@@ -512,6 +594,16 @@ export default function EditorFromImagePage() {
                 >
                   {imageLoading ? "Procesando captura..." : "Procesar captura con IA"}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={handleProcessUrl}
+                  disabled={imageLoading || !sourceUrlInput.trim()}
+                  className="inline-flex items-center justify-center rounded-full bg-sky-400 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_18px_35px_rgba(56,189,248,0.35)] transition hover:bg-sky-300 disabled:cursor-default disabled:bg-zinc-600 disabled:shadow-none"
+                >
+                  {imageLoading ? "Procesando..." : "Procesar URL con IA"}
+                </button>
+
               </div>
 
               <div
