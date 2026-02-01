@@ -127,20 +127,29 @@ export default function EditorFromImagePage() {
   // 🔹 Procesar URL con IA
   const [sourceUrlInput, setSourceUrlInput] = useState<string>("");
   const [sourceNameInput, setSourceNameInput] = useState<string>("");
+  const [inboxId, setInboxId] = useState<number | null>(null);
+
 
   // 🔹 Procesar Panel Radar de Noticias (viene por query params)
-
   const sp = useSearchParams();
+
   useEffect(() => {
     const sourceUrl = sp.get("sourceUrl") ?? "";
     const title = sp.get("title") ?? "";
     const sourceName = sp.get("sourceName") ?? "";
     const topic = sp.get("topic") ?? "";
 
+    // 👇 viene desde el panel radar
+    const inboxIdRaw = sp.get("inboxId");
+    const inboxIdNum = inboxIdRaw ? Number(inboxIdRaw) : null;
+    const inboxIdOk =
+      inboxIdNum != null && Number.isFinite(inboxIdNum) && inboxIdNum > 0;
+
+    if (inboxIdOk) setInboxId(inboxIdNum);
+
     if (title) setForm((p) => ({ ...p, title }));
     if (sourceUrl) setSourceUrlInput(sourceUrl);
-
-    if (sourceName) setSourceNameInput(sourceName); 
+    if (sourceName) setSourceNameInput(sourceName);
 
     // opcional: si querés autocompletar el summary
     if (sourceName || sourceUrl) {
@@ -149,7 +158,18 @@ export default function EditorFromImagePage() {
         summary: p.summary || `${sourceName ? sourceName + " - " : ""}${sourceUrl}`,
       }));
     }
+
+    // ✅ auto "queue" cuando entrás desde la bandeja
+    if (inboxIdOk) {
+      fetch("/api/news-inbox", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ action: "queue", id: inboxIdNum }),
+      }).catch(() => { });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sp]);
+
 
 
 
@@ -297,6 +317,14 @@ export default function EditorFromImagePage() {
         status: prev.status,
         imageUrl: prev.imageUrl,
       }));
+
+      if (inboxId) {
+        fetch("/api/news-inbox", {
+          method: "PATCH",
+          headers: { "content-type": "application/json", ...getAuthHeaders() },
+          body: JSON.stringify({ action: "processed", id: inboxId }),
+        }).catch(() => { });
+      }
 
       setSuccessMsg("Nota generada desde URL con IA. Revisá y ajustá antes de publicar.");
     } catch (err: any) {
