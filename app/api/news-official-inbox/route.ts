@@ -56,6 +56,43 @@ export async function GET(req: NextRequest) {
 }
 
 /**
+ * POST /api/news-official-inbox
+ * Body:
+ *   { items: [...] }  o directamente [ ... ]
+ * -> proxy a /internal/official-social-inbox/import
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const body = (await req.json().catch(() => null)) as any;
+    if (!body) return NextResponse.json({ message: "JSON inválido" }, { status: 400 });
+
+    const items = Array.isArray(body) ? body : body.items;
+    if (!Array.isArray(items)) {
+      return NextResponse.json({ message: "items inválido (se espera items[])" }, { status: 400 });
+    }
+
+    const res = await fetch(buildApiUrl("/internal/official-social-inbox/import"), {
+      method: "POST",
+      headers: buildHeaders(req),
+      body: JSON.stringify({ items }),
+    });
+
+    const text = await res.text().catch(() => "");
+    if (!res.ok) {
+      return NextResponse.json(
+        { message: "Error importando official inbox", statusCode: res.status, backend: text },
+        { status: 502 },
+      );
+    }
+
+    return NextResponse.json(text ? JSON.parse(text) : { ok: true }, { status: 200 });
+  } catch (err) {
+    console.error("[news-official-inbox][POST] error:", err);
+    return NextResponse.json({ message: "Error inesperado" }, { status: 500 });
+  }
+}
+
+/**
  * PATCH /api/news-official-inbox
  * Body: { action: "queue"|"discard"|"processed", id: 123 }
  * -> proxy a /internal/official-social-inbox/:id/:action
@@ -82,7 +119,7 @@ export async function PATCH(req: NextRequest) {
       {
         method: "PATCH",
         headers,
-        body: JSON.stringify({}), // por si el backend espera body
+        body: JSON.stringify({}),
       },
     );
 
