@@ -522,6 +522,31 @@ export default function SiteHeader() {
                       Noticias detectadas para procesar con IA.
                     </div>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => goTo("/admin/news-official-inbox")}
+                    
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: "transparent",
+                      color: "#e5e7eb",
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                      Cuentas Oficiales
+                    </div>
+                    <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                      Publicaciones detectadas en cuentas oficiales para procesar con IA.
+                    </div>
+                  </button>
+
                 </div>
               )}
             </div>
