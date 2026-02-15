@@ -129,6 +129,9 @@ export default function EditorFromImagePage() {
   const [sourceNameInput, setSourceNameInput] = useState<string>("");
   const [inboxId, setInboxId] = useState<number | null>(null);
 
+  const [sourceTextInput, setSourceTextInput] = useState<string>("");
+  const [inboxType, setInboxType] = useState<"news" | "official">("news");
+
 
   // 🔹 Procesar Panel Radar de Noticias (viene por query params)
   const sp = useSearchParams();
@@ -138,6 +141,14 @@ export default function EditorFromImagePage() {
     const title = sp.get("title") ?? "";
     const sourceName = sp.get("sourceName") ?? "";
     const topic = sp.get("topic") ?? "";
+
+    const inboxTypeRaw = (sp.get("inboxType") ?? "news") as any;
+    const inboxTypeOk = inboxTypeRaw === "official" ? "official" : "news";
+    setInboxType(inboxTypeOk);
+
+    const text = sp.get("text") ?? "";
+    if (text) setSourceTextInput(text);
+
 
     // 👇 viene desde el panel radar
     const inboxIdRaw = sp.get("inboxId");
@@ -159,14 +170,20 @@ export default function EditorFromImagePage() {
       }));
     }
 
+    const inboxPatchUrl =
+      inboxTypeOk === "official" ? "/api/news-official-inbox" : "/api/news-inbox";
     // ✅ auto "queue" cuando entrás desde la bandeja
-    if (inboxIdOk) {
-      fetch("/api/news-inbox", {
+    if (inboxId) {
+      const inboxPatchUrl =
+        inboxType === "official" ? "/api/news-official-inbox" : "/api/news-inbox";
+
+      fetch(inboxPatchUrl, {
         method: "PATCH",
         headers: { "content-type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ action: "queue", id: inboxIdNum }),
+        body: JSON.stringify({ action: "processed", id: inboxId }),
       }).catch(() => { });
     }
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sp]);
 
@@ -300,7 +317,11 @@ export default function EditorFromImagePage() {
           publishedAt: form.publishedAt,
           category: form.category,
           ideology: form.ideology,
+
+          // ✅ NUEVO: si venís de cuentas oficiales, esto evita el scraping (X rompe)
+          textOverride: sourceTextInput.trim() || null,
         }),
+
       });
 
       if (!res.ok) {
