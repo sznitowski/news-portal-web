@@ -5,11 +5,6 @@ import { useEffect, useMemo, useState, ChangeEvent, ClipboardEvent } from "react
 import { useSearchParams } from "next/navigation";
 import { getBrandUrl } from "@/app/lib/api";
 
-type EnhanceResponse = {
-  enhancedImageUrl: string;
-  message?: string;
-};
-
 type ImageKind = "raw" | "cover";
 
 type ImageItem = {
@@ -19,7 +14,6 @@ type ImageItem = {
   createdAt?: string;
   kind?: "raw" | "cover" | "other";
 };
-
 
 type CoverTheme = "purple" | "sunset" | "black";
 
@@ -35,7 +29,6 @@ type LibraryItem = {
   tokens: string[];
 };
 
-
 const ALERT_TAGS = ["", "URGENTE", "ALERTA", "ÚLTIMA HORA"] as const;
 type AlertTag = (typeof ALERT_TAGS)[number];
 
@@ -43,7 +36,6 @@ const PAGE_SIZE = 10;
 
 function getImageTypeFromUrl(url: string): ImageKind {
   let path = url.toLowerCase();
-
   try {
     const u = new URL(url);
     path = u.pathname.toLowerCase();
@@ -51,19 +43,11 @@ function getImageTypeFromUrl(url: string): ImageKind {
     // ignore
   }
 
-  if (
-    path.includes("/covers/") ||
-    path.includes("/cover/") ||
-    /[-_/]covers?[-_/]/.test(path)
-  ) {
+  if (path.includes("/covers/") || path.includes("/cover/") || /[-_/]covers?[-_/]/.test(path)) {
     return "cover";
   }
 
-  if (
-    path.includes("/raws/") ||
-    path.includes("/raw/") ||
-    /[-_/]raws?[-_/]/.test(path)
-  ) {
+  if (path.includes("/raws/") || path.includes("/raw/") || /[-_/]raws?[-_/]/.test(path)) {
     return "raw";
   }
 
@@ -110,6 +94,19 @@ function themeLabel(value: CoverTheme): string {
   }
 }
 
+function getActiveColor(theme: CoverTheme): string {
+  switch (theme) {
+    case "purple":
+      return "#3A1C6B";
+    case "sunset":
+      return "#C2410C";
+    case "black":
+    default:
+      return "#64748b";
+  }
+}
+
+
 function getPillBg(alertTag: string): string {
   if (!alertTag) return "rgba(255,255,255,0.14)";
   if (alertTag === "ÚLTIMA HORA") return "rgba(220,38,38,0.95)";
@@ -120,7 +117,7 @@ function getPillBg(alertTag: string): string {
  * Overlay inferior fijo (simple, sale bien casi siempre)
  */
 function getBottomOverlay(theme: CoverTheme): string {
-  const a = 0.9;
+  const a = 0.85;
 
   switch (theme) {
     case "sunset":
@@ -142,6 +139,118 @@ function getBottomOverlay(theme: CoverTheme): string {
   }
 }
 
+// =========================
+// ✅ AUTO-PICK HELPERS
+// =========================
+const PERSON_PRESETS: Array<{
+  key: string;
+  name: string;
+  subtitle: string;
+  keywords: string[];
+}> = [
+    {
+      key: "milei",
+      name: "Javier Milei",
+      subtitle: "Javier Milei · Presidente argentino",
+      keywords: ["milei", "javier milei", "presidente", "libertario"],
+    },
+    {
+      key: "caputo",
+      name: "Luis Caputo",
+      subtitle: "Luis Caputo · Ministro de Economía",
+      keywords: ["caputo", "luis caputo", "ministro", "economia"],
+    },
+    {
+      key: "bullrich",
+      name: "Patricia Bullrich",
+      subtitle: "Patricia Bullrich · Ministra de Seguridad",
+      keywords: ["bullrich", "patricia bullrich", "seguridad"],
+    },
+    {
+      key: "massa",
+      name: "Sergio Massa",
+      subtitle: "Sergio Massa · Ex ministro de Economía",
+      keywords: ["massa", "sergio massa"],
+    },
+    {
+      key: "macri",
+      name: "Mauricio Macri",
+      subtitle: "Mauricio Macri · Ex presidente",
+      keywords: ["macri", "mauricio macri"],
+    },
+  ];
+
+function norm(s: string) {
+  return (s ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inferPersonFromText(text: string): {
+  person: string | null;
+  subtitle: string | null;
+  keywords: string[];
+} {
+  const t = norm(text);
+  if (!t) return { person: null, subtitle: null, keywords: [] };
+
+  for (const p of PERSON_PRESETS) {
+    if (p.keywords.some((k) => t.includes(norm(k)))) {
+      return { person: p.name, subtitle: p.subtitle, keywords: p.keywords.map(norm) };
+    }
+  }
+
+  return { person: null, subtitle: null, keywords: [] };
+}
+
+function scoreLibraryItemForPerson(img: LibraryItem, personKeywords: string[]): number {
+  const filename = norm(img.filename ?? "");
+  const rel = norm(img.relPath ?? "");
+  const cat = norm(img.category ?? "");
+  const tokens = Array.isArray(img.tokens) ? img.tokens.map(norm) : [];
+
+  let score = 0;
+
+  // preferimos "personas"
+  if (cat === "personas") score += 10;
+
+  // raw > cover para base
+  if (img.scope === "raw") score += 8;
+
+  for (const kw of personKeywords) {
+    if (!kw) continue;
+
+    if (tokens.includes(kw)) score += 10;
+    if (filename.includes(kw)) score += 8;
+    if (rel.includes(kw)) score += 6;
+
+    const parts = kw.split(" ").filter(Boolean);
+    for (const p of parts) {
+      if (tokens.includes(p)) score += 6;
+      if (filename.includes(p)) score += 4;
+      if (rel.includes(p)) score += 3;
+    }
+  }
+
+  // pequeño boost por "más nuevo"
+  if (Number.isFinite(img.mtimeMs)) score += Math.min(5, Math.floor(img.mtimeMs / 1_000_000_000_000));
+
+  return score;
+}
+
+// ✅ Mensaje desde página padre (iframe)
+type EmbedContextMessage = {
+  type: "CB_EMBED_CONTEXT";
+  title?: string;
+  person?: string;
+  role?: string;
+  alertTag?: string;
+  publishDateIso?: string;
+};
+
 export default function ImageEditorEmbedPage() {
   const searchParams = useSearchParams();
 
@@ -156,10 +265,13 @@ export default function ImageEditorEmbedPage() {
     return `${ASSET_BASE}/${maybePath}`;
   };
 
-
   // Assets
   const BRAND_LOGO_HORIZONTAL = getBrandUrl("/brand/logo-horizontal.png");
   const BRAND_LOCKUP = getBrandUrl("/brand/canalibertario.png");
+
+  const LINE_WIDTH = 3;
+  const LINE_MARGIN_RIGHT = 14;
+  const LINE_GAP = 14;
 
   // Base image
   const [file, setFile] = useState<File | null>(null);
@@ -173,10 +285,12 @@ export default function ImageEditorEmbedPage() {
   const [alertTag, setAlertTag] = useState<AlertTag>("");
   const [theme, setTheme] = useState<CoverTheme>("black");
 
+  // ✅ auto person/subtitle
+  const [autoPerson, setAutoPerson] = useState<string | null>(null);
+  const [autoSubtitle, setAutoSubtitle] = useState<string | null>(null);
+
   // Publish date
-  const [publishDateIso, setPublishDateIso] = useState<string>(() =>
-    toISODateOnly(null),
-  );
+  const [publishDateIso, setPublishDateIso] = useState<string>(() => toISODateOnly(null));
   const publishDateAR = formatDateARFromISO(publishDateIso);
 
   // UX
@@ -197,6 +311,9 @@ export default function ImageEditorEmbedPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "raw" | "covers">("all");
   const [page, setPage] = useState(1);
+
+  // ✅ para evitar auto-pick infinito
+  const [autoPickedOnce, setAutoPickedOnce] = useState(false);
 
   const DEFAULT_LOOK = useMemo(
     () => ({
@@ -294,47 +411,96 @@ export default function ImageEditorEmbedPage() {
     }
   };
 
-  // Init from query (si venís desde from-image-ai)
+  // ✅ NUEVO: escucha contexto del padre (from-image-ai) vía postMessage
   useEffect(() => {
-    const imageUrl = searchParams.get("imageUrl");
+    const onMsg = (ev: MessageEvent) => {
+      const data = ev.data as EmbedContextMessage | any;
+      if (!data || data.type !== "CB_EMBED_CONTEXT") return;
+
+      const t = (data.title ?? "").toString();
+      const person = (data.person ?? "").toString();
+      const role = (data.role ?? "").toString();
+      const at = (data.alertTag ?? "").toString();
+      const pIso = (data.publishDateIso ?? "").toString();
+
+      if (t && t !== title) setTitle(t);
+      if (at && (ALERT_TAGS as readonly string[]).includes(at)) setAlertTag(at as AlertTag);
+      if (pIso) setPublishDateIso(toISODateOnly(pIso));
+
+      if (person.trim()) {
+        setAutoPerson(person.trim());
+        const sub = role ? `${person.trim()} · ${role.trim()}` : person.trim();
+        setAutoSubtitle(sub);
+
+        // si el user no puso subtitle manual, lo seteamos
+        if (!subtitle.trim()) {
+          setUseSubtitle(true);
+          setSubtitle(sub);
+        }
+      } else if (t) {
+        const inferred = inferPersonFromText(t);
+        if (inferred.person) {
+          setAutoPerson(inferred.person);
+          setAutoSubtitle(inferred.subtitle);
+          if (!subtitle.trim() && inferred.subtitle) {
+            setUseSubtitle(true);
+            setSubtitle(inferred.subtitle);
+          }
+        }
+      }
+
+      // habilita nuevo auto-pick para este artículo
+      setAutoPickedOnce(false);
+    };
+
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, subtitle]);
+
+  // Init from query (por si igual lo pasás por URL)
+  useEffect(() => {
     const qTitle = searchParams.get("title") ?? "";
     const qSubtitle = searchParams.get("subtitle") ?? "";
     const qAlert = (searchParams.get("alertTag") ?? "") as AlertTag;
+    const qPerson = searchParams.get("person") ?? "";
+    const qRole = searchParams.get("role") ?? "";
+    const qpPublishDate = searchParams.get("publishDate") ?? searchParams.get("publishedAt");
 
     if (qTitle) setTitle(qTitle);
+
     if (qSubtitle) {
-      setUseSubtitle(false);
+      setUseSubtitle(true);
       setSubtitle(qSubtitle);
     }
-    if (qAlert && ALERT_TAGS.includes(qAlert)) setAlertTag(qAlert);
 
-    const qpPublishDate =
-      searchParams.get("publishDate") ?? searchParams.get("publishedAt");
+    if (qAlert && ALERT_TAGS.includes(qAlert)) setAlertTag(qAlert);
     if (qpPublishDate) setPublishDateIso(toISODateOnly(qpPublishDate));
 
-    if (!imageUrl) return;
+    if (qPerson.trim()) {
+      setAutoPerson(qPerson.trim());
+      const sub = qRole ? `${qPerson.trim()} · ${qRole.trim()}` : qPerson.trim();
+      setAutoSubtitle(sub);
 
-    (async () => {
-      try {
-        const res = await fetch(imageUrl);
-        if (!res.ok) throw new Error("No se pudo descargar la imagen inicial.");
-
-        const blob = await res.blob();
-        const mime = blob.type || "image/jpeg";
-        let ext = "jpg";
-        if (mime === "image/png") ext = "png";
-        else if (mime === "image/webp") ext = "webp";
-
-        const f = new File([blob], `image-from-article.${ext}`, { type: mime });
-        applyBaseFile(f, imageUrl);
-      } catch (err) {
-        console.error("init error:", err);
+      if (!qSubtitle.trim()) {
+        setUseSubtitle(true);
+        setSubtitle(sub);
       }
-    })();
+    } else if (qTitle) {
+      const inferred = inferPersonFromText(qTitle);
+      if (inferred.person) {
+        setAutoPerson(inferred.person);
+        setAutoSubtitle(inferred.subtitle);
+        if (!qSubtitle.trim() && inferred.subtitle) {
+          setUseSubtitle(true);
+          setSubtitle(inferred.subtitle);
+        }
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ LISTA: soporta distintos formatos del backend
+  // ✅ LISTA: biblioteca
   const loadImages = async () => {
     setListLoading(true);
     setListError(null);
@@ -345,15 +511,12 @@ export default function ImageEditorEmbedPage() {
 
       if (searchTerm.trim()) qs.set("q", searchTerm.trim());
 
-      // ✅ según filtro, cambiamos el scope
       if (typeFilter === "raw") {
         qs.set("scope", "raw");
         qs.set("category", "personas");
       } else if (typeFilter === "covers") {
-        qs.set("scope", "covers");
-        // NO category=personas (covers no tienen esa categoria)
+        qs.set("scope", "cover"); // ✅ singular
       } else {
-        // "all": traemos ambas y las unimos (porque el backend quizá no soporta scope=all)
         const qsRaw = new URLSearchParams(qs);
         qsRaw.set("scope", "raw");
         qsRaw.set("category", "personas");
@@ -389,49 +552,54 @@ export default function ImageEditorEmbedPage() {
     }
   };
 
-
   useEffect(() => {
     void loadImages();
     setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeFilter, searchTerm]);
 
   useEffect(() => {
     setPage(1);
   }, [searchTerm, images.length]);
 
-  const filteredImages = images.filter((img: any) => {
-    const p = (img.relPath ?? img.url ?? "").toLowerCase();
-    return !p.includes("caras-circulares");
-  });
+  const filteredImages = useMemo(() => {
+    return images.filter((img: any) => {
+      const p = (img.relPath ?? img.url ?? "").toLowerCase();
+      return !p.includes("caras-circulares");
+    });
+  }, [images]);
 
-
-
-  const totalPages = Math.max(1, Math.ceil(images.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filteredImages.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const pagedImages = images.slice(startIndex, startIndex + PAGE_SIZE);
+  const pagedImages = filteredImages.slice(startIndex, startIndex + PAGE_SIZE);
 
+  // ✅ CLAVE: usar PROXY para bajar imagen y evitar CORS
+  const fetchAsFileUsingProxy = async (publicOrAbsUrl: string, filenameFallback: string) => {
+    const proxyUrl = `/api/editor-images/enhance?proxyUrl=${encodeURIComponent(publicOrAbsUrl)}`;
+    const res = await fetch(proxyUrl);
+    if (!res.ok) throw new Error("No se pudo descargar la imagen (proxy).");
 
-  const selectExistingAsBase = async (img: ImageItem) => {
+    const blob = await res.blob();
+    const mime = blob.type || "image/jpeg";
+
+    let ext = "jpg";
+    if (mime === "image/png") ext = "png";
+    else if (mime === "image/webp") ext = "webp";
+
+    const name = filenameFallback || `image-from-library.${ext}`;
+    return new File([blob], name, { type: mime });
+  };
+
+  const selectExistingAsBase = async (img: { filename: string; url: string }) => {
     try {
       setErrorMsg(null);
       setSuccessMsg(null);
       setResultUrl(null);
 
       const src = abs(img.url);
-      const res = await fetch(src);
-      if (!res.ok) throw new Error("No se pudo descargar la imagen seleccionada.");
 
-      const blob = await res.blob();
-      const mime = blob.type || "image/jpeg";
-
-      let ext = "jpg";
-      if (mime === "image/png") ext = "png";
-      else if (mime === "image/webp") ext = "webp";
-
-      const name = img.filename || `image-from-library.${ext}`;
-      const f = new File([blob], name, { type: mime });
-
+      const f = await fetchAsFileUsingProxy(src, img.filename || "image-from-library.jpg");
       applyBaseFile(f, src);
 
       if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
@@ -440,6 +608,55 @@ export default function ImageEditorEmbedPage() {
       setErrorMsg(err.message ?? "No se pudo usar esa imagen como base.");
     }
   };
+
+  // ✅ AUTO-SELECT RAW PERSONA si todavía no hay base cargada
+  useEffect(() => {
+    if (autoPickedOnce) return;
+    if (file || previewUrl) return;
+    if (!filteredImages.length) return;
+
+    const baseText = `${autoPerson ?? ""} ${autoSubtitle ?? ""} ${title ?? ""}`.trim();
+    if (!baseText) return;
+
+    const inferred = inferPersonFromText(baseText);
+    const personName = autoPerson || inferred.person || "";
+    const subtitleSuggested = autoSubtitle || inferred.subtitle || null;
+
+    if (subtitleSuggested && !subtitle.trim()) {
+      setUseSubtitle(true);
+      setSubtitle(subtitleSuggested);
+    }
+
+    const kw = Array.from(
+      new Set(
+        [
+          personName,
+          title,
+          ...(inferred.keywords ?? []),
+          ...(personName ? [personName] : []),
+        ].map(norm),
+      ),
+    ).filter(Boolean);
+
+    if (!kw.length) return;
+
+    const candidates = filteredImages.filter(
+      (x) => x.scope === "raw" && norm(x.category ?? "") === "personas",
+    );
+
+    let best: { item: LibraryItem; score: number } | null = null;
+    for (const it of candidates) {
+      const s = scoreLibraryItemForPerson(it, kw);
+      if (!best || s > best.score) best = { item: it, score: s };
+    }
+
+    // umbral para no agarrar cualquiera
+    if (!best || best.score < 18) return;
+
+    setAutoPickedOnce(true);
+    void selectExistingAsBase({ filename: best.item.filename, url: best.item.url });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredImages.length, title, autoPerson, autoSubtitle, file, previewUrl, autoPickedOnce]);
 
   // Enhance
   const handleEnhance = async () => {
@@ -527,20 +744,13 @@ export default function ImageEditorEmbedPage() {
       const data = (await res.json().catch(() => null)) as any;
 
       const finalUrl: string | null =
-        data?.enhancedImageUrl ??
-        data?.imageUrl ??
-        data?.coverUrl ??
-        data?.url ??
-        null;
+        data?.enhancedImageUrl ?? data?.imageUrl ?? data?.coverUrl ?? data?.url ?? null;
 
-      if (!finalUrl) {
-        throw new Error("El backend no devolvió URL (enhancedImageUrl/imageUrl/coverUrl/url).");
-      }
+      if (!finalUrl) throw new Error("El backend no devolvió URL (enhancedImageUrl/imageUrl/coverUrl/url).");
 
       setResultUrl(finalUrl);
 
-
-      const urlLower = data.enhancedImageUrl.toLowerCase();
+      const urlLower = (finalUrl ?? "").toLowerCase();
       const isCover =
         urlLower.includes("/covers/") ||
         urlLower.includes("/cover/") ||
@@ -548,9 +758,7 @@ export default function ImageEditorEmbedPage() {
 
       setSuccessMsg(
         data.message ??
-        (isCover
-          ? "Cover generada correctamente (lista para publicar)."
-          : "Imagen subida como RAW (no se pudo generar cover)."),
+        (isCover ? "Cover generada correctamente (lista para publicar)." : "Imagen subida como RAW."),
       );
 
       void loadImages();
@@ -602,12 +810,26 @@ export default function ImageEditorEmbedPage() {
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
               Editor de imágenes · Covers (rápido)
             </div>
+
             <h1 className="text-2xl font-semibold leading-tight md:text-3xl">
               Generá una cover lista para publicar
             </h1>
+
             <p className="max-w-3xl text-sm text-slate-300">
               Cargá una imagen, poné título, elegí etiqueta/tema (opcional) y generá. El resto queda fijo.
             </p>
+
+            {(autoPerson || autoSubtitle) && (
+              <div className="text-[11px] text-slate-300">
+                Detectado:{" "}
+                <span className="font-semibold text-slate-100">{autoPerson ?? "—"}</span>{" "}
+                {autoSubtitle ? (
+                  <>
+                    · <span className="text-slate-200">{autoSubtitle}</span>
+                  </>
+                ) : null}
+              </div>
+            )}
           </header>
 
           {/* Preview / Resultado */}
@@ -688,6 +910,7 @@ export default function ImageEditorEmbedPage() {
                           background: getBottomOverlay(theme),
                         }}
                       >
+
                         <div
                           className="flex h-full w-full flex-col justify-end"
                           style={{
@@ -698,9 +921,8 @@ export default function ImageEditorEmbedPage() {
                           }}
                         >
                           <div className="space-y-3">
-                            {/* Pill */}
                             {alertTag && (
-                              <div className="flex justify-start">
+                              <div style={{ marginLeft: LINE_WIDTH + LINE_GAP }}>
                                 <div
                                   className="inline-flex items-center rounded-full px-3 py-1 font-semibold uppercase tracking-[0.14em] text-white shadow-[0_10px_22px_rgba(0,0,0,0.25)]"
                                   style={{
@@ -713,57 +935,57 @@ export default function ImageEditorEmbedPage() {
                               </div>
                             )}
 
-                            {/* Title */}
-                            <div
-                              className="leading-[1.08] tracking-[0.02em]"
-                              style={{
-                                maxWidth: "860px",
-                                color: DEFAULT_LOOK.titleColor,
-                                textShadow: "0 10px 26px rgba(0,0,0,0.35)",
-                              }}
-                            >
+                            <div className="flex items-stretch" style={{ gap: LINE_GAP }}>
+                              {/* Línea vertical editorial */}
                               <div
-                                className="font-extrabold"
-                                style={{ fontSize: DEFAULT_LOOK.titleFontPx, opacity: 1 }}
+                                className="shrink-0 self-stretch"
+                                style={{
+                                  width: LINE_WIDTH,
+                                  background: getActiveColor(theme),
+                                  borderRadius: 2,
+                                }}
+                              />
+
+                              {/* Bloque título */}
+                              <div
+                                className="leading-[1.03] tracking-[0.02em]"
+                                style={{
+                                  maxWidth: "860px",
+                                  color: DEFAULT_LOOK.titleColor,
+                                  textShadow: "0 10px 26px rgba(0,0,0,0.35)",
+                                }}
                               >
-                                {titleLines[0] ?? ""}
+                                <div className="font-extrabold" style={{ fontSize: DEFAULT_LOOK.titleFontPx }}>
+                                  {titleLines[0] ?? ""}
+                                </div>
+
+                                {titleLines[1] ? (
+                                  <div
+                                    style={{
+                                      fontSize: Math.max(24, Math.round(DEFAULT_LOOK.titleFontPx * 0.86)),
+                                      fontWeight: DEFAULT_LOOK.line2Weight,
+                                      opacity: DEFAULT_LOOK.line2Opacity,
+                                    }}
+                                  >
+                                    {titleLines[1]}
+                                  </div>
+                                ) : null}
+
+                                {titleLines[2] ? (
+                                  <div
+                                    style={{
+                                      fontSize: Math.max(22, Math.round(DEFAULT_LOOK.titleFontPx * 0.78)),
+                                      fontWeight: Math.max(650, Math.round(DEFAULT_LOOK.line2Weight - 50)),
+                                      opacity: Math.max(0.78, DEFAULT_LOOK.line2Opacity - 0.06),
+                                    }}
+                                  >
+                                    {titleLines[2]}
+                                  </div>
+                                ) : null}
                               </div>
-
-                              {titleLines[1] ? (
-                                <div
-                                  style={{
-                                    fontSize: Math.max(
-                                      24,
-                                      Math.round(DEFAULT_LOOK.titleFontPx * 0.86),
-                                    ),
-                                    fontWeight: DEFAULT_LOOK.line2Weight,
-                                    opacity: DEFAULT_LOOK.line2Opacity,
-                                  }}
-                                >
-                                  {titleLines[1]}
-                                </div>
-                              ) : null}
-
-                              {titleLines[2] ? (
-                                <div
-                                  style={{
-                                    fontSize: Math.max(
-                                      22,
-                                      Math.round(DEFAULT_LOOK.titleFontPx * 0.78),
-                                    ),
-                                    fontWeight: Math.max(
-                                      650,
-                                      Math.round(DEFAULT_LOOK.line2Weight - 50),
-                                    ),
-                                    opacity: Math.max(0.78, DEFAULT_LOOK.line2Opacity - 0.06),
-                                  }}
-                                >
-                                  {titleLines[2]}
-                                </div>
-                              ) : null}
                             </div>
 
-                            {/* Subtitle opcional */}
+
                             {subtitleToRender && (
                               <div
                                 className="font-medium leading-snug"
@@ -778,7 +1000,6 @@ export default function ImageEditorEmbedPage() {
                               </div>
                             )}
 
-                            {/* Footer fijo */}
                             <div className="mt-2 flex items-center justify-between gap-4">
                               <div className="flex items-center gap-3">
                                 <img
@@ -812,7 +1033,6 @@ export default function ImageEditorEmbedPage() {
                   </p>
                 )}
 
-                {/* Avanzado */}
                 <details className="mt-4 rounded-xl border border-slate-800/80 bg-slate-950/60 p-3">
                   <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
                     Avanzado
@@ -908,9 +1128,7 @@ export default function ImageEditorEmbedPage() {
                   placeholder="Ctrl+V para pegar imagen o pegá la URL..."
                 />
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] text-slate-400">
-                    Si pegás URL, tocá “Usar captura”.
-                  </p>
+                  <p className="text-[10px] text-slate-400">Si pegás URL, tocá “Usar captura”.</p>
                   <button
                     type="button"
                     onClick={handleLoadScreenshotUrl}
@@ -933,7 +1151,10 @@ export default function ImageEditorEmbedPage() {
                 <textarea
                   rows={2}
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    setAutoPickedOnce(false);
+                  }}
                   className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
                   placeholder="Ej: Milei anuncia medidas"
                 />
@@ -965,6 +1186,11 @@ export default function ImageEditorEmbedPage() {
                     className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-50 outline-none focus:border-sky-400"
                     placeholder="Ej: Nuevo plan económico"
                   />
+                  {autoSubtitle && (
+                    <p className="text-[10px] text-slate-400">
+                      Sugerido: <span className="text-slate-200">{autoSubtitle}</span>
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -1015,7 +1241,7 @@ export default function ImageEditorEmbedPage() {
             </div>
           </div>
 
-          {/* ✅ BIBLIOTECA: abierta por defecto para que “se vea sí o sí” */}
+          {/* ✅ BIBLIOTECA */}
           <details open className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 md:p-6">
             <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
               Biblioteca (RAW / Covers)
@@ -1075,7 +1301,7 @@ export default function ImageEditorEmbedPage() {
               {!listError && filteredImages.length > 0 && (
                 <>
                   <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-                    {pagedImages.map((img, index) => {
+                    {pagedImages.map((img: any, index: number) => {
                       const imgType = resolveImageType(img);
 
                       return (
@@ -1105,7 +1331,7 @@ export default function ImageEditorEmbedPage() {
                           <div className="mt-auto flex flex-col gap-1">
                             <button
                               type="button"
-                              onClick={() => void selectExistingAsBase(img)}
+                              onClick={() => void selectExistingAsBase({ filename: img.filename, url: img.url })}
                               className="w-full rounded-full border border-sky-400/80 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold text-sky-200 hover:bg-sky-500/20"
                             >
                               Usar como base
@@ -1124,7 +1350,7 @@ export default function ImageEditorEmbedPage() {
                                 type="button"
                                 onClick={async () => {
                                   try {
-                                    await navigator.clipboard.writeText(abs(img.url))
+                                    await navigator.clipboard.writeText(abs(img.url));
                                     alert("URL copiada al portapapeles");
                                   } catch {
                                     // ignore

@@ -52,7 +52,8 @@ export async function GET(req: NextRequest) {
         );
       }
 
-      const contentType = res.headers.get("content-type") || "application/octet-stream";
+      const contentType =
+        res.headers.get("content-type") || "application/octet-stream";
       const buf = Buffer.from(await res.arrayBuffer());
 
       return new NextResponse(buf, {
@@ -65,7 +66,12 @@ export async function GET(req: NextRequest) {
     }
 
     // ✅ biblioteca
-    const scope = (u.searchParams.get("scope") ?? "raw").trim();
+    let scope = (u.searchParams.get("scope") ?? "raw").trim();
+
+    // ✅ compat: algunos UIs mandan "covers", el backend suele esperar "cover"
+    if (scope === "covers") scope = "cover";
+    if (scope === "raws") scope = "raw";
+
     const q = (u.searchParams.get("q") ?? "").trim();
     const category = (u.searchParams.get("category") ?? "").trim();
     const group = (u.searchParams.get("group") ?? "").trim();
@@ -80,20 +86,36 @@ export async function GET(req: NextRequest) {
 
     const headers = buildAuthHeaders(req, null);
 
-    const listRes = await fetch(buildApiUrl(`/internal/uploads/images?${qs.toString()}`), {
-      method: "GET",
-      headers,
-    });
+    const listRes = await fetch(
+      buildApiUrl(`/internal/uploads/images?${qs.toString()}`),
+      {
+        method: "GET",
+        headers,
+      },
+    );
 
     const rawText = await listRes.text().catch(() => "");
     if (!listRes.ok) {
       return NextResponse.json(
-        { message: "Error listando biblioteca", statusCode: listRes.status, backend: rawText },
+        {
+          message: "Error listando biblioteca",
+          statusCode: listRes.status,
+          backend: rawText,
+        },
         { status: 502 },
       );
     }
 
     const json = rawText ? JSON.parse(rawText) : { items: [] };
+
+    // ✅ IMPORTANTÍSIMO: normalizar /uploads/... a URL pública (http://localhost:5001/uploads/...)
+    if (json && Array.isArray(json.items)) {
+      json.items = json.items.map((it: any) => ({
+        ...it,
+        url: it?.url ? getPublicUrl(it.url) : it?.url,
+      }));
+    }
+
     return NextResponse.json(json, { status: 200 });
   } catch (err) {
     console.error("[enhance][GET] error:", err);
@@ -186,7 +208,8 @@ export async function POST(req: NextRequest) {
       console.error("[enhance] Backend no devolvió URL usable:", uploadJson);
       return NextResponse.json(
         {
-          message: "La imagen se subió, pero el backend no devolvió una URL válida.",
+          message:
+            "La imagen se subió, pero el backend no devolvió una URL válida.",
           backend: uploadJson,
         },
         { status: 500 },
@@ -206,7 +229,9 @@ export async function POST(req: NextRequest) {
 
     // ✅ normalizamos URLs específicas (si vienen)
     const type = uploadJson.type ?? null;
-    const coverUrl = uploadJson.coverUrl ? getPublicUrl(uploadJson.coverUrl) : null;
+    const coverUrl = uploadJson.coverUrl
+      ? getPublicUrl(uploadJson.coverUrl)
+      : null;
     const rawUrl = uploadJson.rawUrl ? getPublicUrl(uploadJson.rawUrl) : null;
 
     // ✅ URL canónica para el front según el tipo

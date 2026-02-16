@@ -1,5 +1,6 @@
 // app/admin/from-image-ai/page.tsx
 "use client";
+import { useRef } from "react";
 
 import {
   FormEvent,
@@ -132,6 +133,8 @@ export default function EditorFromImagePage() {
   const [sourceTextInput, setSourceTextInput] = useState<string>("");
   const [inboxType, setInboxType] = useState<"news" | "official">("news");
 
+  // 🔹 Seleccionar Imagenes al procesar la noticia
+  const embedIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // 🔹 Procesar Panel Radar de Noticias (viene por query params)
   const sp = useSearchParams();
@@ -230,6 +233,32 @@ export default function EditorFromImagePage() {
     }));
     setEditorReloadTick((t) => t + 1);
   }, [form.publishedAt]);
+
+
+  // 🔹 Seleccionar IMG al procesar Noticia con
+  useEffect(() => {
+    const w = embedIframeRef.current?.contentWindow;
+    if (!w) return;
+
+    w.postMessage(
+      {
+        type: "CB_EMBED_CONTEXT",
+        title: editorSyncData.title ?? form.title ?? "",
+        // si no tenés "person/role" todavía, mandá vacío y el embed infiere por título
+        person: "",
+        role: "",
+        alertTag: "", // si después lo agregás, lo mandás acá
+        publishDateIso: form.publishedAt ?? "",
+      },
+      window.location.origin,
+    );
+  }, [
+    editorReloadTick,
+    editorSyncData.title,
+    form.title,
+    form.publishedAt,
+  ]);
+
 
   const handleChange = (
     e: ChangeEvent<
@@ -1030,6 +1059,7 @@ export default function EditorFromImagePage() {
                   <div className="mx-auto w-full max-w-[640px]">
                     <div className="aspect-[9/16] overflow-hidden bg-black">
                       <iframe
+                        ref={embedIframeRef}
                         key={editorReloadTick}
                         src={editorIframeSrc}
                         className="h-full w-full border-0"
@@ -1074,10 +1104,11 @@ export default function EditorFromImagePage() {
 
             <div className="aspect-[16/9] w-full overflow-hidden rounded-2xl border border-zinc-700 bg-black">
               <iframe
-                key={editorReloadTick + 1000}
+                ref={embedIframeRef}
+                key={editorReloadTick}
                 src={editorIframeSrc}
                 className="h-full w-full border-0"
-                title="Editor de portadas grande"
+                title="Editor de portadas"
               />
             </div>
           </div>
