@@ -125,6 +125,10 @@ export default function EditorFromImagePage() {
   const [publishToInstagram, setPublishToInstagram] = useState(true);
   const [igErrorMsg, setIgErrorMsg] = useState<string | null>(null);
 
+  // 🔹 flag para publicar en X al crear
+  const [publishToX, setPublishToX] = useState(false);
+
+
   // 🔹 Procesar URL con IA
   const [sourceUrlInput, setSourceUrlInput] = useState<string>("");
   const [sourceNameInput, setSourceNameInput] = useState<string>("");
@@ -497,6 +501,42 @@ export default function EditorFromImagePage() {
       const article = await res.json();
 
       let okMsg = `Nota creada correctamente: "${article.title}" (slug: ${article.slug})`;
+
+      // ✅ X
+      if (publishToX) {
+        try {
+          await Promise.all(
+            ["wide", "square", "vertical"].map(async (variant) => {
+              const r = await fetch(`/api/internal/x-posts/build/${article.id}`, {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  ...getAuthHeaders(),
+                },
+                body: JSON.stringify({ variant }),
+                cache: "no-store",
+              });
+
+              if (!r.ok) {
+                const t = await r.text().catch(() => "");
+                throw new Error(
+                  `X drafts: falló build(${variant}) HTTP ${r.status}: ${t.slice(0, 300)}`,
+                );
+              }
+            }),
+          );
+
+          okMsg += " · Drafts X creados (wide/square/vertical)";
+        } catch (err: any) {
+          console.error("Error creando drafts X", err);
+          setErrorMsg(
+            err?.message || "La nota se creó, pero falló la generación de drafts para X.",
+          );
+        }
+      }
+
+      // ...y acá abajo seguís con Facebook/Instagram, que también hacen okMsg += ...
+
 
       // 🔹 Si está en "published" y el toggle está activo → publicamos en Facebook
       if (publishToFacebook && payload.status === "published") {
@@ -889,9 +929,8 @@ export default function EditorFromImagePage() {
                     </span>
                   </label>
                   <p className="mt-1 text-[11px] text-zinc-500">
-                    Se enviará el título y el cuerpo (en texto plano) como
-                    contenido del post. La publicación se hace en la página de
-                    Facebook configurada en el backend.
+                    Se enviará el título y el cuerpo (en texto plano) como contenido del post.
+                    La publicación se hace en la página de Facebook configurada en el backend.
                   </p>
                 </div>
 
@@ -912,11 +951,35 @@ export default function EditorFromImagePage() {
                     </span>
                   </label>
                   <p className="mt-1 text-[11px] text-zinc-500">
-                    Se usará la portada indicada arriba como imagen del post y
-                    se enviará un caption con el título y un resumen del texto.
+                    Se usará la portada indicada arriba como imagen del post y se enviará un
+                    caption con el título y un resumen del texto.
+                  </p>
+                </div>
+
+                {/* X */}
+                <div className="border-t border-zinc-800 pt-3">
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-200">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 rounded border-zinc-500 bg-zinc-900 text-sky-500 focus:ring-sky-500"
+                      checked={publishToX}
+                      onChange={(e) => setPublishToX(e.target.checked)}
+                    />
+                    <span>
+                      Crear drafts para X al crear{" "}
+                      <span className="text-[10px] text-zinc-400">
+                        (genera <code>x_posts</code> en <code>ready</code>)
+                      </span>
+                    </span>
+                  </label>
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    Crea 3 variantes (<code>wide</code>, <code>square</code>,{" "}
+                    <code>vertical</code>) con texto + portada. Después lo publicás manual y
+                    marcás <code>posted</code> en el panel.
                   </p>
                 </div>
               </div>
+
 
               <div>
                 <label htmlFor="publishedAt" className={labelClass}>

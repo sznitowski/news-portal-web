@@ -1,10 +1,6 @@
 // app/lib/api.ts
 import type { ArticleListItem, ArticleFull } from "../types/article";
-import type {
-  MarketSummary,
-  BcraSummary,
-  BudgetSummary,
-} from "../types/market";
+import type { MarketSummary, BcraSummary, BudgetSummary } from "../types/market";
 
 /**
  * Base de la API (backend Nest).
@@ -35,6 +31,15 @@ function normalizeBase(raw: string): string {
 }
 
 export const API_BASE = normalizeBase(RAW_API_BASE);
+
+/**
+ * Key para endpoints internos protegidos por IngestKeyGuard
+ * (.env.local del FRONT)
+ */
+const INTERNAL_INGEST_KEY =
+  process.env.NEXT_PUBLIC_INGEST_KEY ??
+  process.env.NEXT_PUBLIC_INTERNAL_INGEST_KEY ??
+  "";
 
 /**
  * Base pública del sitio (Next).
@@ -85,6 +90,68 @@ export function getBrandUrl(pathOrUrl: string): string {
 
   const cleanPath = pathOrUrl.startsWith("/") ? pathOrUrl : `/${pathOrUrl}`;
   return `${API_BASE}${cleanPath}`;
+}
+
+/* =======================
+ * Helpers internos (IngestKeyGuard)
+ * ======================= */
+
+async function fetchInternal(path: string, init?: RequestInit) {
+  if (!INTERNAL_INGEST_KEY) {
+    throw new Error(
+      "Falta NEXT_PUBLIC_INGEST_KEY (o NEXT_PUBLIC_INTERNAL_INGEST_KEY) en .env.local",
+    );
+  }
+
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const res = await fetch(`${API_BASE}${cleanPath}`, {
+    ...init,
+    headers: {
+      "x-ingest-key": INTERNAL_INGEST_KEY,
+      ...(init?.headers ?? {}),
+    },
+    cache: "no-store",
+  });
+
+  const text = await res.text().catch(() => "");
+  let data: any = text;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // si no es JSON, queda como texto
+  }
+
+  if (!res.ok) {
+    const msg =
+      data && typeof data === "object" && "message" in data ? (data as any).message : text;
+    throw new Error(msg || `HTTP ${res.status}`);
+  }
+
+  return data;
+}
+
+/**
+ * X Posts (manual / cola)
+ */
+export async function buildXPostDraft(
+  articleId: number,
+  variant: "wide" | "square" | "vertical",
+) {
+  return fetchInternal(`/internal/x-posts/build/${articleId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ variant }),
+  });
+}
+
+export async function markXPostPosted(xPostId: string, meta?: any) {
+  // meta opcional: se guarda en metaJson (ej: { sourceUrl, externalId })
+  return fetchInternal(`/internal/x-posts/posted/${xPostId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: meta ? JSON.stringify(meta) : undefined,
+  });
 }
 
 /* =======================
@@ -168,3 +235,5 @@ export async function uploadImage(file: File): Promise<string> {
 
   return getPublicUrl(data.url);
 }
+
+

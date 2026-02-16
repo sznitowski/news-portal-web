@@ -91,6 +91,23 @@ export default function RadarXManualPage() {
     }
   };
 
+  async function copyImageFromUrl(url: string) {
+    // Nota: requiere HTTPS o localhost (secure context). Vos estás en localhost => OK.
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`No se pudo bajar imagen (HTTP ${res.status})`);
+
+    const blob = await res.blob();
+    const type = blob.type || "image/png";
+
+    // Algunos navegadores fallan si el type no está soportado
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        [type]: blob,
+      }),
+    ]);
+  }
+
+
   return (
     <main className="mx-auto w-full max-w-4xl p-4 md:p-6">
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -175,6 +192,23 @@ export default function RadarXManualPage() {
                     Sin imagen
                   </span>
                 )}
+
+                <button
+                  onClick={async () => {
+                    try {
+                      if (!it.assetUrl) return;
+                      await copyImageFromUrl(it.assetUrl);
+                      alert("Imagen copiada. Pegala en X con Ctrl+V.");
+                    } catch (e: any) {
+                      alert(e?.message ?? "No se pudo copiar la imagen");
+                    }
+                  }}
+                  className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-100 hover:border-amber-300/70"
+                  disabled={!it.assetUrl}
+                >
+                  Copiar imagen
+                </button>
+
 
                 <button
                   onClick={() => markPosted(it.xPostId)}

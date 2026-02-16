@@ -1,7 +1,12 @@
 // app/api/internal/x-posts/[...path]/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { API_BASE as FALLBACK_API_BASE } from "@/app/lib/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL; // ej: http://127.0.0.1:5001
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ??
+  process.env.NEXT_PUBLIC_API_BASE ??
+  FALLBACK_API_BASE ??
+  "http://127.0.0.1:5001";
 
 async function pass(res: Response) {
   const text = await res.text().catch(() => "");
@@ -14,14 +19,27 @@ async function pass(res: Response) {
 }
 
 function buildTarget(req: NextRequest, pathParts: string[]) {
-  const url = req.nextUrl;
   const subPath = (pathParts ?? []).join("/");
-  const qs = url.searchParams.toString();
+  const qs = req.nextUrl.searchParams.toString();
   return `${API_BASE}/internal/x-posts/${subPath}${qs ? `?${qs}` : ""}`;
 }
 
-function getAuth(req: NextRequest) {
-  return req.headers.get("authorization") ?? "";
+function buildHeaders(req: NextRequest): Record<string, string> {
+  const headers: Record<string, string> = {};
+
+  // auth desde cookie (como en tu preprocess)
+  const tokenFromCookie = req.cookies.get("editor_auth")?.value;
+  if (tokenFromCookie) headers["authorization"] = `Bearer ${tokenFromCookie}`;
+
+  // ingest key (imprescindible para /internal/*)
+  const key = process.env.INTERNAL_INGEST_KEY ?? process.env.INGEST_KEY ?? "";
+  if (key) headers["x-ingest-key"] = key;
+
+  // si viene content-type, lo respetamos
+  const ct = req.headers.get("content-type");
+  if (ct) headers["content-type"] = ct;
+
+  return headers;
 }
 
 export async function GET(
@@ -30,13 +48,11 @@ export async function GET(
 ) {
   const { path } = await context.params;
   const target = buildTarget(req, path ?? []);
-
   const r = await fetch(target, {
     method: "GET",
-    headers: { authorization: getAuth(req) },
+    headers: buildHeaders(req),
     cache: "no-store",
   });
-
   return pass(r);
 }
 
@@ -46,10 +62,12 @@ export async function POST(
 ) {
   const { path } = await context.params;
   const target = buildTarget(req, path ?? []);
+  const body = await req.text().catch(() => "");
 
   const r = await fetch(target, {
     method: "POST",
-    headers: { authorization: getAuth(req) },
+    headers: buildHeaders(req),
+    body: body || undefined,
     cache: "no-store",
   });
 
@@ -66,11 +84,8 @@ export async function PATCH(
 
   const r = await fetch(target, {
     method: "PATCH",
-    headers: {
-      authorization: getAuth(req),
-      "content-type": "application/json",
-    },
-    body: body || "{}",
+    headers: buildHeaders(req),
+    body: body || undefined,
     cache: "no-store",
   });
 
