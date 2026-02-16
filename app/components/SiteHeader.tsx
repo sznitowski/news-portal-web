@@ -515,9 +515,7 @@ export default function SiteHeader() {
                       cursor: "pointer",
                     }}
                   >
-                    <div style={{ fontWeight: 600, marginBottom: 2 }}>
-                      Bandeja de noticias
-                    </div>
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>Bandeja de noticias</div>
                     <div style={{ fontSize: 11, color: "#9ca3af" }}>
                       Noticias detectadas para procesar con IA.
                     </div>
@@ -526,7 +524,6 @@ export default function SiteHeader() {
                   <button
                     type="button"
                     onClick={() => goTo("/admin/news-official-inbox")}
-                    
                     style={{
                       width: "100%",
                       textAlign: "left",
@@ -539,16 +536,36 @@ export default function SiteHeader() {
                       cursor: "pointer",
                     }}
                   >
-                    <div style={{ fontWeight: 600, marginBottom: 2 }}>
-                      Cuentas Oficiales
-                    </div>
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>Cuentas Oficiales</div>
                     <div style={{ fontSize: 11, color: "#9ca3af" }}>
                       Publicaciones detectadas en cuentas oficiales para procesar con IA.
                     </div>
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={() => goTo("/admin/x-posts")}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: "transparent",
+                      color: "#e5e7eb",
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>Publicar en X (manual)</div>
+                    <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                      Borradores listos para copiar/pegar y marcar como publicados.
+                    </div>
+                  </button>
                 </div>
               )}
+
+
             </div>
           </div>
         </div>
