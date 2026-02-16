@@ -503,37 +503,33 @@ export default function EditorFromImagePage() {
       let okMsg = `Nota creada correctamente: "${article.title}" (slug: ${article.slug})`;
 
       // ✅ X
+      // ✅ X: si está activo, generamos SOLO wide en x_posts (ready)
       if (publishToX) {
         try {
-          await Promise.all(
-            ["wide", "square", "vertical"].map(async (variant) => {
-              const r = await fetch(`/api/internal/x-posts/build/${article.id}`, {
-                method: "POST",
-                headers: {
-                  "content-type": "application/json",
-                  ...getAuthHeaders(),
-                },
-                body: JSON.stringify({ variant }),
-                cache: "no-store",
-              });
+          const r = await fetch(`/api/internal/x-posts/build/${article.id}`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              ...getAuthHeaders(),
+            },
+            body: JSON.stringify({ variant: "wide" }),
+            cache: "no-store",
+          });
 
-              if (!r.ok) {
-                const t = await r.text().catch(() => "");
-                throw new Error(
-                  `X drafts: falló build(${variant}) HTTP ${r.status}: ${t.slice(0, 300)}`,
-                );
-              }
-            }),
-          );
+          if (!r.ok) {
+            const t = await r.text().catch(() => "");
+            throw new Error(t || `HTTP ${r.status}`);
+          }
 
-          okMsg += " · Drafts X creados (wide/square/vertical)";
+          okMsg += " · Draft X creado (wide)";
         } catch (err: any) {
-          console.error("Error creando drafts X", err);
+          console.error("Error creando draft X", err);
           setErrorMsg(
-            err?.message || "La nota se creó, pero falló la generación de drafts para X.",
+            err?.message || "La nota se creó, pero falló la generación de draft para X.",
           );
         }
       }
+
 
       // ...y acá abajo seguís con Facebook/Instagram, que también hacen okMsg += ...
 

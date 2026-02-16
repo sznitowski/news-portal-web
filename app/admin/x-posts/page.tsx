@@ -50,6 +50,7 @@ export default function RadarXManualPage() {
     try {
       const qs = new URLSearchParams();
       qs.set("status", status);
+      qs.set("variant", "wide"); 
       qs.set("limit", "50");
       qs.set("offset", "0");
       if (q.trim()) qs.set("q", q.trim());
