@@ -684,17 +684,16 @@ export default function ImageEditorFullPage() {
   }
 
   function getLiveContentBox() {
-    const previewW = previewRef.current?.getBoundingClientRect().width ?? 1280;
-    const previewH = previewRef.current?.getBoundingClientRect().height ?? 720;
+    const rect = previewRef.current?.getBoundingClientRect();
+    const previewW = rect?.width ?? 1280;
+    const previewH = rect?.height ?? 720;
 
-    const footerH = Math.round((FOOTER_HEIGHT / 720) * previewH);
-    const headerH = showHeaderStrip ? Math.round((HEADER_STRIP_HEIGHT / 720) * previewH) : 0;
-
-    const contentTop = headerH;
-    const contentH = Math.max(1, previewH - headerH - footerH);
+    const { headerH, footerH, contentTopOffset: contentTop, contentHeight: contentH } =
+      getScaledBarsForPreview({ previewH, showHeaderStrip });
 
     return { previewW, previewH, contentW: previewW, footerH, headerH, contentTop, contentH };
   }
+
 
   function getGuideXpx() {
     // guía = X de la bajada (podés cambiar a titleOffsetX si querés)
@@ -756,6 +755,32 @@ export default function ImageEditorFullPage() {
     setLogoCircleXPct(guideXPct);
     setLogoHorizontalXPct(guideXPct);
   }
+
+  function fitBackgroundToText() {
+    const PAD_BOTTOM = 14;
+
+    const alertH = alertTag ? (alertElRef.current?.offsetHeight ?? 0) : 0;
+    const titleH = title ? (titleElRef.current?.offsetHeight ?? 0) : 0;
+    const subH = subtitle?.trim() ? (subtitleElRef.current?.offsetHeight ?? 0) : 0;
+
+    if (!title || titleH <= 0) return;
+
+    const alertBottom = alertTag ? (alertOffsetY + alertH) : 0;
+    const titleBottom = titleOffsetY + titleH;
+    const subBottom = subtitle?.trim() ? (subtitleOffsetY + subH) : 0;
+
+    const needed = Math.round(Math.max(alertBottom, titleBottom, subBottom) + PAD_BOTTOM);
+    const newH = clamp(Math.max(90, needed), 90, 260);
+
+    setBlockHeight(newH);
+
+    // ✅ clave: si achicás, bajá el bloque al fondo
+    requestAnimationFrame(() => {
+      const { contentTop, contentH } = getLiveContentBox();
+      setBlockTop(contentTop + contentH - newH);
+    });
+  }
+
 
 
 
@@ -841,23 +866,7 @@ export default function ImageEditorFullPage() {
 
   useEffect(() => {
     if (!drag) return;
-
     // ✅ medidas LIVE del preview (para que el clamp coincida con backend)
-    const getLiveContentBox = () => {
-      const previewW = previewRef.current?.getBoundingClientRect().width ?? 1280;
-      const previewH = previewRef.current?.getBoundingClientRect().height ?? 720;
-
-      const footerH = Math.round((FOOTER_HEIGHT / 720) * previewH);
-      const headerH = showHeaderStrip
-        ? Math.round((HEADER_STRIP_HEIGHT / 720) * previewH)
-        : 0;
-
-      const contentTop = headerH;
-      const contentH = Math.max(1, previewH - headerH - footerH);
-
-      return { previewW, previewH, contentW: previewW, footerH, headerH, contentTop, contentH };
-    };
-
     const handleMove = (ev: MouseEvent) => {
       const dx = ev.clientX - drag.startX;
       const dy = ev.clientY - drag.startY;
@@ -1171,9 +1180,19 @@ export default function ImageEditorFullPage() {
   const blockTopPct = live.blockTopPct;
   const overlayHeightPct = live.overlayHeightPct;
 
-  const titleXFrac = clamp(titleOffsetX / 1280, 0, 1);
-  const subtitleXFrac = clamp(subtitleOffsetX / 1280, 0, 1);
-  const alertXFrac = clamp(alertOffsetX / 1280, 0, 1);
+  // ✅ Escala del preview vs baseline backend (1280)
+  const { previewW: livePreviewW } = getLiveContentBox();
+  const previewScale = (livePreviewW || 1280) / 1280;
+
+  const pxScaled = (pxAt1280: number) =>
+    Math.max(1, Math.round(pxAt1280 * previewScale));
+
+
+
+  const titleXFrac = clamp(titleOffsetX / Math.max(1, livePreviewW), 0, 1);
+  const subtitleXFrac = clamp(subtitleOffsetX / Math.max(1, livePreviewW), 0, 1);
+  const alertXFrac = clamp(alertOffsetX / Math.max(1, livePreviewW), 0, 1);
+
 
   const titleYInBlockFrac = clamp(titleOffsetY / Math.max(1, blockHeight), 0, 1);
   const subtitleYInBlockFrac = clamp(subtitleOffsetY / Math.max(1, blockHeight), 0, 1);
@@ -1661,6 +1680,15 @@ export default function ImageEditorFullPage() {
               >
                 Ordenar Y (evitar solape)
               </button>
+
+              <button
+                type="button"
+                onClick={fitBackgroundToText}
+                className="inline-flex w-full items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-100 hover:border-sky-400"
+              >
+                Fondo al mínimo (fit)
+              </button>
+
 
 
               {/* Imagen base + branding */}
@@ -2360,13 +2388,16 @@ export default function ImageEditorFullPage() {
                         <div className="relative h-full w-full">
                           {alertTag && (
                             <div
-                              className="absolute inline-flex cursor-move select-none items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
+                              className="absolute inline-flex cursor-move select-none items-center rounded-full font-semibold uppercase tracking-[0.18em] shadow-[0_4px_20px_rgba(0,0,0,0.7)]"
                               style={{
                                 left: alertOffsetX,
                                 top: alertOffsetY,
                                 backgroundColor: themeColors.footerBg,
                                 color: "#ffffff",
+                                fontSize: `${pxScaled(11)}px`,
+                                padding: `${pxScaled(4)}px ${pxScaled(12)}px`,
                               }}
+
                               onMouseDown={(e) => startDrag("alert", e)}
                             >
                               {alertTag}
@@ -2380,7 +2411,7 @@ export default function ImageEditorFullPage() {
                               style={{
                                 left: titleOffsetX,
                                 top: titleOffsetY,
-                                fontSize: `${titleSize}px`,
+                                fontSize: `${pxScaled(titleSize)}px`,
                                 color: titleColor,
                                 whiteSpace: "pre-line",
                                 maxWidth: "80%",
@@ -2398,7 +2429,7 @@ export default function ImageEditorFullPage() {
                               style={{
                                 left: subtitleOffsetX,
                                 top: subtitleOffsetY,
-                                fontSize: `${subtitleSize}px`,
+                                fontSize: `${pxScaled(subtitleSize)}px`,
                                 color: subtitleColor,
                                 whiteSpace: "pre-line",
                               }}
