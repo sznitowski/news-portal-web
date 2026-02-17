@@ -1,4 +1,4 @@
-// app/api/internal/x-posts/[...path]/route.ts
+// app/api/internal/x-posts/[[...path]]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { API_BASE as FALLBACK_API_BASE } from "@/app/lib/api";
 
@@ -18,24 +18,28 @@ async function pass(res: Response) {
   });
 }
 
-function buildTarget(req: NextRequest, pathParts: string[]) {
+function buildTarget(req: NextRequest, pathParts?: string[]) {
   const subPath = (pathParts ?? []).join("/");
   const qs = req.nextUrl.searchParams.toString();
-  return `${API_BASE}/internal/x-posts/${subPath}${qs ? `?${qs}` : ""}`;
+
+  // ✅ apunta a tu backend X inbox
+  const base = `${API_BASE}/internal/x/inbox`;
+
+  // si no hay subPath -> /internal/x/inbox
+  // si hay subPath -> /internal/x/inbox/123/queue
+  const url = `${base}${subPath ? `/${subPath}` : ""}${qs ? `?${qs}` : ""}`;
+  return url;
 }
 
 function buildHeaders(req: NextRequest): Record<string, string> {
   const headers: Record<string, string> = {};
 
-  // auth desde cookie (como en tu preprocess)
   const tokenFromCookie = req.cookies.get("editor_auth")?.value;
   if (tokenFromCookie) headers["authorization"] = `Bearer ${tokenFromCookie}`;
 
-  // ingest key (imprescindible para /internal/*)
   const key = process.env.INTERNAL_INGEST_KEY ?? process.env.INGEST_KEY ?? "";
   if (key) headers["x-ingest-key"] = key;
 
-  // si viene content-type, lo respetamos
   const ct = req.headers.get("content-type");
   if (ct) headers["content-type"] = ct;
 
@@ -44,10 +48,10 @@ function buildHeaders(req: NextRequest): Record<string, string> {
 
 export async function GET(
   req: NextRequest,
-  context: { params: Promise<{ path: string[] }> },
+  context: { params: Promise<{ path?: string[] }> },
 ) {
   const { path } = await context.params;
-  const target = buildTarget(req, path ?? []);
+  const target = buildTarget(req, path);
   const r = await fetch(target, {
     method: "GET",
     headers: buildHeaders(req),
@@ -58,10 +62,10 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  context: { params: Promise<{ path: string[] }> },
+  context: { params: Promise<{ path?: string[] }> },
 ) {
   const { path } = await context.params;
-  const target = buildTarget(req, path ?? []);
+  const target = buildTarget(req, path);
   const body = await req.text().catch(() => "");
 
   const r = await fetch(target, {
@@ -76,10 +80,10 @@ export async function POST(
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: Promise<{ path: string[] }> },
+  context: { params: Promise<{ path?: string[] }> },
 ) {
   const { path } = await context.params;
-  const target = buildTarget(req, path ?? []);
+  const target = buildTarget(req, path);
   const body = await req.text().catch(() => "");
 
   const r = await fetch(target, {
