@@ -692,6 +692,33 @@ export default function ImageEditorFullPage() {
     return { previewW, previewH, contentW: previewW, footerH, headerH, contentTop, contentH };
   }
 
+  function getGuideXpx() {
+    // guía = X de la bajada (podés cambiar a titleOffsetX si querés)
+    return subtitleOffsetX;
+  }
+
+  function alignAllToGuideX() {
+    const guideX = getGuideXpx();
+
+    // Textos
+    setTitleOffsetX(guideX);
+    setAlertOffsetX(guideX);
+
+    // Overlays (assets): convierto guía px -> % del content para xPct
+    const { contentW } = getPreviewSizes();
+    const guideXPct = pxToPct(guideX, contentW);
+
+    setAssetOverlays((prev) =>
+      prev.map((o) => ({ ...o, xPct: guideXPct })),
+    );
+
+    // Logos flotantes: sus X están en % del content
+    // (si querés alinear solo el activo, podés condicionar)
+    setLogoCircleXPct(guideXPct);
+    setLogoHorizontalXPct(guideXPct);
+  }
+
+
 
   function clampLogoPct(args: {
     xPct: number;
@@ -1576,6 +1603,16 @@ export default function ImageEditorFullPage() {
             COL 1: CONTROLES (izq)
         ======================= */}
             <aside className="space-y-4 lg:sticky lg:top-4 lg:h-[calc(100vh-32px)] lg:overflow-auto">
+
+              <button
+                type="button"
+                onClick={alignAllToGuideX}
+                className="inline-flex w-full items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-100 hover:border-sky-400"
+                title="Alinea título/etiqueta/logos/overlays a la X de la bajada"
+              >
+                Alinear X (a la bajada)
+              </button>
+
               {/* Imagen base + branding */}
               <section className="mx-auto w-full max-w-[1100px] overflow-hidden rounded-3xl border border-slate-900 bg-slate-900/60 shadow-[0_32px_90px_rgba(15,23,42,0.55)]">
                 <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
