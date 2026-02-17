@@ -350,6 +350,10 @@ function bytesToHuman(n: number) {
 export default function ImageEditorFullPage() {
   const searchParams = useSearchParams();
   const previewRef = useRef<HTMLDivElement | null>(null);
+  const titleElRef = useRef<HTMLSpanElement | null>(null);
+  const subtitleElRef = useRef<HTMLSpanElement | null>(null);
+  const alertElRef = useRef<HTMLDivElement | null>(null);
+
 
   const [previewHeight, setPreviewHeight] = useState(PREVIEW_HEIGHT_FALLBACK);
 
@@ -694,8 +698,43 @@ export default function ImageEditorFullPage() {
 
   function getGuideXpx() {
     // guía = X de la bajada (podés cambiar a titleOffsetX si querés)
-    return subtitleOffsetX;
+    return Math.min(titleOffsetX, subtitleOffsetX, alertOffsetX);
   }
+
+  function orderYAvoidOverlap() {
+    const PAD_TOP = 14;
+    const GAP_ALERT_TITLE = 16;
+    const GAP_TITLE_SUB = 10;
+    const PAD_BOTTOM = 10;
+
+    const alertH = alertElRef.current?.offsetHeight ?? 0;
+    const titleH = titleElRef.current?.offsetHeight ?? 0;
+    const subH = subtitleElRef.current?.offsetHeight ?? 0;
+
+    if (!title || titleH <= 0) return;
+
+    let y = PAD_TOP;
+
+    if (alertTag) {
+      setAlertOffsetY(Math.round(y));
+      y += alertH + GAP_ALERT_TITLE;
+    }
+
+    setTitleOffsetY(Math.round(y));
+    y += titleH + GAP_TITLE_SUB;
+
+    if (subtitle?.trim()) {
+      setSubtitleOffsetY(Math.round(y));
+      y += subH;
+    }
+
+    const needed = Math.round(y + PAD_BOTTOM);
+    if (needed > blockHeight) {
+      setBlockHeight(clamp(needed, 90, 260));
+    }
+  }
+
+
 
   function alignAllToGuideX() {
     const guideX = getGuideXpx();
@@ -1231,6 +1270,7 @@ export default function ImageEditorFullPage() {
 
         {showHeader && (headerDate || headerLabel) && (
           <div
+            ref={alertElRef}
             className="absolute inset-x-0 flex items-center justify-between px-4 text-[11px]"
             style={{
               top: 0,
@@ -1612,6 +1652,16 @@ export default function ImageEditorFullPage() {
               >
                 Alinear X (a la bajada)
               </button>
+
+              <button
+                type="button"
+                onClick={orderYAvoidOverlap}
+                className="inline-flex w-full items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-100 hover:border-sky-400"
+                title="Etiqueta arriba del título y bajada debajo del título"
+              >
+                Ordenar Y (evitar solape)
+              </button>
+
 
               {/* Imagen base + branding */}
               <section className="mx-auto w-full max-w-[1100px] overflow-hidden rounded-3xl border border-slate-900 bg-slate-900/60 shadow-[0_32px_90px_rgba(15,23,42,0.55)]">
@@ -2325,6 +2375,7 @@ export default function ImageEditorFullPage() {
 
                           {title && (
                             <span
+                              ref={titleElRef}
                               className="absolute cursor-move select-none font-extrabold tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
                               style={{
                                 left: titleOffsetX,
@@ -2342,6 +2393,7 @@ export default function ImageEditorFullPage() {
 
                           {subtitle && (
                             <span
+                              ref={subtitleElRef}
                               className="absolute max-w-[65%] cursor-move select-none font-medium drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]"
                               style={{
                                 left: subtitleOffsetX,
