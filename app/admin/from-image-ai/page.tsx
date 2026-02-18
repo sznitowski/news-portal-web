@@ -46,6 +46,8 @@ type EnhanceResponse = {
   };
 };
 
+type XVariant = "wide" | "square" | "vertical";
+
 const inputClass =
   "w-full rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-3 py-2.5 text-sm text-zinc-50 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-400/70 focus:border-purple-400/60";
 
@@ -128,14 +130,32 @@ export default function EditorFromImagePage() {
   // 🔹 flag para publicar en X al crear
   const [publishToX, setPublishToX] = useState(false);
 
+  // ✅ Variantes X a generar (por defecto: todas)
+  const [xVariants, setXVariants] = useState<XVariant[]>([
+    "wide",
+    "square",
+    "vertical",
+  ]);
+
+  const toggleXVariant = (v: XVariant) => {
+    setXVariants((prev) =>
+      prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v],
+    );
+  };
+
+
 
   // 🔹 Procesar URL con IA
   const [sourceUrlInput, setSourceUrlInput] = useState<string>("");
   const [sourceNameInput, setSourceNameInput] = useState<string>("");
-  const [inboxId, setInboxId] = useState<number | null>(null);
 
   const [sourceTextInput, setSourceTextInput] = useState<string>("");
-  const [inboxType, setInboxType] = useState<"news" | "official">("news");
+
+  const [inboxId, setInboxId] = useState<number | null>(null);
+  const [inboxType, setInboxType] = useState<"news" | "official" | "x">("news");
+
+  // ✅ si venís desde /admin/x-posts, este es EL ID que sirve para build
+  const [xInboxId, setXInboxId] = useState<number | null>(null);
 
   // 🔹 Seleccionar Imagenes al procesar la noticia
   const embedIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -150,8 +170,10 @@ export default function EditorFromImagePage() {
     const topic = sp.get("topic") ?? "";
 
     const inboxTypeRaw = (sp.get("inboxType") ?? "news") as any;
-    const inboxTypeOk = inboxTypeRaw === "official" ? "official" : "news";
+    const inboxTypeOk =
+      inboxTypeRaw === "official" ? "official" : inboxTypeRaw === "x" ? "x" : "news";
     setInboxType(inboxTypeOk);
+
 
     const text = sp.get("text") ?? "";
     if (text) setSourceTextInput(text);
@@ -163,7 +185,14 @@ export default function EditorFromImagePage() {
     const inboxIdOk =
       inboxIdNum != null && Number.isFinite(inboxIdNum) && inboxIdNum > 0;
 
-    if (inboxIdOk) setInboxId(inboxIdNum);
+    if (inboxIdOk) {
+      setInboxId(inboxIdNum);
+
+      // ✅ si el origen es X, este id es el que sirve para /internal/x/inbox/build/:id
+      if (inboxTypeOk === "x") {
+        setXInboxId(inboxIdNum);
+      }
+    }
 
     if (title) setForm((p) => ({ ...p, title }));
     if (sourceUrl) setSourceUrlInput(sourceUrl);
@@ -177,19 +206,19 @@ export default function EditorFromImagePage() {
       }));
     }
 
-    const inboxPatchUrl =
-      inboxTypeOk === "official" ? "/api/news-official-inbox" : "/api/news-inbox";
-    // ✅ auto "queue" cuando entrás desde la bandeja
-    if (inboxId) {
+    // ✅ auto "processed" cuando entrás desde news/official inbox
+    if (inboxIdOk && inboxTypeOk !== "x") {
       const inboxPatchUrl =
-        inboxType === "official" ? "/api/news-official-inbox" : "/api/news-inbox";
+        inboxTypeOk === "official" ? "/api/news-official-inbox" : "/api/news-inbox";
 
       fetch(inboxPatchUrl, {
         method: "PATCH",
         headers: { "content-type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ action: "processed", id: inboxId }),
+        body: JSON.stringify({ action: "processed", id: inboxIdNum }),
       }).catch(() => { });
     }
+
+
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sp]);
@@ -372,13 +401,17 @@ export default function EditorFromImagePage() {
         imageUrl: prev.imageUrl,
       }));
 
-      if (inboxId) {
-        fetch("/api/news-inbox", {
+      if (inboxId && inboxType !== "x") {
+        const inboxPatchUrl =
+          inboxType === "official" ? "/api/news-official-inbox" : "/api/news-inbox";
+
+        fetch(inboxPatchUrl, {
           method: "PATCH",
           headers: { "content-type": "application/json", ...getAuthHeaders() },
           body: JSON.stringify({ action: "processed", id: inboxId }),
         }).catch(() => { });
       }
+
 
       setSuccessMsg("Nota generada desde URL con IA. Revisá y ajustá antes de publicar.");
     } catch (err: any) {
@@ -506,13 +539,23 @@ export default function EditorFromImagePage() {
       // ✅ X: si está activo, generamos SOLO wide en x_posts (ready)
       if (publishToX) {
         try {
-          const r = await fetch(`/api/internal/x-posts/build/${article.id}`, {
+          if (!xInboxId) {
+            throw new Error(
+              "No hay inboxId de X. Para generar drafts de X, entrá desde /admin/x-posts (panel X).",
+            );
+          }
+          if (xVariants.length === 0) {
+            throw new Error("Elegí al menos 1 variante para X (wide/square/vertical).");
+          }
+
+          // ✅ RUTA CORRECTA (según tu log de Nest): /internal/x/inbox/build/:id
+          const r = await fetch(`/api/internal/x-inbox/build/${xInboxId}`, {
             method: "POST",
             headers: {
               "content-type": "application/json",
               ...getAuthHeaders(),
             },
-            body: JSON.stringify({ variant: "wide" }),
+            body: JSON.stringify({ variants: xVariants }),
             cache: "no-store",
           });
 
@@ -521,14 +564,16 @@ export default function EditorFromImagePage() {
             throw new Error(t || `HTTP ${r.status}`);
           }
 
-          okMsg += " · Draft X creado (wide)";
+          okMsg += ` · Drafts X creados (${xVariants.join(", ")})`;
         } catch (err: any) {
-          console.error("Error creando draft X", err);
+          console.error("Error creando drafts X", err);
           setErrorMsg(
-            err?.message || "La nota se creó, pero falló la generación de draft para X.",
+            err?.message ||
+            "La nota se creó, pero falló la generación de drafts para X.",
           );
         }
       }
+
 
 
       // ...y acá abajo seguís con Facebook/Instagram, que también hacen okMsg += ...
@@ -964,16 +1009,45 @@ export default function EditorFromImagePage() {
                     <span>
                       Crear drafts para X al crear{" "}
                       <span className="text-[10px] text-zinc-400">
-                        (genera <code>x_posts</code> en <code>ready</code>)
+                        (genera <code>x_posts_drafts</code> en <code>ready</code>)
                       </span>
                     </span>
                   </label>
+
                   <p className="mt-1 text-[11px] text-zinc-500">
-                    Crea 3 variantes (<code>wide</code>, <code>square</code>,{" "}
-                    <code>vertical</code>) con texto + portada. Después lo publicás manual y
-                    marcás <code>posted</code> en el panel.
+                    Elegís variantes, se generan drafts con texto + portada. Después publicás manual y marcás posted en el panel.
                   </p>
+
+                  {/* ✅ selector de formatos */}
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    {(["wide", "square", "vertical"] as const).map((v) => (
+                      <label
+                        key={v}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold
+                          ${publishToX
+                            ? "border-zinc-700 bg-zinc-950 text-zinc-100 hover:border-sky-300/70"
+                            : "border-zinc-800 bg-zinc-900 text-zinc-500 opacity-70"
+                          }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 rounded border-zinc-500 bg-zinc-900"
+                          disabled={!publishToX}
+                          checked={xVariants.includes(v)}
+                          onChange={() => toggleXVariant(v)}
+                        />
+                        {v.toUpperCase()}
+                      </label>
+                    ))}
+
+                    {publishToX && xVariants.length === 0 && (
+                      <span className="text-[11px] text-amber-300">
+                        Elegí al menos 1 variante.
+                      </span>
+                    )}
+                  </div>
                 </div>
+
               </div>
 
 

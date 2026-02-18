@@ -1,268 +1,366 @@
-// admin/x-posts/page.tsx
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-type InboxStatus = "new" | "queued" | "processed" | "discarded" | string;
+type XInboxStatus = "new" | "queued" | "processed" | "discarded" | "all";
 
-
-type InboxItem = {
-  id: number;
-  provider: string;
-
+type XInboxItem = {
+  id: number | string;
   externalId: string;
   permalinkUrl: string | null;
-
   text: string | null;
-  title?: string | null;
 
-  createdTime?: string | null;
-  publishedAt?: string | null;
+  createdTime: string | null;
 
-  sourceName?: string | null;
-  sourceHandle?: string | null;
-  sourceUrl?: string | null;
+  sourceName: string | null;
+  sourceHandle: string | null;
+  sourceUrl: string | null;
 
-  status: InboxStatus;
-  metaJson?: any;
+  status: "new" | "queued" | "processed" | "discarded";
+  metaJson?: any | null;
+
+  createdAt?: string;
+  updatedAt?: string;
 };
 
-function getAuthHeaders(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const token = window.localStorage.getItem("news_access_token");
-  if (!token) return {};
-  return { Authorization: `Bearer ${token}` };
-}
+type XInboxResponse = {
+  items: XInboxItem[];
+  meta?: { page: number; limit: number; total: number; totalPages: number };
+};
 
-async function apiGet<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: { ...getAuthHeaders() }, cache: "no-store" });
-  const text = await res.text().catch(() => "");
-  if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
-  return (text ? JSON.parse(text) : null) as T;
-}
-
-async function apiPatch(url: string): Promise<void> {
-  const res = await fetch(url, {
-    method: "PATCH",
-    headers: { "content-type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify({}),
-    cache: "no-store",
+function formatDateTime(iso?: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
   });
+}
+
+async function safeJson(res: Response) {
   const text = await res.text().catch(() => "");
-  if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return text || null;
+  }
 }
 
-function pickTitle(it: InboxItem) {
-  const t = (it.title ?? "").trim();
-  if (t) return t;
-  const text = (it.text ?? "").trim();
-  if (!text) return "(Sin texto)";
-  return text.length > 90 ? `${text.slice(0, 90)}…` : text;
-}
+export default function XInboxPage() {
+  const router = useRouter();
 
-function pickMetaLine(it: InboxItem) {
-  const name = (it.sourceName ?? "").trim();
-  const handle = (it.sourceHandle ?? "").trim();
-  const src = [name, handle].filter(Boolean).join(" ");
-  return [
-    it.provider ? `provider: ${it.provider}` : null,
-    src ? `fuente: ${src}` : null,
-    it.externalId ? `id: ${it.externalId}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
-
-function pickDate(it: InboxItem) {
-  return it.publishedAt ?? it.createdTime ?? "";
-}
-
-export default function RadarOfficialInboxPage() {
-  const [items, setItems] = useState<InboxItem[]>([]);
-  const [status, setStatus] = useState<string>("new");
+  const [status, setStatus] = useState<XInboxStatus>("new");
   const [q, setQ] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [limit] = useState(30);
+
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [data, setData] = useState<XInboxResponse | null>(null);
 
-  const load = async () => {
-    setLoading(true);
+  const qs = useMemo(() => {
+    const p = new URLSearchParams();
+    p.set("page", String(page));
+    p.set("limit", String(limit));
+    if (status !== "all") p.set("status", status);
+    if (q.trim()) p.set("q", q.trim());
+    return p.toString();
+  }, [page, limit, status, q]);
+
+  async function load() {
+    setBusy(true);
     setErr(null);
-
     try {
-      const qs = new URLSearchParams();
-      qs.set("status", status);
-      qs.set("limit", "50");
-      qs.set("offset", "0");
-      if (q.trim()) qs.set("q", q.trim());
+      // ✅ este endpoint tiene que existir en tu Next api route:
+      // GET /api/internal/x-posts?...  (proxy a Nest /internal/x-inbox o lo que definiste)
+      const res = await fetch(`/api/internal/x-inbox?${qs}`, { method: "GET" });
+      const json = await safeJson(res);
 
-      // ✅ OJO: el listado es GET /internal/official-social-inbox (sin /feed)
-      const data = await apiGet<any>(`/api/internal/x-posts?${qs.toString()}`);
+      if (!res.ok) {
+        const msg =
+          (json && typeof json === "object" && "message" in json && (json as any).message) ||
+          `Error (${res.status})`;
+        throw new Error(msg);
+      }
 
-      // tolerante: puede venir {items:[...]} o directamente [...]
-      const list: InboxItem[] = Array.isArray(data) ? data : (data?.items ?? []);
-      setItems(list);
+      // tolerante: {items, meta} o {items} o array
+      if (Array.isArray(json)) setData({ items: json as XInboxItem[] });
+      else setData((json as XInboxResponse) ?? { items: [] });
     } catch (e: any) {
-      setErr(e?.message ?? "Error cargando inbox");
+      setErr(e?.message ?? "Error cargando inbox X");
+      setData(null);
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  };
+  }
 
   useEffect(() => {
-    load();
+    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [qs]);
 
-  const filtered = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    if (!qq) return items;
-
-    return items.filter((it) => {
-      const blob = [
-        it.provider,
-        it.externalId,
-        it.sourceHandle,
-        it.sourceName,
-        it.title,
-        it.text,
-        it.permalinkUrl,
-        it.status,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return blob.includes(qq);
-    });
-  }, [items, q]);
-
-  const copy = async (text: string) => {
-    await navigator.clipboard.writeText(text);
-  };
-
-  const patchAndRemove = async (id: number, action: "queue" | "processed" | "discard") => {
+  async function setItemStatus(
+    id: number | string,
+    action: "queue" | "discard" | "processed",
+  ) {
     try {
-      await apiPatch(`/api/internal/x-posts/${id}/${action}`);
-      setItems((prev) => prev.filter((x) => x.id !== id));
+      setBusy(true);
+      setErr(null);
+
+      // ✅ PATCH a tu proxy:
+      // PATCH /api/internal/x-posts/:id/:action
+      const res = await fetch(`/api/internal/x-inbox/${id}/${action}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      const json = await safeJson(res);
+      if (!res.ok) {
+        const msg =
+          (json && typeof json === "object" && "message" in json && (json as any).message) ||
+          `Error (${res.status})`;
+        throw new Error(msg);
+      }
+
+      await load();
     } catch (e: any) {
-      alert(e?.message ?? `No se pudo ejecutar ${action}`);
+      setErr(e?.message ?? "Error actualizando estado");
+    } finally {
+      setBusy(false);
     }
-  };
+  }
+
+  const items = data?.items ?? [];
+  const meta = data?.meta;
 
   return (
-    <main className="mx-auto w-full max-w-4xl p-4 md:p-6">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold text-zinc-50">Cuentas oficiales</h1>
-          <p className="text-xs text-zinc-400">
-            Items ingestados. Los marcás como queued / processed / discard.
-          </p>
+    <main className="mx-auto max-w-7xl px-4 py-6">
+      <div className="rounded-3xl border border-slate-900 bg-slate-950/95 p-5 text-slate-50 shadow-[0_32px_90px_rgba(15,23,42,0.55)]">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-sky-400/50 bg-sky-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-200">
+              Panel X Inbox
+            </div>
+            <h1 className="mt-2 text-2xl font-semibold">X · Bandeja</h1>
+            <p className="mt-1 text-sm text-slate-300">
+              Tweets detectados para procesar con IA (sin scrapear X: se manda el texto).
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-semibold hover:border-sky-400"
+              disabled={busy}
+            >
+              {busy ? "Actualizando..." : "Refrescar"}
+            </button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-100"
-          >
-            <option value="new">new</option>
-            <option value="queued">queued</option>
-            <option value="processed">processed</option>
-            <option value="discarded">discarded</option>
-          </select>
+        {err ? (
+          <div className="mt-4 rounded-xl border border-red-400/60 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
+            {err}
+          </div>
+        ) : null}
 
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="buscar (fuente, handle, texto, id...)"
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-100 md:w-64"
-          />
+        <div className="mt-4 grid gap-3 md:grid-cols-12">
+          <div className="md:col-span-3">
+            <label className="text-[11px] text-slate-300">Status</label>
+            <select
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs"
+              value={status}
+              onChange={(e) => {
+                setPage(1);
+                setStatus(e.target.value as XInboxStatus);
+              }}
+            >
+              <option value="new">new</option>
+              <option value="queued">queued</option>
+              <option value="processed">processed</option>
+              <option value="discarded">discarded</option>
+              <option value="all">all</option>
+            </select>
+          </div>
 
-          <button
-            onClick={load}
-            className="rounded-xl bg-purple-500 px-4 py-2 text-xs font-semibold text-black hover:bg-purple-400 disabled:opacity-60"
-            disabled={loading}
-          >
-            {loading ? "Cargando..." : "Refrescar"}
-          </button>
+          <div className="md:col-span-9">
+            <label className="text-[11px] text-slate-300">Buscar</label>
+            <input
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs outline-none focus:border-sky-400"
+              value={q}
+              onChange={(e) => {
+                setPage(1);
+                setQ(e.target.value);
+              }}
+              placeholder="fuente, handle, texto, tweet id..."
+            />
+          </div>
         </div>
-      </div>
 
-      {err && (
-        <div className="mb-4 rounded-xl border border-red-400/50 bg-red-500/10 p-3 text-xs text-red-200">
-          {err}
-        </div>
-      )}
+        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-800">
+          <div className="grid grid-cols-[120px_1fr_180px_140px_240px] gap-0 border-b border-slate-800 bg-slate-900/60 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+            <div>Fuente</div>
+            <div>Texto</div>
+            <div>Fecha</div>
+            <div>Status</div>
+            <div>Acciones</div>
+          </div>
 
-      <div className="space-y-3">
-        {filtered.map((it) => (
-          <div key={it.id} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-zinc-50">{pickTitle(it)}</div>
+          {items.length === 0 ? (
+            <div className="p-4 text-sm text-slate-400">
+              {busy ? "Cargando..." : "No hay items con esos filtros."}
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-800">
+              {items.map((it) => {
+                const idNum = typeof it.id === "string" ? Number(it.id) : it.id;
+                const inboxId = Number.isFinite(idNum) ? String(idNum) : String(it.id);
 
-                <div className="mt-1 text-[11px] text-zinc-400">
-                  {pickMetaLine(it)}
-                  {pickDate(it) ? ` · ${pickDate(it)}` : ""} · status: {it.status}
-                </div>
+                const sourceLabel =
+                  it.sourceHandle || it.sourceName || (it.sourceUrl ? "X" : "—");
 
-                {it.permalinkUrl && (
-                  <a
-                    href={it.permalinkUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 inline-flex rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-100 hover:border-sky-300/70"
+                const dt = it.createdTime ?? it.createdAt ?? null;
+
+                return (
+                  <div
+                    key={String(it.id)}
+                    className="grid grid-cols-[120px_1fr_180px_140px_240px] items-start gap-0 px-3 py-3"
                   >
-                    Abrir
-                  </a>
-                )}
-              </div>
+                    {/* 1) Fuente */}
+                    <div className="text-xs text-slate-200 truncate" title={sourceLabel}>
+                      {sourceLabel}
+                    </div>
 
-              <div className="flex shrink-0 flex-col gap-2 md:flex-row">
-                <button
-                  onClick={() => copy(it.text ?? "")}
-                  className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-100 hover:border-purple-300/70"
-                  disabled={!it.text}
-                >
-                  Copiar texto
-                </button>
+                    {/* 2) Texto: ✅ click redirige a from-image-ai */}
+                    <div className="min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const p = new URLSearchParams();
 
-                <button
-                  onClick={() => patchAndRemove(it.id, "queue")}
-                  className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-100 hover:border-sky-300/70"
-                >
-                  Queue
-                </button>
+                          // ✅ identify X inbox
+                          p.set("inboxId", inboxId);
+                          p.set("inboxType", "x");
 
-                <button
-                  onClick={() => patchAndRemove(it.id, "processed")}
-                  className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-black hover:bg-emerald-400"
-                >
-                  Processed
-                </button>
+                          // ✅ sourceUrl puede ser permalink de tweet (no lo scrapeamos)
+                          p.set("sourceUrl", it.permalinkUrl ?? it.sourceUrl ?? "");
 
-                <button
-                  onClick={() => patchAndRemove(it.id, "discard")}
-                  className="rounded-xl border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200 hover:border-red-300/70"
-                >
-                  Discard
-                </button>
-              </div>
+                          // ✅ title hint corto
+                          const titleHint =
+                            (it.text ?? "").trim().slice(0, 90) ||
+                            `Tweet ${it.externalId}`;
+                          p.set("title", titleHint);
+
+                          // ✅ fuente
+                          p.set(
+                            "sourceName",
+                            it.sourceName ?? it.sourceHandle ?? "X",
+                          );
+
+                          // ✅ CLAVE: mandamos texto para textOverride (evita scraping)
+                          p.set("text", it.text ?? "");
+
+                          router.push(`/admin/from-image-ai?${p.toString()}`);
+                        }}
+                        className="block w-full truncate text-left text-sm font-semibold text-slate-100 hover:text-sky-200"
+                        title="Procesar con IA"
+                      >
+                        {it.text ? it.text : `Tweet ${it.externalId}`}
+                      </button>
+
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                        {it.permalinkUrl ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              window.open(it.permalinkUrl as string, "_blank")
+                            }
+                            className="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-semibold hover:border-sky-400"
+                          >
+                            Abrir
+                          </button>
+                        ) : null}
+                        <span className="text-slate-500">id: {it.externalId}</span>
+                      </div>
+                    </div>
+
+                    {/* 3) Fecha */}
+                    <div className="text-xs text-slate-300">
+                      <span title={dt ?? ""}>{formatDateTime(dt)}</span>
+                    </div>
+
+                    {/* 4) Status */}
+                    <div className="text-xs text-slate-300">{it.status}</div>
+
+                    {/* 5) Acciones */}
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void setItemStatus(it.id, "queue")}
+                        className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-[11px] font-semibold hover:border-sky-400 disabled:opacity-50"
+                      >
+                        Queue
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void setItemStatus(it.id, "processed")}
+                        className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-200 hover:border-emerald-400 disabled:opacity-50"
+                      >
+                        Processed
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void setItemStatus(it.id, "discard")}
+                        className="rounded-full border border-red-500/60 bg-red-500/10 px-3 py-1 text-[11px] font-semibold text-red-200 hover:border-red-400 disabled:opacity-50"
+                      >
+                        Discard
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {meta ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-[12px] text-slate-300">
+            <div>
+              Página <b>{meta.page}</b> / <b>{meta.totalPages}</b> · total{" "}
+              <b>{meta.total}</b>
             </div>
 
-            {it.text && (
-              <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-[12px] text-zinc-200">
-                {it.text}
-              </pre>
-            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={busy || meta.page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-[11px] font-semibold disabled:opacity-50"
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                disabled={busy || meta.page >= meta.totalPages}
+                onClick={() => setPage((p) => p + 1)}
+                className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-[11px] font-semibold disabled:opacity-50"
+              >
+                Siguiente
+              </button>
+            </div>
           </div>
-        ))}
-
-        {!loading && filtered.length === 0 && (
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-400">
-            No hay items para mostrar.
-          </div>
-        )}
+        ) : null}
       </div>
     </main>
   );

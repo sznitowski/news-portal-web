@@ -1,4 +1,4 @@
-// app/api/internal/x-posts/[[...path]]/route.ts
+// app/api/internal/x-inbox/[[...path]]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { API_BASE as FALLBACK_API_BASE } from "@/app/lib/api";
 
@@ -22,11 +22,11 @@ function buildTarget(req: NextRequest, pathParts?: string[]) {
   const subPath = (pathParts ?? []).join("/");
   const qs = req.nextUrl.searchParams.toString();
 
-  // ✅ apunta a tu backend x-posts
-  const base = `${API_BASE}/internal/x/posts`;
+  // ✅ apunta a tu backend X inbox
+  const base = `${API_BASE}/internal/x/inbox`;
 
-  // si no hay subPath -> /internal/x/posts
-  // si hay subPath -> /internal/x/posts/123/queue
+  // si no hay subPath -> /internal/x/inbox
+  // si hay subPath -> /internal/x/inbox/123/queue
   const url = `${base}${subPath ? `/${subPath}` : ""}${qs ? `?${qs}` : ""}`;
   return url;
 }
